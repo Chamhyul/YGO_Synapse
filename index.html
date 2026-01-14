@@ -62,7 +62,7 @@
     .maker-info a { color: var(--text-muted); text-decoration: none; display: flex; align-items: center; gap: 3px; transition: color 0.2s; }
     .maker-info a:hover { color: var(--error-red); }
 
-    /* 상단 헤더 우측 컨테이너 (Flexbox) */
+    /* 상단 헤더 우측 컨테이너 */
     .header-right-container {
         position: absolute; top: 6px; right: 12px;
         display: flex; align-items: center; 
@@ -82,12 +82,10 @@
         height: 18px !important; 
         line-height: 1 !important;
     }
-    
     .help-trigger-btn i {
         font-size: 1.1rem; 
         transform: translateY(-1px); 
     }
-
     .help-trigger-btn:hover { color: var(--error-red); }
 
     .theme-switch-wrapper { 
@@ -229,9 +227,8 @@
         flex-shrink: 0; 
     }
 
-    /* 검색바 텍스트 좌측 정렬 */
     input#card-search { 
-        text-align: left !important; /* Center -> Left 변경 */
+        text-align: left !important; 
         font-size: 1.1rem; 
         padding-left: 20px !important; 
         padding-right: 40px !important; 
@@ -247,16 +244,15 @@
     
     body.dark-mode ::placeholder { color: #757575 !important; }
     
-    /* 내용 지우기 버튼 (눈에 덜 띄게 수정) */
     .clear-search-btn { 
         position: absolute; right: 15px; top: 50%; transform: translateY(-50%); 
         cursor: pointer; 
-        color: rgba(0,0,0,0.25); /* 기본 상태 흐리게 */
+        color: rgba(0,0,0,0.25); 
         display: none; 
         z-index: 5; 
         transition: color 0.2s;
     }
-    .clear-search-btn:hover { color: rgba(0,0,0,0.6); } /* 호버 시 진하게 */
+    .clear-search-btn:hover { color: rgba(0,0,0,0.6); }
     
     body.dark-mode .clear-search-btn { color: rgba(255,255,255,0.25); }
     body.dark-mode .clear-search-btn:hover { color: rgba(255,255,255,0.7); }
@@ -713,7 +709,7 @@
 </head>
 <body>
 
-<div class="version-info">ver. 0.7.20</div>
+<div class="version-info">ver. 0.7.23</div>
 <div class="maker-info">Made by <a href="https://www.youtube.com/@참혈" target="_blank"><i class="fab fa-youtube"></i>참혈</a></div>
 
 <div class="header-right-container">
@@ -891,6 +887,7 @@
   let allProcessingTypes = [], allNames = [], allLocations = [], localCardDatabase = [], rarityMap = {}, clientCache = {}, nameDb = {};
   let rarityMappingRaw = []; 
   let rarityLookup = {}; 
+  let cidLookup = {}; // [NEW] CID lookup map
   let isAppConfigured = false, acInstance = null, isLoading = false, validationTimeout = null, isFabOpen = false;
   let hasRegisteredInSession = false;
   let isContinuingRegistration = false;
@@ -900,7 +897,7 @@
   document.addEventListener('DOMContentLoaded', function() {
     loadTheme();
     loadRegion();
-    updateClearBtnState(); // 초기 상태 반영
+    checkClearBtn(); 
 
     const modals = document.querySelectorAll('.modal');
     modals.forEach(modal => {
@@ -956,8 +953,7 @@
         const val = e.target.value;
         if (!val) showRecentInDropdown();
         else filterAndShowDropdown(val);
-        
-        updateClearBtnState();
+        checkClearBtn(); 
     });
     
     searchInput.addEventListener('keydown', function(e) { 
@@ -994,8 +990,8 @@
     updateDisconnectBtn(); refreshInitialData();
   });
 
-  // [NEW] Clear Button State Updater
-  function updateClearBtnState() {
+  // [NEW] Helper function
+  function checkClearBtn() {
       const val = document.getElementById('card-search').value;
       const btn = document.getElementById('clear-btn');
       btn.style.display = val ? 'block' : 'none';
@@ -1073,6 +1069,7 @@
           li.onclick = (e) => {
               if(e.target !== delBtn) {
                   document.getElementById('card-search').value = r;
+                  checkClearBtn(); // [NEW] Trigger Check
                   startSearch();
               }
           };
@@ -1127,6 +1124,7 @@
           li.innerHTML = html;
           li.onclick = () => {
               document.getElementById('card-search').value = m;
+              checkClearBtn(); // [NEW] Trigger Check
               startSearch();
           };
           list.appendChild(li);
@@ -1252,6 +1250,29 @@
         clientCache = res.clientCache || {};
         nameDb = res.nameDb || {};
 
+        // [NEW] Build CID Lookup
+        cidLookup = {};
+        Object.keys(nameDb).forEach(nameKey => {
+            const entry = nameDb[nameKey];
+            if (entry && entry.id) {
+                if (!cidLookup[entry.id]) cidLookup[entry.id] = new Set();
+                cidLookup[entry.id].add(nameKey);
+            }
+        });
+
+        // [NEW] Expand allNames (Suggestion Pool)
+        const expandedSet = new Set(allNames); 
+        allNames.forEach(name => {
+            const entry = nameDb[name];
+            if (entry && entry.id) {
+                const siblings = cidLookup[entry.id];
+                if (siblings) {
+                    siblings.forEach(sName => expandedSet.add(sName));
+                }
+            }
+        });
+        allNames = Array.from(expandedSet).sort();
+
         rarityLookup = {};
         rarityMappingRaw.forEach((row, index) => {
             Object.values(row).forEach(val => {
@@ -1272,9 +1293,31 @@
     }
     const name = document.getElementById('card-search').value; 
     if(!name || !isAppConfigured) return; 
-    saveRecentSearch(name); const filteredRows = localCardDatabase.filter(row => String(row[0]) === name); renderTable(filteredRows); 
+    
+    saveRecentSearch(name); 
+    
+    // 1. Determine Target Names (All languages sharing the same CID)
+    let targetNames = new Set();
+    if (nameDb[name] && nameDb[name].id) {
+        const cid = nameDb[name].id;
+        if (cidLookup[cid]) {
+            targetNames = cidLookup[cid];
+        } else {
+            targetNames.add(name);
+        }
+    } else {
+        // Fallback for custom cards or non-DB entries
+        targetNames.add(name);
+    }
+
+    // 2. Filter local database using the Set of target names
+    const filteredRows = localCardDatabase.filter(row => targetNames.has(String(row[0]))); 
+    
+    renderTable(filteredRows); 
+    
     document.getElementById('custom-dropdown').style.display = 'none';
     toggleSearchWrapper(false);
+    checkClearBtn(); 
   }
   
   function findMappingRow(key) {
@@ -1463,7 +1506,7 @@
   }
 
   // Manage functions
-  function addManageRows(count = null) { const tbody = document.getElementById('manage-card-tbody'); let increment = count || ((tbody.children.length === 1) ? 4 : 5); let startIdx = tbody.children.length + 1; for (let i = 0; i < increment; i++) { const row = document.createElement('tr'); row.innerHTML = `<td>${startIdx + i}</td><td><span class="card-name-fetch">카드 번호를 입력해주세요.</span></td><td><input type="text" class="manage-card-no" onblur="updateManageDropdowns(this)" placeholder="번호 입력"></td><td><select class="browser-default manage-another flex-select" onchange="updateManageProcessing(this)" disabled><option value="">선택</option></select></td><td><select class="browser-default manage-proc flex-select" onchange="updateManageStorage(this)" disabled><option value="">선택</option></select></td><td><select class="browser-default manage-loc flex-select" onchange="updateManageMoveLoc(this)" disabled><option value="">선택</option></select></td><td><div class="td-flex-container"><select class="browser-default move-loc flex-select" onchange="syncDirectInputManage(this)" disabled><option value="" disabled selected>선택</option></select><input type="text" class="direct-input loc-direct flex-input" placeholder="새 위치"></div></td><td><span class="storage-qty-disp">-</span></td><td><input type="number" class="move-qty" min="1" disabled style="height:2.2rem !important; text-align:center;"></td>`; tbody.appendChild(row); } }
+  function addManageRows(count = null) { const tbody = document.getElementById('manage-card-tbody'); let increment = count || ((tbody.children.length === 1) ? 4 : 5); for (let i = 0; i < increment; i++) { const row = document.createElement('tr'); row.innerHTML = `<td><span class="card-name-fetch">카드 번호를 입력해주세요.</span></td><td><input type="text" class="manage-card-no" onblur="updateManageDropdowns(this)" placeholder="번호 입력"></td><td><select class="browser-default manage-another flex-select" onchange="updateManageProcessing(this)" disabled><option value="">선택</option></select></td><td><select class="browser-default manage-proc flex-select" onchange="updateManageStorage(this)" disabled><option value="">선택</option></select></td><td><select class="browser-default manage-loc flex-select" onchange="updateManageMoveLoc(this)" disabled><option value="">선택</option></select></td><td><div class="td-flex-container"><select class="browser-default move-loc flex-select" onchange="syncDirectInputManage(this)" disabled><option value="" disabled selected>선택</option></select><input type="text" class="direct-input loc-direct flex-input" placeholder="새 위치"></div></td><td><span class="storage-qty-disp">-</span></td><td><input type="number" class="move-qty" min="1" disabled style="height:2.2rem !important; text-align:center;"></td>`; tbody.appendChild(row); } }
   function updateManageDropdowns(inputEl) { const row = inputEl.closest('tr'); const cardNo = inputEl.value.trim().toUpperCase(); inputEl.value = cardNo; const nameSpan = row.querySelector('.card-name-fetch'); resetManageRow(row, 'another'); if (!cardNo) { nameSpan.innerText = "카드 번호를 입력해주세요."; return; } const matches = localCardDatabase.filter(r => String(r[1]).toUpperCase() === cardNo); if (matches.length > 0) { nameSpan.innerText = matches[0][0]; const anotherSel = row.querySelector('.manage-another'); const anothers = [...new Set(matches.map(r => r[5] || ""))]; if (anothers.length === 1 && anothers[0] === "") { anotherSel.innerHTML = `<option value="" selected>기본</option>`; anotherSel.value = ""; anotherSel.disabled = true; updateManageProcessing(anotherSel); } else { anotherSel.innerHTML = `<option value="__placeholder__" disabled selected>선택</option>` + (anothers.includes("") ? `<option value="">기본</option>` : '') + anothers.filter(a => a !== "").map(a => `<option value="${a}">${a}</option>`).join(''); anotherSel.disabled = false; } } else { nameSpan.innerText = "보유하지 않은 카드"; } }
   
   // [NEW] updateManageProcessing: 카드 이동 모달의 레어도 목록에도 현지화 적용
