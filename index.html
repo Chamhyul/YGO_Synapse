@@ -1,0 +1,2000 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>YGO 시냅스 - 보유 카드 관리 시스템</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <style>
+    :root {
+      --bg-body: #f4f7f6;
+      --bg-surface: #ffffff;
+      --bg-sub: #fafafa;
+      --bg-header: #f5f5f5;
+      --text-primary: #333333;
+      --text-secondary: #666666;
+      --text-muted: #9e9e9e;
+      --primary-color: #009688;
+      --primary-dark: #00796b;
+      --border-color: #ddd;
+      --error-red: #f44336;
+      --success-green: #2e7d32;
+      --warning-yellow: #fbc02d;
+      --bg-success: #e0f2f1;
+      --bg-fail: #ffebee;
+      --input-bg: #ffffff;
+      --disabled-bg: #e0e0e0;
+      --disabled-text: #9e9e9e;
+      --overlay-bg: rgba(255, 255, 255, 0.85);
+    }
+
+    body.dark-mode {
+      --bg-body: #121212;
+      --bg-surface: #1e1e1e;
+      --bg-sub: #252525;
+      --bg-header: #2c2c2c;
+      --text-primary: #e0e0e0;
+      --text-secondary: #b0b0b0;
+      --text-muted: #757575;
+      --primary-color: #4db6ac;
+      --primary-dark: #26a69a;
+      --border-color: #424242;
+      --error-red: #ef5350;
+      --success-green: #66bb6a;
+      --warning-yellow: #fdd835;
+      --bg-success: #1b5e20;
+      --bg-fail: #b71c1c;
+      --input-bg: #2c2c2c;
+      --disabled-bg: #424242;
+      --disabled-text: #757575;
+      --overlay-bg: rgba(0, 0, 0, 0.6);
+    }
+
+    body, input, button, table, .btn, .modal-content, select { font-family: 'Pretendard', sans-serif !important; }
+    body { background-color: var(--bg-body); color: var(--text-primary); transition: background-color 0.3s, color 0.3s; }
+    
+    /* 상단 헤더 좌측 */
+    .version-info { position: absolute; top: 8px; left: 12px; font-size: 0.75rem; color: var(--text-muted); font-weight: 600; z-index: 10; }
+    .maker-info { position: absolute; top: 8px; left: 80px; font-size: 0.75rem; color: var(--text-muted); font-weight: 600; z-index: 10; display: flex; align-items: center; gap: 4px; }
+    .maker-info a { color: var(--text-muted); text-decoration: none; display: flex; align-items: center; gap: 3px; transition: color 0.2s; }
+    .maker-info a:hover { color: var(--error-red); }
+
+    /* 상단 헤더 우측 컨테이너 (Flexbox) */
+    .header-right-container {
+        position: absolute; top: 6px; right: 12px;
+        display: flex; align-items: center; 
+        gap: 10px; 
+        z-index: 10;
+    }
+
+    /* 사용법 버튼 */
+    .help-trigger-btn {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        cursor: pointer;
+        display: flex; align-items: center; gap: 4px;
+        transition: color 0.2s;
+        margin-right: 5px;
+        height: 18px !important; 
+        line-height: 1 !important;
+    }
+    
+    .help-trigger-btn i {
+        font-size: 1.1rem; 
+        transform: translateY(-1px); 
+    }
+
+    .help-trigger-btn:hover { color: var(--error-red); }
+
+    .theme-switch-wrapper { 
+        display: flex; align-items: center; gap: 8px; 
+        height: 18px !important; 
+    }
+    #theme-label { 
+        font-size: 0.75rem; color: var(--text-muted); font-weight: 600; 
+        line-height: 1 !important; 
+    }
+    
+    .theme-switch { 
+        display: inline-block; position: relative; margin-bottom: 0;
+        height: 18px !important; 
+        width: 36px !important; 
+        line-height: 1 !important;
+        vertical-align: middle;
+    }
+    
+    .theme-switch input { display: none; }
+    
+    .slider { 
+        background-color: #ccc; 
+        position: absolute; cursor: pointer; 
+        top: 0; left: 0; 
+        width: 36px; height: 18px; 
+        transition: .4s; border-radius: 34px; 
+    }
+    
+    .slider:before { 
+        background-color: white; 
+        content: ""; 
+        position: absolute; 
+        height: 14px; width: 14px; 
+        left: 2px; bottom: 2px; 
+        transition: .4s; border-radius: 50%; 
+    }
+    
+    input:checked + .slider { background-color: var(--primary-color); }
+    input:checked + .slider:before { transform: translateX(18px); }
+    
+    /* Region Switch CSS */
+    .region-switch-wrapper {
+        display: flex; align-items: center; gap: 4px;
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-color);
+        padding: 2px 8px;
+        border-radius: 20px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        transition: width 0.2s ease;
+        height: 24px; box-sizing: border-box;
+    }
+    .region-icon {
+        color: var(--text-muted); font-size: 0.9rem; flex-shrink: 0;
+    }
+    .custom-header-select {
+        background-color: transparent; border: none; border-bottom: 1px solid transparent;
+        color: var(--text-primary); font-size: 0.75rem; font-weight: 700; height: 18px; padding: 0; 
+        cursor: pointer; text-align: right; appearance: none; -webkit-appearance: none;
+        transition: color 0.2s;
+    }
+    .custom-header-select:hover { color: var(--primary-color); }
+    .custom-header-select:focus { outline: none; }
+    .custom-header-select option { background-color: var(--bg-surface); color: var(--text-primary); }
+
+    .container { margin-top: 30px; max-width: 95% !important; }
+    
+    .app-title-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        margin-top: 50px;
+        margin-bottom: 25px;
+        text-align: center;
+        line-height: 1;
+    }
+    .title-ygo {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        letter-spacing: 2px;
+        opacity: 0.8;
+        margin-bottom: 3px; 
+        z-index: 1;
+    }
+    .title-synapse {
+        font-size: 2.5rem;
+        font-weight: 900;
+        color: var(--text-primary);
+        margin: 0;
+        letter-spacing: 1px;
+    }
+    .title-beta {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: var(--error-red);
+        letter-spacing: 3px;
+        margin-top: 10px;
+    }
+    
+    .search-box { 
+        padding: 0; margin-bottom: 20px;
+        background: transparent; 
+        box-shadow: none;
+        display: flex; flex-direction: column; align-items: center; position: relative; 
+    }
+    
+    .search-row { 
+        display: flex; align-items: center; justify-content: center; 
+        width: 100%; max-width: 700px; 
+        gap: 8px; 
+    }
+    
+    .search-input-wrapper { 
+        flex: 1; 
+        position: relative; 
+        background: var(--bg-surface);
+        border: 1px solid var(--border-color);
+        border-radius: 24px; 
+        padding: 0; 
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        transition: border-radius 0.2s ease, box-shadow 0.2s ease;
+        z-index: 1001;
+    }
+
+    .search-input-wrapper.active {
+        border-radius: 24px 24px 0 0;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        border-bottom: 1px solid transparent; 
+    }
+
+    #search-btn {
+        border-radius: 50px !important;
+        width: 80px; 
+        height: 45px;
+        padding: 0;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0; 
+    }
+
+    /* 검색바 텍스트 좌측 정렬 */
+    input#card-search { 
+        text-align: left !important; /* Center -> Left 변경 */
+        font-size: 1.1rem; 
+        padding-left: 20px !important; 
+        padding-right: 40px !important; 
+        box-sizing: border-box; 
+        color: var(--text-primary); border-bottom: none !important; 
+        box-shadow: none !important;
+        height: 46px !important;
+        margin: 0 !important;
+        width: 100%;
+        display: block;
+    }
+    input#card-search::placeholder { color: var(--text-muted); }
+    
+    body.dark-mode ::placeholder { color: #757575 !important; }
+    
+    /* 내용 지우기 버튼 (눈에 덜 띄게 수정) */
+    .clear-search-btn { 
+        position: absolute; right: 15px; top: 50%; transform: translateY(-50%); 
+        cursor: pointer; 
+        color: rgba(0,0,0,0.25); /* 기본 상태 흐리게 */
+        display: none; 
+        z-index: 5; 
+        transition: color 0.2s;
+    }
+    .clear-search-btn:hover { color: rgba(0,0,0,0.6); } /* 호버 시 진하게 */
+    
+    body.dark-mode .clear-search-btn { color: rgba(255,255,255,0.25); }
+    body.dark-mode .clear-search-btn:hover { color: rgba(255,255,255,0.7); }
+
+    .btn.cyan-theme { background-color: var(--primary-color) !important; font-weight: 600; color: #fff; }
+    
+    @media only screen and (max-width: 600px) { 
+        .search-box { padding: 0 10px; } 
+        .search-row { max-width: 100%; }
+        .modal { width: 95% !important; max-height: 90% !important; top: 5% !important; } 
+    }
+    
+    .custom-dropdown {
+      position: absolute;
+      top: 100%; left: -1px; right: -1px; 
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-top: 1px solid #eee; 
+      border-radius: 0 0 24px 24px;
+      z-index: 1000;
+      max-height: 250px;
+      overflow-y: auto;
+      display: none;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      margin: 0;
+      padding: 5px 0 10px 0;
+      list-style: none;
+    }
+    
+    body.dark-mode .custom-dropdown { border-top: 1px solid #444; }
+
+    .custom-dropdown li {
+      padding: 8px 20px;
+      cursor: pointer;
+      border-bottom: none; 
+      font-size: 0.95rem;
+      color: var(--text-primary);
+      display: block; 
+      white-space: normal;
+      transition: background-color 0.1s;
+    }
+    
+    .custom-dropdown li:hover, .custom-dropdown li.active {
+      background-color: var(--bg-sub);
+    }
+    
+    .custom-dropdown li.text-suggest {
+        color: var(--primary-color) !important;
+        font-weight: 700 !important;
+    }
+    .custom-dropdown li .text-match {
+        color: var(--text-primary) !important;
+        font-weight: 400 !important;
+    }
+
+    .custom-dropdown li.no-result-item {
+        font-style: italic;
+        color: var(--text-muted) !important;
+        cursor: default;
+        pointer-events: none;
+        font-weight: 400 !important;
+        text-align: center;
+        padding: 15px;
+    }
+
+    .dropdown-header {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between !important;
+        padding: 8px 15px !important;
+        background-color: var(--bg-header) !important;
+        cursor: default !important;
+    }
+    .dropdown-label {
+        font-size: 0.75rem; 
+        color: var(--text-muted);
+        font-weight: 600;
+    }
+    .delete-icon {
+        cursor: pointer;
+        color: var(--text-muted);
+        font-size: 1.1rem;
+        transition: color 0.2s;
+    }
+    .delete-icon:hover {
+        color: var(--error-red);
+    }
+
+    .recent-header-item {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between !important;
+        padding: 8px 20px !important;
+        cursor: default !important;
+        margin-bottom: 5px;
+    }
+    .recent-header-item:hover { background-color: transparent !important; }
+
+    .recent-title {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        font-weight: 600;
+    }
+    .clear-all-btn {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        cursor: pointer;
+        text-decoration: underline;
+    }
+    .clear-all-btn:hover { color: var(--error-red); }
+
+    .recent-item-row {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between !important;
+    }
+    .recent-text { flex: 1; }
+    .item-delete-btn {
+        color: var(--text-muted);
+        font-size: 1rem;
+        padding: 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+    }
+    .item-delete-btn:hover { color: var(--error-red); }
+
+    .url-input-container { position: relative; display: flex; align-items: center; margin-top: 20px; margin-bottom: 5px; }
+    .url-input-container input { margin-bottom: 0 !important; padding-right: 40px !important; color: var(--text-primary); border-bottom: 1px solid var(--text-muted) !important; }
+    .valid-icon { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: none; }
+    .status-msg { font-size: 0.85rem; font-weight: 600; margin-bottom: 20px; min-height: 1.2rem; }
+    
+    .guide-btn { 
+        cursor: pointer; color: var(--primary-dark); font-size: 1rem; font-weight: 700; margin-bottom: 12px; 
+        display: flex; align-items: center; gap: 4px; 
+    }
+    .guide-btn i { transition: transform 0.2s; } 
+    .guide-btn.active i { transform: rotate(90deg); }
+
+    .guide-content { background: var(--bg-sub); padding: 18px; border-radius: 8px; font-size: 0.95rem; border: 1px solid var(--border-color); display: none; margin-bottom: 15px; color: var(--text-primary); }
+    body.dark-mode .guide-content { color: #b0b0b0; }
+
+    table { background: var(--bg-surface); font-size: 0.85rem; table-layout: fixed; width: 100%; border-collapse: collapse; color: var(--text-primary); }
+    th { background: var(--bg-header); color: var(--text-secondary); font-weight: 700; padding: 10px 4px; text-align: center; border: 1px solid var(--border-color); font-size: 0.8rem; word-break: break-all; }
+    td { border: 1px solid var(--border-color); text-align: center; padding: 6px 4px; position: relative; word-break: break-all; color: var(--text-primary); }
+    
+    .result-container th { background: var(--primary-color); color: white; border-color: var(--primary-dark); }
+    .col-card-no { width: 180px; } .col-loc { width: 110px; } .col-total { width: 60px; } .col-proc { width: 70px; } 
+    .expand-btn { cursor: pointer; color: var(--primary-color); position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 1.3rem; }
+    
+    .sub-row { width: 100%; max-width: 800px; display: flex; justify-content: flex-start; align-items: flex-start; margin-top: 5px; min-height: 20px; } 
+    
+    .modal { border-radius: 12px; width: 95% !important; max-width: 600px !important; background-color: var(--bg-surface); color: var(--text-primary); }
+    .modal .modal-content { background-color: var(--bg-surface); }
+    .modal .modal-footer { background-color: var(--bg-surface); border-top: 1px solid var(--border-color); }
+    
+    #settings-modal .modal-footer { border-top: none !important; }
+
+    #add-result-modal { width: 95% !important; max-width: 1000px !important; }
+    
+    #loading-overlay { 
+        display: none; position: fixed; top: 0; left: 0; 
+        width: 100%; height: 100%; 
+        background: var(--overlay-bg);
+        z-index: 11000; flex-direction: column; align-items: center; justify-content: center; 
+        backdrop-filter: blur(2px); 
+    }
+    body.dark-mode #loading-text { color: var(--primary-color) !important; }
+    
+    #result-area { overflow-x: auto; max-height: 0; opacity: 0; transition: max-height 0.6s ease; width: 100%; margin-top: 30px; }
+    #result-area.show { max-height: 10000px; opacity: 1; }
+
+    .new-card-box {
+        margin-bottom: 20px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--bg-surface);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .summary-split-wrapper {
+        display: flex;
+        width: 100%;
+    }
+    .summary-left {
+        width: 40%;
+        background-color: var(--primary-color);
+        color: white;
+        font-weight: 700;
+        font-size: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-right: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color); 
+        text-align: center;
+        padding: 10px;
+    }
+    .summary-right {
+        width: 60%;
+    }
+    
+    .summary-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+    }
+    .summary-table td {
+        border: 1px solid var(--border-color);
+        border-left: none; 
+        padding: 10px;
+        text-align: center;
+        color: var(--text-primary);
+    }
+    .summary-table tr:first-child td {
+        border-top: none; 
+    }
+    
+    .border-double-top {
+        border-top: 3px double var(--border-color) !important;
+        background-clip: padding-box;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .summary-label-cell {
+        background-color: var(--bg-sub);
+        color: var(--text-secondary);
+        font-weight: 600;
+        width: 50%; 
+    }
+    .summary-value-cell {
+        width: 50%;
+        font-weight: 500;
+    }
+    
+    .show-more-btn {
+        width: 100%;
+        background-color: var(--bg-sub);
+        color: var(--primary-dark);
+        font-weight: 600;
+        padding: 8px 0;
+        border: none;
+        border-top: 1px solid var(--border-color);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        transition: background-color 0.2s;
+    }
+    .show-more-btn:hover {
+        background-color: var(--border-color);
+    }
+    body.dark-mode .show-more-btn { color: var(--primary-color); }
+    
+    .detail-slide-wrapper {
+        max-height: 0;
+        overflow-y: hidden;
+        overflow-x: auto;
+        transition: max-height 0.4s ease-in-out;
+        border-top: none; 
+    }
+
+    .split-table-wrapper {
+        display: flex;
+        width: 100%;
+        border-top: 1px solid var(--border-color);
+    }
+    .fixed-side {
+        width: 40%;
+        flex-shrink: 0;
+        border-right: 1px solid var(--border-color);
+        background-color: var(--bg-surface);
+        z-index: 2;
+    }
+    .scroll-side {
+        width: 60%;
+        overflow-x: auto;
+    }
+    
+    .split-table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+    }
+    .split-table th {
+        background-color: var(--bg-sub);
+        color: var(--text-secondary);
+        font-weight: 600;
+        padding: 8px 4px;
+        font-size: 0.85rem;
+        border-top: none !important;
+        border-left: none !important;
+        border-bottom: 1px solid var(--border-color);
+        border-right: 1px solid var(--border-color);
+        white-space: nowrap;
+        height: 35px;
+        box-sizing: border-box;
+    }
+    .split-table td {
+        padding: 8px 4px;
+        font-size: 0.85rem;
+        border-top: none !important;
+        border-left: none !important;
+        border-bottom: 1px solid var(--border-color);
+        border-right: 1px solid var(--border-color);
+        white-space: nowrap;
+        height: 35px;
+        box-sizing: border-box;
+        text-align: center;
+        color: var(--text-primary);
+    }
+    
+    .split-table th:last-child, .split-table td:last-child {
+        border-right: none;
+    }
+
+    .fp-col-1 { width: 37.5%; }
+    .fp-col-2 { width: 37.5%; }
+    .fp-col-3 { width: 25%; }
+    
+    .sp-col { width: 80px; }
+
+    .material-tooltip {
+        margin-top: 10px !important;
+        text-align: center !important;
+        line-height: 1.2 !important;
+    }
+
+    tr.success-row { background-color: var(--bg-success); }
+    tr.fail-row { background-color: var(--bg-fail); }
+    body.dark-mode tr.success-row { background-color: rgba(76, 175, 80, 0.2); } 
+    body.dark-mode tr.fail-row { background-color: rgba(244, 67, 54, 0.2); } 
+    
+    #toast-container { top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; right: auto !important; bottom: auto !important; max-width: 90%; width: auto !important; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .toast { border-radius: 24px !important; text-align: center; justify-content: center; margin-top: 10px; background-color: #333; color: white; }
+    body.dark-mode .toast { background-color: #e0e0e0; color: #121212; }
+
+    .fixed-action-btn { bottom: 24px; right: 24px; }
+    .fixed-action-btn .main-fab i { transition: transform 0.3s ease-in-out 0s; }
+    .fixed-action-btn.fab-open .main-fab i { transform: rotate(45deg); }
+    .fixed-action-btn ul li { margin-bottom: 12px; text-align: right; position: relative; }
+    .fab-label { position: absolute; right: 52px; top: 50%; transform: translateY(-50%); background: #757575; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.85rem; white-space: nowrap; pointer-events: none; font-weight: 500; line-height: 1.2; opacity: 0; transition: opacity 0.2s ease-out 0s; will-change: opacity; }
+    .fixed-action-btn.fab-open .fab-label { opacity: 1; transition: opacity 0.25s ease-in 0s; }
+
+    #add-card-modal, #manage-card-modal, #discard-card-modal { width: 95% !important; max-width: 1100px !important; }
+    .modal-subtitle { color: var(--text-secondary); font-size: 0.95rem; margin-top: 0; margin-bottom: 20px; display: block; line-height: 1.5; }
+    .add-modal-table { font-size: 0.82rem; width: 100%; border-collapse: collapse; }
+    
+    .another-cell-container { display: flex; align-items: center; justify-content: center; gap: 0; width: 100%; height: 100%; }
+    .another-cell-container .checkbox-label { margin-top: 5px; margin-right: -5px; z-index: 5; }
+    
+    .td-flex-container { display: flex; align-items: center; gap: 4px; width: 100%; height: 100%; }
+    .flex-select { flex: 1; min-width: 0; height: 2.2rem !important; font-size: 0.85rem; display: block !important; background-color: var(--input-bg); color: var(--text-primary); border: 1px solid var(--border-color); }
+    .flex-input { flex: 1; min-width: 0; height: 2.2rem !important; display: none; border: 1px solid var(--border-color) !important; padding: 0 5px !important; box-sizing: border-box !important; background-color: var(--input-bg); color: var(--text-primary); }
+    .card-name-fetch { color: var(--primary-dark); font-weight: 700; font-size: 0.8rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+    body.dark-mode .card-name-fetch { color: var(--primary-color); }
+    
+    input.manage-card-no, input.move-qty, 
+    input.new-card-no, input.new-card-qty, select.new-card-another { 
+      height: 2.2rem !important; 
+      margin: 0 !important; 
+      font-size: 0.85rem !important; 
+      text-align: center; 
+      border-bottom: 1px solid var(--text-muted) !important; 
+      text-transform: uppercase;
+      color: var(--text-primary);
+      background-color: transparent;
+    }
+    
+    input.loc-direct {
+      height: 2.2rem !important; 
+      margin: 0 !important; 
+      font-size: 0.85rem !important; 
+      text-align: center; 
+      border-bottom: 1px solid var(--text-muted) !important;
+      text-transform: none;
+      color: var(--text-primary);
+      background-color: transparent;
+    }
+
+    select.new-card-another {
+      height: 2.2rem !important; 
+      margin: 0 !important; 
+      font-size: 0.85rem !important; 
+      text-align: center; 
+      border-bottom: 1px solid var(--text-muted) !important; 
+      text-transform: none; 
+      color: var(--text-primary);
+      background-color: transparent;
+    }
+    
+    select option { background-color: var(--bg-surface); color: var(--text-primary); }
+
+    input.move-qty:disabled, select:disabled, input:disabled { color: var(--disabled-text) !important; border-bottom: 1px dotted var(--disabled-text) !important; cursor: not-allowed; }
+    
+    body.dark-mode input:disabled { 
+        color: var(--text-muted) !important;
+        -webkit-text-fill-color: var(--text-muted) !important;
+    }
+
+    body.dark-mode input[type=number]::-webkit-inner-spin-button, 
+    body.dark-mode input[type=number]::-webkit-outer-spin-button { 
+      filter: invert(1);
+    }
+
+    #add-submit-btn.disabled { background-color: var(--disabled-bg) !important; color: var(--disabled-text) !important; }
+    #confirm-btn.disabled { background-color: var(--disabled-bg) !important; color: var(--disabled-text) !important; }
+    
+    body.dark-mode #disconnect-btn.disabled { background-color: #424242 !important; color: #757575 !important; }
+
+    .adjust-btn-group { display: flex; justify-content: center; gap: 8px; align-items: center; }
+    .adjust-btn { 
+        width: 24px; height: 24px; border-radius: 50%; 
+        background-color: #bdbdbd; color: white; 
+        display: flex; align-items: center; justify-content: center; 
+        font-weight: 700; font-size: 1.2rem; line-height: 1; cursor: pointer; user-select: none;
+        transition: background-color 0.2s;
+    }
+    .adjust-btn.active { background-color: #616161; }
+    .adjust-btn.disabled { background-color: var(--disabled-bg); cursor: not-allowed; opacity: 0.5; pointer-events: none; color: var(--disabled-text); }
+    body.dark-mode .adjust-btn { background-color: #555; color: #eee; }
+    body.dark-mode .adjust-btn.active { background-color: #888; }
+
+    .result-icon-area { text-align: center; margin-top: 10px; margin-bottom: 10px; }
+    .result-icon-area i { font-size: 60px; color: var(--success-green); }
+    .result-summary { text-align: center; font-size: 1.1rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+    .result-fail-summary { text-align: center; font-size: 0.9rem; color: var(--error-red); margin-bottom: 15px; font-weight: 500; margin-top: 0; }
+    
+    #result-summary-table-box { width: 100%; overflow-x: auto; margin-bottom: 15px; }
+    .result-detail-wrapper { display: none; margin-top: 10px; width: 100%; overflow-x: auto; }
+    .result-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: center; }
+    .result-table th { background: var(--bg-header); color: var(--text-secondary); padding: 6px; border: 1px solid var(--border-color); }
+    .result-table td { border: 1px solid var(--border-color); padding: 6px; word-break: break-all; color: var(--text-primary); }
+    
+    .toggle-result-btn { 
+        cursor: pointer; color: var(--primary-dark); font-weight: 700; 
+        text-align: center; margin: 0 auto; display: flex; align-items: center; justify-content: center; 
+        width: fit-content; margin-bottom: 10px; gap: 4px;
+    }
+    body.dark-mode .toggle-result-btn { color: var(--primary-color); }
+    
+    .btn-flat-action { 
+        background-color: transparent !important; 
+        color: var(--text-secondary) !important; 
+        font-weight: 600; 
+        box-shadow: none !important; 
+        border: 1px solid var(--border-color);
+    }
+    .btn-flat-action:hover { background-color: var(--bg-header) !important; }
+  </style>
+</head>
+<body>
+
+<div class="version-info">ver. 0.7.20</div>
+<div class="maker-info">Made by <a href="https://www.youtube.com/@참혈" target="_blank"><i class="fab fa-youtube"></i>참혈</a></div>
+
+<div class="header-right-container">
+    <div class="help-trigger-btn" onclick="openSettingsWithGuide()">
+        <i class="fas fa-question-circle"></i>
+        <span>사용법</span>
+    </div>
+
+    <div class="theme-switch-wrapper">
+        <span id="theme-label">다크 모드</span>
+        <label class="theme-switch" for="checkbox-theme">
+            <input type="checkbox" id="checkbox-theme" onchange="toggleTheme()">
+            <div class="slider"></div>
+        </label>
+    </div>
+
+    <div class="region-switch-wrapper">
+        <i class="material-icons region-icon">public</i>
+        <select id="region-select" class="browser-default custom-header-select" onchange="changeRegion()">
+            <option value="ko">한국</option>
+            <option value="ja">일본</option>
+            <option value="ae">영어(아시아)</option>
+            <option value="cn">중국</option>
+            <option value="en">영미</option>
+            <option value="de">독일</option>
+            <option value="fr">프랑스</option>
+            <option value="it">이탈리아</option>
+            <option value="es">스페인</option>
+            <option value="pt">포르투갈</option>
+        </select>
+    </div>
+</div>
+
+<div id="loading-overlay">
+  <div class="preloader-wrapper big active"><div class="spinner-layer spinner-teal-only"><div class="circle-clipper left"><div class="circle"></div></div><div class="gap-patch"><div class="circle"></div></div><div class="circle-clipper right"><div class="circle"></div></div></div></div>
+  <p id="loading-text" style="margin-top: 20px; font-weight: bold; color: var(--dark-cyan);">데이터 로드 중...</p>
+</div>
+
+<div class="container">
+  <div class="app-title-container">
+      <span class="title-ygo">유희왕</span>
+      <span class="title-synapse">SYNAPSE</span>
+      <span class="title-beta">BETA</span>
+  </div>
+  
+  <div class="search-box">
+    <div class="search-row">
+        <div class="search-input-wrapper" id="search-wrapper">
+            <input type="text" id="card-search" autocomplete="off" placeholder="">
+            <i id="clear-btn" class="material-icons clear-search-btn" onmousedown="event.preventDefault()">cancel</i>
+            <ul id="custom-dropdown" class="custom-dropdown"></ul>
+        </div>
+        <button id="search-btn" class="btn waves-effect waves-light cyan-theme" onclick="startSearch()"><i class="material-icons">search</i></button>
+    </div>
+    <div class="sub-row"></div>
+  </div>
+  <div class="result-container"><div id="result-area"></div></div>
+</div>
+
+<div id="fab-menu" class="fixed-action-btn">
+  <a class="btn-floating btn-large cyan-theme main-fab"><i id="fab-icon" class="large material-icons">add</i></a>
+  <ul>
+    <li><a class="btn-floating grey darken-1" onclick="checkAuthAndOpen('#add-card-modal')"><i class="material-icons">library_add</i></a><span class="fab-label">카드 등록</span></li>
+    <li><a class="btn-floating grey darken-1" onclick="checkAuthAndOpen('#manage-card-modal')"><i class="material-icons">import_export</i></a><span class="fab-label">카드 이동</span></li>
+    <li><a class="btn-floating grey darken-1" onclick="checkAuthAndOpen('#discard-card-modal')"><i class="material-icons">delete_outline</i></a><span class="fab-label">카드 폐기</span></li>
+  </ul>
+</div>
+
+<div id="manage-card-modal" class="modal">
+  <div class="modal-content">
+    <h5 style="font-weight: 800; margin-bottom: 10px;">카드 이동</h5>
+    <span class="modal-subtitle">카드의 보관 장소를 변경할 수 있습니다.</span>
+    <div style="overflow-x: auto;">
+      <table class="add-modal-table">
+        <thead>
+            <tr>
+                <th style="width: 5%;">No</th>
+                <th style="width: 20%;">카드 이름</th>
+                <th style="width: 12%;">카드 번호</th>
+                <th style="width: 10%;">어나더</th>
+                <th style="width: 10%;">레어도</th>
+                <th style="width: 13%;">보관 위치</th>
+                <th style="width: 18%;">이동 위치</th>
+                <th style="width: 8%;">보관 수량</th>
+                <th style="width: 9%;">이동 수량</th>
+            </tr>
+        </thead>
+        <tbody id="manage-card-tbody"></tbody>
+      </table>
+    </div>
+    <div style="margin-top: 20px; text-align: center;"><button class="btn-flat waves-effect" onclick="addManageRows()" style="color: var(--primary-color); font-weight: 700;">더 많은 카드를 이동하시나요?</button></div>
+  </div>
+  <div class="modal-footer"><button class="btn-flat modal-close" style="color: var(--text-primary);">취소</button><button id="manage-submit-btn" class="btn cyan-theme" onclick="submitManageCards()">이동</button></div>
+</div>
+
+<div id="discard-card-modal" class="modal">
+  <div class="modal-content"><h5 style="font-weight: 800; margin-bottom: 20px;">카드 폐기</h5><p class="center" style="color: var(--text-muted); margin-top: 50px;">서비스 준비 중입니다.</p></div>
+  <div class="modal-footer"><button class="btn-flat modal-close" style="color: var(--text-primary);">닫기</button></div>
+</div>
+
+<div id="settings-modal" class="modal">
+  <div class="modal-content">
+    <h5 style="font-weight: 800; margin-bottom: 10px;">사용법 및 연결</h5>
+    <p style="color: var(--text-secondary); line-height: 1.5; margin-bottom: 20px;">이 앱은 구글 시트를 기반으로 사용자가 보유한 카드를 등록하여, 실물 카드 관리를 보조합니다.<br>양식에 맞는 구글 시트 링크를 입력해주세요.</p>
+    <div class="guide-btn" id="guide-accordion-btn" onclick="toggleGuide()"><i class="material-icons">keyboard_arrow_right</i><span>양식 다운로드 및 연결법</span></div>
+    <div id="guide-box" class="guide-content"><ol><li><a href="https://docs.google.com/spreadsheets/d/16AVBIJvass2Zl6f4IwMpK5KcZkPOuGATWfo0FIdeOdw/copy" target="_blank" style="color: var(--primary-color); font-weight: 800; text-decoration: underline;">링크</a>를 눌러 양식 시트를 구글 드라이브에 복사합니다.</li><li>해당 파일을 <b>링크가 있는 모든 사용자 / 편집자</b>로 공유 설정을 변경합니다.</li><li>해당 파일의 공유 링크를 입력 후 확인을 눌러주세요.</li></ol></div>
+    <div class="url-input-container"><input type="text" id="sheet-url" placeholder="https://docs.google.com/spreadsheets/d/..." oninput="validateSheetLink()"><div id="valid-mark" class="valid-icon"></div></div>
+    <div id="status-msg" class="status-msg"></div>
+  </div>
+  <div class="modal-footer" style="display: flex; justify-content: space-between; padding: 0 24px 20px 24px; align-items: center; height: auto;">
+    <button id="disconnect-btn" class="btn red darken-1 waves-effect waves-light" onclick="disconnectSheet()">연결 끊기</button>
+    <div><button class="btn-flat modal-close" style="color: var(--text-primary);">취소</button><button id="confirm-btn" class="btn cyan-theme waves-effect waves-light disabled" onclick="saveSettings()">연결</button></div>
+  </div>
+</div>
+
+<div id="add-card-modal" class="modal">
+  <div class="modal-content">
+    <h5 style="font-weight: 800; margin-bottom: 10px;">카드 등록</h5>
+    <span class="modal-subtitle">원하는 카드를 등록할 수 있습니다.</span>
+    <div style="overflow-x: auto;">
+      <table class="add-modal-table">
+        <thead>
+            <tr>
+                <th style="width: 5%;">No</th>
+                <th style="width: 20%;">카드 이름</th>
+                <th style="width: 15%;">카드 번호</th>
+                <th style="width: 15%;">어나더 <i class="material-icons tiny tooltipped" data-position="top" data-tooltip="공식DB의 순서를 따릅니다." style="cursor:pointer; vertical-align: middle; color:var(--text-muted);">help_outline</i></th>
+                <th style="width: 13%;">레어도</th>
+                <th style="width: 12%;">보관 위치</th>
+                <th style="width: 8%;">수량</th>
+                <th style="width: 12%;">조정</th>
+            </tr>
+        </thead>
+        <tbody id="add-card-tbody"></tbody>
+      </table>
+    </div>
+    <div style="margin-top: 20px; text-align: center;"><button class="btn-flat waves-effect" onclick="addMoreRows()" style="color: var(--primary-color); font-weight: 700;">더 많은 카드를 등록할 건가요?</button></div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn-flat modal-close" style="color: var(--text-primary);">취소</button>
+    <span class="tooltipped-wrapper tooltipped" data-position="top" data-tooltip="등록할 수 있는 카드가 없습니다.">
+        <button id="add-submit-btn" class="btn cyan-theme disabled" onclick="submitNewCards()">등록</button>
+    </span>
+  </div>
+</div>
+
+<div id="add-result-modal" class="modal">
+  <div class="modal-content">
+    <div class="result-icon-area"><i class="material-icons">check_circle</i></div>
+    <h5 style="font-weight: 800; text-align: center; margin-bottom: 20px;">카드 등록 완료!</h5>
+    <p id="result-success-text" class="result-summary"></p>
+    <p id="result-fail-text" class="result-fail-summary"></p>
+    <div id="result-summary-table-box"><table class="result-table"><tbody id="result-summary-body"></tbody></table></div>
+    <div class="toggle-result-btn" onclick="toggleResultDetail()"><span>자세히</span><i id="toggle-icon" class="material-icons" style="font-size:1.2rem; transform: translateY(1px);">keyboard_arrow_down</i></div>
+    <div id="result-detail-box" class="result-detail-wrapper">
+        <table class="result-table">
+            <thead><tr><th style="width:10%;">No</th><th style="width:20%;">카드 이름</th><th style="width:15%;">카드 번호</th><th style="width:15%;">어나더</th><th style="width:15%;">레어도</th><th style="width:15%;">보관 위치</th><th style="width:10%;">수량</th></tr></thead>
+            <tbody id="result-detail-body"></tbody>
+        </table>
+    </div>
+  </div>
+  <div class="modal-footer" style="display:flex; justify-content:flex-end; padding-right:24px; gap:8px;">
+    <button class="btn cyan-theme modal-close">확인</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+<script>
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx2W7ZnDz-5gTTyIr6VxG8IbvkaPW-qZwRxmgXgfwpJ9hwPic9J1dh5ymDqxriCKuCI/exec";
+  const STORAGE_KEY = 'yugioh_spreadsheet_id';
+  const RECENT_KEY = 'recent_card_searches';
+  const THEME_KEY = 'yugioh_theme_mode';
+  const REGION_KEY = 'yugioh_region_setting';
+
+  let allProcessingTypes = [], allNames = [], allLocations = [], localCardDatabase = [], rarityMap = {}, clientCache = {}, nameDb = {};
+  let rarityMappingRaw = []; 
+  let rarityLookup = {}; 
+  let isAppConfigured = false, acInstance = null, isLoading = false, validationTimeout = null, isFabOpen = false;
+  let hasRegisteredInSession = false;
+  let isContinuingRegistration = false;
+  let blurTimer = null;
+  let currentRegion = 'ko';
+
+  document.addEventListener('DOMContentLoaded', function() {
+    loadTheme();
+    loadRegion();
+    updateClearBtnState(); // 초기 상태 반영
+
+    const modals = document.querySelectorAll('.modal');
+    modals.forEach(modal => {
+        let options = {
+            onCloseEnd: function(el) { 
+                if(el.id === 'add-card-modal') {
+                    if (hasRegisteredInSession) location.reload();
+                    else if(!el.dataset.keepData) resetAddModal();
+                    else delete el.dataset.keepData; 
+                }
+                if(el.id === 'manage-card-modal') resetManageModal(); 
+                if(el.id === 'add-result-modal') {
+                    location.reload(); 
+                }
+            } 
+        };
+        
+        if (modal.id === 'add-result-modal') {
+            options.dismissible = false; 
+        }
+        
+        M.Modal.init(modal, options);
+    });
+
+    M.Tooltip.init(document.querySelectorAll('.tooltipped'));
+    const fabElem = document.getElementById('fab-menu');
+    const mainFabBtn = fabElem.querySelector('.main-fab');
+    mainFabBtn.addEventListener('click', function() { isFabOpen = !isFabOpen; updateFabState(fabElem); });
+    const subBtns = fabElem.querySelectorAll('ul li a');
+    subBtns.forEach(btn => { btn.addEventListener('click', () => { isFabOpen = false; updateFabState(fabElem); }); });
+    M.FloatingActionButton.init(fabElem, { direction: 'top', hoverEnabled: false, onCloseStart: () => { if(isFabOpen) { isFabOpen = false; updateFabState(fabElem); } } });
+    
+    const searchInput = document.getElementById('card-search');
+    
+    const handleFocusOrClick = () => {
+        if (!localStorage.getItem(STORAGE_KEY)) {
+            searchInput.blur();
+            openGuideFromMain();
+            return;
+        }
+        const val = searchInput.value.trim();
+        if (!val) {
+            showRecentInDropdown();
+        } else {
+            filterAndShowDropdown(searchInput.value); 
+        }
+    };
+    
+    searchInput.addEventListener('click', handleFocusOrClick);
+    searchInput.addEventListener('focus', handleFocusOrClick);
+    
+    searchInput.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (!val) showRecentInDropdown();
+        else filterAndShowDropdown(val);
+        
+        updateClearBtnState();
+    });
+    
+    searchInput.addEventListener('keydown', function(e) { 
+        if (e.key === 'Enter') { 
+            const list = document.getElementById('custom-dropdown');
+            if(list.style.display === 'block' && list.firstElementChild) {
+                const firstItem = list.querySelector('li[data-val]');
+                if(firstItem && !firstItem.classList.contains('no-result-item')) {
+                    this.value = firstItem.dataset.val;
+                } else if(list.querySelector('.no-result-item')) {
+                    return; 
+                }
+            }
+            this.blur(); 
+            startSearch(); 
+        } 
+    });
+    
+    searchInput.addEventListener('blur', () => {
+        blurTimer = setTimeout(() => {
+            document.getElementById('custom-dropdown').style.display = 'none';
+            toggleSearchWrapper(false); 
+        }, 200);
+    });
+
+    document.getElementById('clear-btn').addEventListener('click', function() { 
+        if(blurTimer) clearTimeout(blurTimer); 
+        searchInput.value = ''; 
+        this.style.display = 'none'; 
+        searchInput.focus(); 
+        showRecentInDropdown();
+    });
+    
+    updateDisconnectBtn(); refreshInitialData();
+  });
+
+  // [NEW] Clear Button State Updater
+  function updateClearBtnState() {
+      const val = document.getElementById('card-search').value;
+      const btn = document.getElementById('clear-btn');
+      btn.style.display = val ? 'block' : 'none';
+  }
+
+  function openSettingsWithGuide() {
+      M.Modal.getInstance(document.getElementById('settings-modal')).open();
+      toggleGuide(true);
+  }
+
+  function toggleSearchWrapper(isOpen) {
+      const wrapper = document.getElementById('search-wrapper');
+      if(isOpen) wrapper.classList.add('active');
+      else wrapper.classList.remove('active');
+  }
+
+  function decomposeHangul(str) {
+      const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+      const JUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
+      const JONG = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','흐','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+      let result = "";
+      for (let i = 0; i < str.length; i++) {
+          const charCode = str.charCodeAt(i);
+          if (charCode >= 0xAC00 && charCode <= 0xD7A3) {
+              const code = charCode - 0xAC00;
+              const choIndex = Math.floor(code / 588);
+              const jungIndex = Math.floor((code % 588) / 28);
+              const jongIndex = code % 28;
+              result += CHO[choIndex] + JUNG[jungIndex] + JONG[jongIndex];
+          } else {
+              result += str.charAt(i);
+          }
+      }
+      return result;
+  }
+
+  function normalizeStr(str) { return str.replace(/\s+/g, '').toLowerCase(); }
+
+  function showRecentInDropdown() {
+      const recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+      const list = document.getElementById('custom-dropdown');
+      list.innerHTML = '';
+      
+      if (recent.length === 0) {
+          list.style.display = 'none';
+          toggleSearchWrapper(false);
+          return;
+      }
+      
+      const headerLi = document.createElement('li');
+      headerLi.className = 'recent-header-item';
+      headerLi.innerHTML = `
+        <span class="recent-title">최근 검색</span>
+        <span class="clear-all-btn" onclick="clearAllHistory()" onmousedown="event.preventDefault()">전체 제거</span>
+      `;
+      list.appendChild(headerLi);
+
+      recent.slice(0, 5).forEach(r => {
+          const li = document.createElement('li');
+          li.className = 'recent-item-row';
+          li.dataset.val = r; 
+          
+          const textSpan = document.createElement('span');
+          textSpan.className = 'recent-text text-suggest';
+          textSpan.innerText = r;
+          
+          const delBtn = document.createElement('i');
+          delBtn.className = 'material-icons item-delete-btn';
+          delBtn.innerText = 'close';
+          delBtn.onmousedown = (e) => { e.preventDefault(); e.stopPropagation(); deleteRecentItem(r); };
+          
+          li.appendChild(textSpan);
+          li.appendChild(delBtn);
+          
+          li.onclick = (e) => {
+              if(e.target !== delBtn) {
+                  document.getElementById('card-search').value = r;
+                  startSearch();
+              }
+          };
+          
+          list.appendChild(li);
+      });
+      
+      list.style.display = 'block';
+      toggleSearchWrapper(true);
+  }
+
+  function filterAndShowDropdown(val) {
+      if(!isAppConfigured) return;
+      const list = document.getElementById('custom-dropdown');
+      const normalizedInput = normalizeStr(val);
+      const decomposedInput = decomposeHangul(normalizedInput); 
+      
+      const matches = allNames.filter(name => {
+          const normName = normalizeStr(name);
+          const decompName = decomposeHangul(normName); 
+          return decompName.includes(decomposedInput);
+      });
+      
+      list.innerHTML = '';
+
+      if (matches.length === 0) {
+          list.innerHTML = '<li class="no-result-item">등록되지 않은 카드</li>';
+          list.style.display = 'block';
+          toggleSearchWrapper(true);
+          return;
+      }
+      
+      matches.slice(0, 10).forEach(m => {
+          const li = document.createElement('li');
+          li.className = 'text-suggest'; 
+          li.dataset.val = m;
+          
+          let html = "";
+          let searchIdx = 0;
+          const lowerM = m.toLowerCase();
+          const lowerVal = val.toLowerCase().replace(/\s+/g, ''); 
+          
+          for(let i=0; i<m.length; i++) {
+              if(searchIdx < lowerVal.length && lowerM[i] === lowerVal[searchIdx]) {
+                  html += `<span class="text-match">${m[i]}</span>`;
+                  searchIdx++;
+              } else {
+                  html += m[i];
+              }
+          }
+          
+          li.innerHTML = html;
+          li.onclick = () => {
+              document.getElementById('card-search').value = m;
+              startSearch();
+          };
+          list.appendChild(li);
+      });
+      list.style.display = 'block';
+      toggleSearchWrapper(true);
+  }
+
+  function deleteRecentItem(name) {
+      let recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+      recent = recent.filter(r => r !== name);
+      localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
+      showRecentInDropdown();
+  }
+
+  function clearAllHistory() {
+      localStorage.removeItem(RECENT_KEY);
+      showRecentInDropdown(); 
+  }
+
+  function updateDisconnectBtn() { const btn = document.getElementById('disconnect-btn'); if (localStorage.getItem(STORAGE_KEY)) btn.classList.remove('disabled'); else btn.classList.add('disabled'); }
+  function toggleGuide(forceOpen = null) { 
+      const btn = document.getElementById('guide-accordion-btn'); 
+      const box = document.getElementById('guide-box'); 
+      const isOpen = (forceOpen !== null) ? forceOpen : box.style.display === 'none'; 
+      box.style.display = isOpen ? 'block' : 'none'; 
+      if (isOpen) btn.classList.add('active'); else btn.classList.remove('active'); 
+  }
+  function openGuideFromMain() { M.Modal.getInstance(document.getElementById('settings-modal')).open(); toggleGuide(true); }
+  
+  function loadTheme() {
+    const savedTheme = localStorage.getItem(THEME_KEY);
+    if (savedTheme === 'dark') {
+      document.body.classList.add('dark-mode');
+      document.getElementById('checkbox-theme').checked = true;
+    }
+  }
+  function toggleTheme() {
+    if (document.getElementById('checkbox-theme').checked) {
+      document.body.classList.add('dark-mode');
+      localStorage.setItem(THEME_KEY, 'dark');
+    } else {
+      document.body.classList.remove('dark-mode');
+      localStorage.setItem(THEME_KEY, 'light');
+    }
+  }
+
+  function loadRegion() {
+    const savedRegion = localStorage.getItem(REGION_KEY);
+    if (savedRegion) {
+        currentRegion = savedRegion;
+        document.getElementById('region-select').value = savedRegion;
+    }
+    adjustRegionWidth(); // 로드 시 초기 너비 설정
+  }
+
+  function changeRegion() {
+    const val = document.getElementById('region-select').value;
+    currentRegion = val;
+    localStorage.setItem(REGION_KEY, val);
+    adjustRegionWidth(); // 변경 시 너비 조절
+  }
+
+  // [NEW] Region Button Width Adjuster
+  function adjustRegionWidth() {
+      const select = document.getElementById('region-select');
+      const tempSpan = document.createElement('span');
+      
+      // Select와 동일한 폰트 스타일 적용
+      tempSpan.style.visibility = 'hidden';
+      tempSpan.style.position = 'absolute';
+      tempSpan.style.fontSize = window.getComputedStyle(select).fontSize;
+      tempSpan.style.fontWeight = window.getComputedStyle(select).fontWeight;
+      tempSpan.style.fontFamily = window.getComputedStyle(select).fontFamily;
+      
+      // 현재 선택된 텍스트
+      const selectedOption = select.options[select.selectedIndex];
+      tempSpan.innerText = selectedOption.text;
+      
+      document.body.appendChild(tempSpan);
+      const width = tempSpan.getBoundingClientRect().width;
+      document.body.removeChild(tempSpan);
+      
+      // 계산된 너비 + 여유분 적용
+      select.style.width = (width + 4) + 'px'; 
+  }
+
+  function updateFabState(fabElem) { if (isFabOpen) fabElem.classList.add('fab-open'); else fabElem.classList.remove('fab-open'); }
+  async function callApi(action, params = {}, postData = null) {
+    const url = new URL(SCRIPT_URL); url.searchParams.append("action", action);
+    const savedId = localStorage.getItem(STORAGE_KEY); if (savedId) url.searchParams.append("ssId", savedId);
+    for (const key in params) { url.searchParams.append(key, params[key]); }
+    const options = { method: postData ? 'POST' : 'GET' }; if (postData) options.body = JSON.stringify(postData);
+    const response = await fetch(url, options); return await response.json();
+  }
+  function checkAuthAndOpen(modalId) {
+    if (!localStorage.getItem(STORAGE_KEY)) { 
+        openGuideFromMain();
+        return; 
+    }
+    if (modalId === '#manage-card-modal' && document.getElementById('manage-card-tbody').children.length === 0) addManageRows(1);
+    if (modalId === '#add-card-modal' && document.getElementById('add-card-tbody').children.length === 0) addMoreRows(1);
+    M.Modal.getInstance(document.querySelector(modalId)).open();
+  }
+  function resetAddModal() { document.getElementById('add-card-tbody').innerHTML = ''; addMoreRows(1); }
+  function resetManageModal() { document.getElementById('manage-card-tbody').innerHTML = ''; addManageRows(1); }
+  function validateSheetLink() { clearTimeout(validationTimeout); const url = document.getElementById('sheet-url').value.trim(); const mark = document.getElementById('valid-mark'), msg = document.getElementById('status-msg'), confirmBtn = document.getElementById('confirm-btn'); if (!url) { mark.style.display = 'none'; msg.innerText = ''; confirmBtn.classList.add('disabled'); return; } const match = url.match(/[-\w]{25,}/); if (!match) { mark.innerHTML = '<i class="material-icons" style="color: var(--error-red)">cancel</i>'; mark.style.display = 'block'; msg.innerText = '구글 시트 링크를 적어주세요.'; msg.style.color = 'var(--error-red)'; confirmBtn.classList.add('disabled'); return; } validationTimeout = setTimeout(async () => { msg.innerText = '권한 확인 중...'; try { const res = await callApi('checkSheet', { targetId: match[0] }); if (res.status === 'OK') { mark.innerHTML = '<i class="material-icons" style="color: var(--success-green)">check_circle</i>'; msg.innerText = '유효한 시트입니다.'; msg.style.color = 'var(--success-green)'; confirmBtn.classList.remove('disabled'); } else { mark.innerHTML = '<i class="material-icons" style="color: var(--warning-yellow)">warning</i>'; msg.innerText = (res.status === 'NO_EDIT_ACCESS') ? '공유 설정을 링크를 가진 모든 사용자 / 편집자로 설정해주세요.' : '접근할 수 없거나 형식이 잘못되었습니다.'; msg.style.color = 'var(--warning-yellow)'; confirmBtn.classList.add('disabled'); } mark.style.display = 'block'; } catch (e) { msg.innerText = '확인 실패'; } }, 500); }
+  
+  async function refreshInitialData() { 
+    const savedId = localStorage.getItem(STORAGE_KEY); if (!savedId) return; 
+    showLoading(true, "데이터 동기화 중..."); 
+    try { 
+      const res = await callApi('getInitialData'); 
+      showLoading(false); 
+      isAppConfigured = res.isConfigured; 
+      if (res.isConfigured) { 
+        allNames = res.names; 
+        allProcessingTypes = res.processingTypes; 
+        allLocations = res.locations; 
+        localCardDatabase = res.allCards; 
+        rarityMap = res.rarityMap || {}; 
+        rarityMappingRaw = res.rarityMappingRaw || []; 
+        clientCache = res.clientCache || {};
+        nameDb = res.nameDb || {};
+
+        rarityLookup = {};
+        rarityMappingRaw.forEach((row, index) => {
+            Object.values(row).forEach(val => {
+                const key = String(val).trim();
+                if(key) {
+                    rarityLookup[key] = { data: row, index: index };
+                }
+            });
+        });
+      } 
+    } catch (e) { showLoading(false); } 
+  }
+
+  function startSearch() { 
+    if (!localStorage.getItem(STORAGE_KEY)) {
+        openGuideFromMain();
+        return;
+    }
+    const name = document.getElementById('card-search').value; 
+    if(!name || !isAppConfigured) return; 
+    saveRecentSearch(name); const filteredRows = localCardDatabase.filter(row => String(row[0]) === name); renderTable(filteredRows); 
+    document.getElementById('custom-dropdown').style.display = 'none';
+    toggleSearchWrapper(false);
+  }
+  
+  function findMappingRow(key) {
+      if (!rarityMappingRaw || rarityMappingRaw.length === 0) return null;
+      return rarityMappingRaw.find(row => Object.values(row).includes(key));
+  }
+
+  function getLocalizedRarity(key) {
+      if (!key) return "";
+      const info = rarityLookup[key];
+      if (info && info.data[currentRegion]) {
+          return info.data[currentRegion];
+      }
+      return key;
+  }
+
+  function renderTable(rows) {
+    showLoading(false); 
+    const resultArea = document.getElementById('result-area');
+    
+    if (rows.length === 0) { 
+        resultArea.innerHTML = "<p class='center'>결과 없음</p>"; 
+        resultArea.classList.add('show'); 
+        return; 
+    }
+
+    const groups = {};
+    rows.forEach(r => {
+      const cardNo = String(r[1]), proc = String(r[2]), qty = parseInt(r[3]) || 0, loc = String(r[4]), another = String(r[5] || "").trim();
+      if (!groups[cardNo]) groups[cardNo] = { locations: {}, anotherGroups: {} };
+      if (!groups[cardNo].locations[loc]) groups[cardNo].locations[loc] = { total: 0, procs: {} };
+      groups[cardNo].locations[loc].total += qty; groups[cardNo].locations[loc].procs[proc] = (groups[cardNo].locations[loc].procs[proc] || 0) + qty;
+      if (another) { const aKey = `${another}|${loc}`; if (!groups[cardNo].anotherGroups[aKey]) groups[cardNo].anotherGroups[aKey] = { another, loc, total: 0, procs: {} }; groups[cardNo].anotherGroups[aKey].total += qty; groups[cardNo].anotherGroups[aKey].procs[proc] = (groups[cardNo].anotherGroups[aKey].procs[proc] || 0) + qty; }
+    });
+    
+    let newHtml = "";
+    Object.keys(groups).forEach(cardNo => {
+        const rowId = `row-${cardNo}`.replace(/[^a-zA-Z0-9]/g, '');
+        const cardRows = rows.filter(r => String(r[1]) === cardNo);
+        
+        const totalQty = cardRows.reduce((sum, r) => sum + (parseInt(r[3]) || 0), 0);
+        const locSet = new Set(cardRows.map(r => String(r[4])).filter(l => l));
+        
+        const distinctKeys = [...new Set(cardRows.map(r => String(r[2]).trim()).filter(k => k))];
+
+        distinctKeys.sort((a, b) => {
+            const infoA = rarityLookup[a];
+            const infoB = rarityLookup[b];
+            
+            const idxA = infoA ? infoA.index : 999999;
+            const idxB = infoB ? infoB.index : 999999;
+            
+            return idxA - idxB || a.localeCompare(b);
+        });
+        
+        const displayNamesForSummary = [...new Set(distinctKeys.map(k => rarityMap[k] || k))];
+        const procStr = displayNamesForSummary.join(", ");
+        const locStr = [...locSet].join(", ");
+
+        const anotherGroups = {};
+        cardRows.forEach(r => {
+            const another = String(r[5] || "").trim();
+            const displayAnother = another === "" ? "기본" : another; 
+            if(!anotherGroups[displayAnother]) anotherGroups[displayAnother] = [];
+            anotherGroups[displayAnother].push(r);
+        });
+
+        let leftTableHtml = `<table class="split-table"><thead><tr><th class="fp-col-1">일러스트</th><th class="fp-col-2">보관 위치</th><th class="fp-col-3">총 수량</th></tr></thead><tbody>`;
+        let rightTableHtml = `<table class="split-table"><thead><tr>`;
+        
+        distinctKeys.forEach(key => {
+             const info = rarityLookup[key];
+             let displayName = key;
+             let tooltipContent = key;
+
+             if (info) {
+                 displayName = info.data.display || key;
+                 tooltipContent = info.data[currentRegion] || key;
+             }
+             
+             tooltipContent = tooltipContent.replace(/\(/g, '<br>(');
+             
+             rightTableHtml += `<th class="sp-col tooltipped" data-position="top" data-tooltip="${tooltipContent}">${displayName}</th>`;
+        });
+        rightTableHtml += `</tr></thead><tbody>`;
+
+        const anotherKeys = Object.keys(anotherGroups).sort((a, b) => {
+            if (a === "기본") return -1;
+            if (b === "기본") return 1;
+            return a.localeCompare(b, undefined, { numeric: true });
+        });
+
+        anotherKeys.forEach(another => {
+             const grpRows = anotherGroups[another];
+             const locGroups = {};
+             grpRows.forEach(r => {
+                 const loc = String(r[4]);
+                 const proc = String(r[2]);
+                 const qty = parseInt(r[3]) || 0;
+                 if(!locGroups[loc]) locGroups[loc] = { total: 0, procs: {} };
+                 locGroups[loc].total += qty;
+                 locGroups[loc].procs[proc] = (locGroups[loc].procs[proc] || 0) + qty;
+             });
+
+             const locKeys = Object.keys(locGroups);
+             locKeys.forEach((loc, idx) => {
+                 const d = locGroups[loc];
+                 
+                 leftTableHtml += `<tr>`;
+                 if(idx === 0) leftTableHtml += `<td rowspan="${locKeys.length}">${another}</td>`;
+                 leftTableHtml += `<td>${loc}</td><td>${d.total}</td></tr>`;
+
+                 rightTableHtml += `<tr>`;
+                 distinctKeys.forEach(key => {
+                     const val = d.procs[key] || 0;
+                     rightTableHtml += `<td>${val}</td>`;
+                 });
+                 rightTableHtml += `</tr>`;
+             });
+        });
+        
+        leftTableHtml += `</tbody></table>`;
+        rightTableHtml += `</tbody></table>`;
+
+        newHtml += `
+            <div class="new-card-box">
+                <div class="summary-split-wrapper">
+                    <div class="summary-left">${cardNo}</div>
+                    <div class="summary-right">
+                        <table class="summary-table">
+                            <tr>
+                                <td class="summary-label-cell">보관 위치</td>
+                                <td class="summary-label-cell">수량</td>
+                            </tr>
+                            <tr>
+                                <td class="summary-value-cell">${locStr}</td>
+                                <td class="summary-value-cell">${totalQty}</td>
+                            </tr>
+                            <tr>
+                                <td class="summary-label-cell border-double-top">보유 레어도</td>
+                                <td class="summary-value-cell border-double-top">${procStr}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                <div id="detail-${rowId}" class="detail-slide-wrapper">
+                    <div class="split-table-wrapper">
+                        <div class="fixed-side">${leftTableHtml}</div>
+                        <div class="scroll-side">${rightTableHtml}</div>
+                    </div>
+                </div>
+                <button class="show-more-btn" onclick="toggleNewDetail('detail-${rowId}')">
+                    <span>자세히 보기</span>
+                    <i class="material-icons tiny">keyboard_arrow_down</i>
+                </button>
+            </div>
+        `;
+    });
+
+    resultArea.innerHTML = newHtml;
+    M.Tooltip.init(resultArea.querySelectorAll('.tooltipped'), {
+        html: true,
+        margin: 3
+    });
+    setTimeout(() => resultArea.classList.add('show'), 50);
+  }
+
+  function toggleNewDetail(detailId) {
+      const content = document.getElementById(detailId);
+      const btn = content.nextElementSibling; 
+      const textSpan = btn.querySelector('span');
+      const icon = btn.querySelector('i');
+      
+      if (content.style.maxHeight) {
+          content.style.maxHeight = null;
+          textSpan.innerText = '자세히 보기';
+          icon.innerText = 'keyboard_arrow_down';
+      } else {
+          content.style.maxHeight = content.scrollHeight + "px";
+          textSpan.innerText = '간략히 보기';
+          icon.innerText = 'keyboard_arrow_up';
+      }
+  }
+
+  function toggleAnother(rowId) {
+  }
+
+  // Manage functions
+  function addManageRows(count = null) { const tbody = document.getElementById('manage-card-tbody'); let increment = count || ((tbody.children.length === 1) ? 4 : 5); let startIdx = tbody.children.length + 1; for (let i = 0; i < increment; i++) { const row = document.createElement('tr'); row.innerHTML = `<td>${startIdx + i}</td><td><span class="card-name-fetch">카드 번호를 입력해주세요.</span></td><td><input type="text" class="manage-card-no" onblur="updateManageDropdowns(this)" placeholder="번호 입력"></td><td><select class="browser-default manage-another flex-select" onchange="updateManageProcessing(this)" disabled><option value="">선택</option></select></td><td><select class="browser-default manage-proc flex-select" onchange="updateManageStorage(this)" disabled><option value="">선택</option></select></td><td><select class="browser-default manage-loc flex-select" onchange="updateManageMoveLoc(this)" disabled><option value="">선택</option></select></td><td><div class="td-flex-container"><select class="browser-default move-loc flex-select" onchange="syncDirectInputManage(this)" disabled><option value="" disabled selected>선택</option></select><input type="text" class="direct-input loc-direct flex-input" placeholder="새 위치"></div></td><td><span class="storage-qty-disp">-</span></td><td><input type="number" class="move-qty" min="1" disabled style="height:2.2rem !important; text-align:center;"></td>`; tbody.appendChild(row); } }
+  function updateManageDropdowns(inputEl) { const row = inputEl.closest('tr'); const cardNo = inputEl.value.trim().toUpperCase(); inputEl.value = cardNo; const nameSpan = row.querySelector('.card-name-fetch'); resetManageRow(row, 'another'); if (!cardNo) { nameSpan.innerText = "카드 번호를 입력해주세요."; return; } const matches = localCardDatabase.filter(r => String(r[1]).toUpperCase() === cardNo); if (matches.length > 0) { nameSpan.innerText = matches[0][0]; const anotherSel = row.querySelector('.manage-another'); const anothers = [...new Set(matches.map(r => r[5] || ""))]; if (anothers.length === 1 && anothers[0] === "") { anotherSel.innerHTML = `<option value="" selected>기본</option>`; anotherSel.value = ""; anotherSel.disabled = true; updateManageProcessing(anotherSel); } else { anotherSel.innerHTML = `<option value="__placeholder__" disabled selected>선택</option>` + (anothers.includes("") ? `<option value="">기본</option>` : '') + anothers.filter(a => a !== "").map(a => `<option value="${a}">${a}</option>`).join(''); anotherSel.disabled = false; } } else { nameSpan.innerText = "보유하지 않은 카드"; } }
+  
+  // [NEW] updateManageProcessing: 카드 이동 모달의 레어도 목록에도 현지화 적용
+  function updateManageProcessing(anotherEl) { 
+      const row = anotherEl.closest('tr'); 
+      if (anotherEl.value === "__placeholder__") return; 
+      resetManageRow(row, 'proc'); 
+      const cardNo = row.querySelector('.manage-card-no').value.trim().toUpperCase(); 
+      const another = anotherEl.value; 
+      const matches = localCardDatabase.filter(r => String(r[1]).toUpperCase() === cardNo && String(r[5] || "").trim() === String(another).trim()); 
+      const procSel = row.querySelector('.manage-proc'); 
+      const procs = [...new Set(matches.map(r => r[2]))]; 
+      // getLocalizedRarity 적용
+      procSel.innerHTML = `<option value="" disabled selected>선택</option>` + 
+                          procs.map(p => `<option value="${p}">${getLocalizedRarity(p)}</option>`).join(''); 
+      procSel.disabled = false; 
+  }
+
+  function updateManageStorage(procEl) { const row = procEl.closest('tr'); resetManageRow(row, 'storage'); const cardNo = row.querySelector('.manage-card-no').value.trim().toUpperCase(); const another = row.querySelector('.manage-another').value; const proc = procEl.value; const matches = localCardDatabase.filter(r => String(r[1]).toUpperCase() === cardNo && String(r[5] || "").trim() === String(another).trim() && String(r[2]).trim() === String(proc).trim()); const storageSel = row.querySelector('.manage-loc'); const locs = [...new Set(matches.map(r => r[4]))]; storageSel.innerHTML = `<option value="" disabled selected>선택</option>` + locs.map(l => `<option value="${l}">${l}</option>`).join(''); storageSel.disabled = false; }
+  function updateManageMoveLoc(locEl) { const row = locEl.closest('tr'); resetManageRow(row, 'move'); const cardNo = row.querySelector('.manage-card-no').value.trim().toUpperCase(); const another = row.querySelector('.manage-another').value; const proc = row.querySelector('.manage-proc').value; const currentLoc = locEl.value; const matches = localCardDatabase.filter(r => String(r[1]).toUpperCase() === cardNo && String(r[5] || "").trim() === String(another).trim() && String(r[2]).trim() === String(proc).trim() && String(r[4]).trim() === String(currentLoc).trim()); const totalQty = matches.reduce((sum, r) => sum + (parseInt(r[3]) || 0), 0); row.querySelector('.storage-qty-disp').innerText = totalQty; const moveSel = row.querySelector('.move-loc'); const availableLocs = allLocations.filter(l => l !== currentLoc); moveSel.innerHTML = `<option value="" disabled selected>선택</option>` + availableLocs.map(l => `<option value="${l}">${l}</option>`).join('') + `<option value="DIRECT">직접 입력</option>`; moveSel.disabled = false; }
+  function syncDirectInputManage(sel) { const row = sel.closest('tr'); const input = sel.nextElementSibling; const qtyInput = row.querySelector('.move-qty'); const maxQty = parseInt(row.querySelector('.storage-qty-disp').innerText); if (sel.value === 'DIRECT') { sel.style.flex = "0 0 35%"; input.style.display = 'block'; input.style.flex = "1"; input.disabled = false; input.value = ""; input.focus(); } else { sel.style.flex = "1"; input.style.display = 'none'; input.disabled = true; input.value = sel.value; } qtyInput.disabled = false; qtyInput.max = maxQty; 
+    qtyInput.placeholder = ""; 
+    qtyInput.value = ""; 
+  }
+  function resetManageRow(row, level) { const levels = ['another', 'proc', 'storage', 'move']; const startIdx = levels.indexOf(level); if (startIdx <= 0) { const el = row.querySelector('.manage-another'); el.innerHTML = '<option value="">선택</option>'; el.disabled = true; } if (startIdx <= 1) { const el = row.querySelector('.manage-proc'); el.innerHTML = '<option value="">선택</option>'; el.disabled = true; } if (startIdx <= 2) { const el = row.querySelector('.manage-loc'); el.innerHTML = '<option value="">선택</option>'; el.disabled = true; } if (startIdx <= 3) { const moveSel = row.querySelector('.move-loc'); moveSel.innerHTML = '<option value="">선택</option>'; moveSel.disabled = true; moveSel.style.flex = "1"; const directInp = row.querySelector('.loc-direct'); directInp.style.display = 'none'; directInp.value = ""; row.querySelector('.storage-qty-disp').innerText = "-"; const qtyInp = row.querySelector('.move-qty'); qtyInp.value = ""; qtyInp.disabled = true; qtyInp.placeholder = ""; } }
+  async function submitManageCards() { const tbody = document.getElementById('manage-card-tbody'); const moves = []; for (let tr of tbody.children) { const cardName = tr.querySelector('.card-name-fetch').innerText; const cardNo = tr.querySelector('.manage-card-no').value.trim(); if (!cardNo || cardName === "카드 번호를 입력해주세요." || cardName === "보유하지 않은 카드") continue; const another = tr.querySelector('.manage-another').value; const proc = tr.querySelector('.manage-proc').value; const currentLoc = tr.querySelector('.manage-loc').value; const moveSel = tr.querySelector('.move-loc'); let targetLoc = moveSel.value === 'DIRECT' ? tr.querySelector('.loc-direct').value.trim() : moveSel.value; const moveQty = parseInt(tr.querySelector('.move-qty').value); const maxQty = parseInt(tr.querySelector('.storage-qty-disp').innerText); if (another !== "__placeholder__" && proc && currentLoc && targetLoc && moveQty > 0 && moveQty <= maxQty) { moves.push({ cardName, cardNo, another, proc, currentLoc, targetLoc, moveQty }); } } if (moves.length === 0) { M.toast({html: '유효한 이동 요청이 없습니다.', classes: 'red darken-2 rounded'}); return; } const btn = document.getElementById('manage-submit-btn'); btn.classList.add('disabled'); showLoading(true, "이동 처리 중..."); try { const res = await callApi('moveCards', {}, moves); M.Modal.getInstance(document.getElementById('manage-card-modal')).close(); showLoading(false); M.toast({html: '카드 이동 완료!', displayLength: 1500, classes: 'cyan darken-2'}); setTimeout(() => location.reload(), 1500); } catch (e) { showLoading(false); btn.classList.remove('disabled'); M.toast({html: '처리 중 오류 발생', classes: 'red darken-2 rounded'}); } }
+
+  // Add Card Logic
+  function addMoreRows(count = null) {
+    const tbody = document.getElementById('add-card-tbody');
+    let startIdx = tbody.children.length + 1;
+    const currentCount = tbody.children.length;
+    let increment = 0;
+    
+    if (count !== null) increment = count;
+    else if (currentCount === 0) increment = 5;
+    else {
+        const remainder = currentCount % 5;
+        increment = (remainder === 0) ? 5 : (5 - remainder);
+    }
+
+    for (let i = 0; i < increment; i++) {
+      const row = document.createElement('tr');
+      // [NEW] 레어도 선택지 생성 시 getLocalizedRarity 적용
+      row.innerHTML = `
+        <td style="font-weight:600; color:#888;">${startIdx + i}</td>
+        <td><span class="card-name-fetch">카드 번호를 입력해주세요.</span></td>
+        <td><input type="text" class="new-card-no" onblur="fetchCardName(this)" placeholder="번호 입력"></td>
+        <td>
+            <div class="another-cell-container">
+                <select class="browser-default new-card-another flex-select" disabled onchange="updateRowState(this.closest('tr'))">
+                    <option value="" selected>기본</option>
+                </select>
+            </div>
+        </td>
+        <td>
+            <select class="browser-default new-card-proc flex-select" disabled onchange="updateRowState(this.closest('tr'))">
+                <option value="" disabled selected>선택</option>
+                ${allProcessingTypes.map(p => `<option value="${p}">${getLocalizedRarity(p)}</option>`).join('')}
+            </select>
+        </td>
+        <td>
+            <div class="td-flex-container">
+                <select class="browser-default new-card-loc flex-select" onchange="syncDirectInput(this)" disabled>
+                    <option value="" disabled selected>선택</option>
+                    ${allLocations.map(l => `<option value="${l}">${l}</option>`).join('')}
+                    <option value="DIRECT">위치 추가</option>
+                </select>
+                <input type="text" class="direct-input loc-direct flex-input" oninput="updateRowState(this.closest('tr'))" disabled>
+            </div>
+        </td>
+        <td><input type="number" class="new-card-qty" min="1" value="1" disabled onchange="checkAddButton()"></td>
+        <td>
+            <div class="adjust-btn-group">
+                <span class="adjust-btn plus tooltipped disabled" data-position="top" data-tooltip="복사" onclick="copyRow(this)">+</span>
+                <span class="adjust-btn minus tooltipped disabled" data-position="top" data-tooltip="행 삭제" onclick="deleteRow(this)">-</span>
+            </div>
+        </td>
+      `;
+      tbody.appendChild(row);
+    }
+    M.Tooltip.init(tbody.querySelectorAll('.tooltipped'));
+    checkAddButton(); 
+  }
+
+  function syncDirectInput(sel) { 
+    const input = sel.nextElementSibling; 
+    const row = sel.closest('tr');
+    
+    if (sel.value === 'DIRECT') { 
+        sel.style.flex = "0 0 35%"; 
+        input.style.display = 'block'; 
+        input.style.flex = "1"; 
+        input.disabled = false; 
+        input.value = ""; 
+        input.focus(); 
+    } else { 
+        sel.style.flex = "1"; 
+        input.style.display = 'none'; 
+        input.disabled = true; 
+        input.value = sel.value; 
+    } 
+    updateRowState(row);
+  }
+
+  function updateRowState(row) {
+    const name = row.querySelector('.card-name-fetch').innerText;
+    const anotherSel = row.querySelector('.new-card-another');
+    const procSel = row.querySelector('.new-card-proc');
+    const locSel = row.querySelector('.new-card-loc');
+    const locDirect = row.querySelector('.loc-direct');
+    const qtyInput = row.querySelector('.new-card-qty');
+
+    const isNameValid = !name.includes("입력해주세요") && !name.includes("오류") && !name.includes("조회 중") && !name.includes("확인하세요");
+    
+    let isAnotherSelected = false;
+    if(anotherSel.selectedOptions.length > 0) {
+        if (!anotherSel.selectedOptions[0].disabled) isAnotherSelected = true;
+    } else {
+        if(anotherSel.value !== "" && anotherSel.value !== null) isAnotherSelected = true;
+        else if(anotherSel.value === "" && !anotherSel.disabled) isAnotherSelected = true;
+    }
+
+    if (isNameValid && isAnotherSelected) {
+        procSel.disabled = false;
+    } else {
+        procSel.disabled = true;
+        procSel.value = "";
+    }
+
+    if (!procSel.disabled && procSel.value) {
+        locSel.disabled = false;
+    } else {
+        locSel.disabled = true;
+        locSel.value = "";
+        locDirect.style.display = 'none';
+        locSel.style.flex = "1";
+    }
+
+    let isLocValid = false;
+    if (!locSel.disabled) {
+        if (locSel.value === 'DIRECT') {
+            isLocValid = locDirect.value.trim().length > 0;
+        } else {
+            isLocValid = locSel.value !== "" && locSel.value !== null;
+        }
+    }
+
+    if (isLocValid) {
+        qtyInput.disabled = false;
+    } else {
+        qtyInput.disabled = true;
+    }
+
+    checkAddButton();
+  }
+
+  function updateDisconnectBtn() { const btn = document.getElementById('disconnect-btn'); if (localStorage.getItem(STORAGE_KEY)) btn.classList.remove('disabled'); else btn.classList.add('disabled'); }
+  function toggleGuide(forceOpen = null) { 
+      const btn = document.getElementById('guide-accordion-btn'); 
+      const box = document.getElementById('guide-box'); 
+      const isOpen = (forceOpen !== null) ? forceOpen : box.style.display === 'none'; 
+      box.style.display = isOpen ? 'block' : 'none'; 
+      if (isOpen) btn.classList.add('active'); else btn.classList.remove('active'); 
+  }
+  function openGuideFromMain() { M.Modal.getInstance(document.getElementById('settings-modal')).open(); toggleGuide(true); }
+  
+  function setCardNameHtml(span, name) {
+    if (nameDb[name]) {
+        const { id, locale } = nameDb[name];
+        const url = `https://www.db.yugioh-card.com${id}&request_locale=${locale}`;
+        span.innerHTML = `<a href="${url}" target="_blank" style="color:inherit; text-decoration:underline; cursor:pointer;">${name}</a>`;
+    } else {
+        span.innerText = name;
+    }
+  }
+
+  async function fetchCardName(el) { 
+    const row = el.closest('tr'); 
+    el.value = el.value.toUpperCase();
+    const cardNo = el.value.trim(); 
+    
+    const reqId = Date.now();
+    el.dataset.reqId = reqId;
+
+    const nameSpan = row.querySelector('.card-name-fetch'); 
+    const procSel = row.querySelector('.new-card-proc');
+    const locSel = row.querySelector('.new-card-loc');
+    const qtyInput = row.querySelector('.new-card-qty');
+    const anotherSel = row.querySelector('.new-card-another');
+    
+    procSel.innerHTML = `<option value="" disabled selected>선택</option>${allProcessingTypes.map(p => `<option value="${p}">${getLocalizedRarity(p)}</option>`).join('')}`;
+    procSel.disabled = true;
+    locSel.disabled = true;
+    qtyInput.disabled = true;
+    anotherSel.disabled = true;
+    
+    if (!cardNo) { 
+        nameSpan.innerText = "카드 번호를 입력해주세요."; 
+        checkAddButton(); 
+        return; 
+    }
+    
+    if (clientCache[cardNo]) {
+        const cached = clientCache[cardNo];
+        setCardNameHtml(nameSpan, cached.name);
+        applyCardDataToRow(cached, row);
+        updateRowState(row);
+        return;
+    }
+
+    nameSpan.innerText = "조회 중..."; 
+    try { 
+      const res = await callApi('getCardNameFromDb', { cardNo }); 
+      
+      if (el.dataset.reqId != reqId) return;
+
+      if (res.name === "유효하지 않은 카드 번호" || res.name === "접속 오류" || res.name === "카드 번호를 확인하세요!" || res.name === "결과 없음" || res.name.includes("오류")) {
+        nameSpan.innerText = res.name;
+      } else {
+        clientCache[cardNo] = { name: res.name, anotherCount: res.anotherCount, rarities: res.rarities };
+        if (res.linkData) {
+            nameDb[res.name] = res.linkData;
+        }
+        setCardNameHtml(nameSpan, res.name);
+        applyCardDataToRow(res, row);
+      }
+    } catch (e) { 
+        if (el.dataset.reqId == reqId) nameSpan.innerText = "접속 오류"; 
+    } 
+    updateRowState(row);
+  }
+
+  function applyCardDataToRow(data, row) {
+    const procSel = row.querySelector('.new-card-proc');
+    const anotherSel = row.querySelector('.new-card-another');
+
+    const count = data.anotherCount || 1; 
+    let optionsHtml = '';
+
+    if (count > 1) {
+        optionsHtml += `<option value="" disabled selected>선택</option>`;
+        optionsHtml += `<option value="">기본</option>`; 
+        for(let i=2; i<=count; i++) {
+            let suffix = "th";
+            if(i===2) suffix="nd";
+            if(i===3) suffix="rd";
+            optionsHtml += `<option value="${i}${suffix}">${i}${suffix}</option>`;
+        }
+        anotherSel.disabled = false;
+    } else {
+        optionsHtml += `<option value="" selected>기본</option>`;
+        anotherSel.disabled = true;
+    }
+    anotherSel.innerHTML = optionsHtml;
+
+    if (!data.isFallback && data.rarities && data.rarities.length > 0) {
+        // [NEW] 레어도 선택지 생성 시 getLocalizedRarity 적용
+        procSel.innerHTML = `<option value="" disabled selected>보유 레어도 선택</option>` + 
+                            data.rarities.map(r => `<option value="${r}">${getLocalizedRarity(r)}</option>`).join('');
+    }
+  }
+
+  function copyRow(btn) {
+    if(btn.classList.contains('disabled')) return;
+    const currentRow = btn.closest('tr');
+    const newRow = currentRow.cloneNode(true);
+    
+    newRow.querySelector('.new-card-no').value = currentRow.querySelector('.new-card-no').value;
+    
+    const nameSpan = currentRow.querySelector('.card-name-fetch');
+    newRow.querySelector('.card-name-fetch').innerHTML = nameSpan.innerHTML;
+    
+    newRow.querySelector('.new-card-another').innerHTML = currentRow.querySelector('.new-card-another').innerHTML;
+    newRow.querySelector('.new-card-another').value = currentRow.querySelector('.new-card-another').value;
+    newRow.querySelector('.new-card-another').disabled = currentRow.querySelector('.new-card-another').disabled;
+
+    newRow.querySelector('.new-card-proc').innerHTML = currentRow.querySelector('.new-card-proc').innerHTML;
+    newRow.querySelector('.new-card-proc').value = currentRow.querySelector('.new-card-proc').value;
+    newRow.querySelector('.new-card-proc').disabled = currentRow.querySelector('.new-card-proc').disabled;
+
+    newRow.querySelector('.new-card-loc').value = currentRow.querySelector('.new-card-loc').value;
+    newRow.querySelector('.new-card-loc').disabled = currentRow.querySelector('.new-card-loc').disabled;
+    
+    const directInput = currentRow.querySelector('.loc-direct');
+    const newDirectInput = newRow.querySelector('.loc-direct');
+    if (directInput.style.display !== 'none') {
+        newDirectInput.style.display = 'block';
+        newDirectInput.value = directInput.value;
+        newDirectInput.disabled = false;
+        newRow.querySelector('.new-card-loc').style.flex = "0 0 35%";
+        newDirectInput.style.flex = "1";
+    }
+
+    newRow.querySelector('.new-card-qty').value = currentRow.querySelector('.new-card-qty').value;
+    newRow.querySelector('.new-card-qty').disabled = currentRow.querySelector('.new-card-qty').disabled;
+
+    currentRow.after(newRow);
+    M.Tooltip.init(newRow.querySelectorAll('.tooltipped'));
+    reIndexRows();
+    updateRowState(newRow);
+  }
+
+  function deleteRow(btn) {
+    if(btn.classList.contains('disabled')) return;
+    const row = btn.closest('tr');
+    const tooltipInstance = M.Tooltip.getInstance(btn);
+    if(tooltipInstance) tooltipInstance.destroy();
+    row.remove();
+    reIndexRows();
+    checkAddButton();
+  }
+
+  function reIndexRows() {
+    const rows = document.querySelectorAll('#add-card-tbody tr');
+    rows.forEach((row, index) => {
+        row.cells[0].innerText = index + 1;
+    });
+  }
+
+  function checkAddButton() {
+    const tbody = document.getElementById('add-card-tbody');
+    const rows = tbody.querySelectorAll('tr');
+    let globalValid = false;
+    const totalRows = rows.length;
+
+    rows.forEach(tr => {
+        const name = tr.querySelector('.card-name-fetch').innerText;
+        const proc = tr.querySelector('.new-card-proc').value;
+        const locSel = tr.querySelector('.new-card-loc');
+        let loc = locSel.value;
+        
+        if (loc === 'DIRECT') {
+            const directInput = tr.querySelector('.loc-direct').value.trim();
+            if (!directInput) loc = ""; 
+        }
+
+        const isValidRow = (!name.includes("입력해주세요") && !name.includes("확인하세요") && !name.includes("유효하지 않은") && !name.includes("오류") && !name.includes("조회 중") && proc && loc);
+        
+        if (isValidRow) globalValid = true;
+
+        const plusBtn = tr.querySelector('.adjust-btn.plus');
+        const minusBtn = tr.querySelector('.adjust-btn.minus');
+
+        if(isValidRow) plusBtn.classList.remove('disabled');
+        else plusBtn.classList.add('disabled');
+
+        if(totalRows > 1) minusBtn.classList.remove('disabled');
+        else minusBtn.classList.add('disabled');
+    });
+
+    const btn = document.getElementById('add-submit-btn');
+    const wrapper = document.querySelector('.tooltipped-wrapper');
+    if (globalValid) {
+        btn.classList.remove('disabled');
+        M.Tooltip.getInstance(wrapper).destroy(); 
+    } else {
+        btn.classList.add('disabled');
+        M.Tooltip.init(wrapper, {html: "등록할 수 있는 카드가 없습니다.", position: "top"});
+    }
+  }
+
+  async function submitNewCards() {
+    const tbody = document.getElementById('add-card-tbody'); 
+    const validRows = [];
+    const detailLog = []; 
+    let successCount = 0;
+    let successQty = 0;
+
+    for (let tr of tbody.children) {
+      const no = tr.cells[0].innerText;
+      const cardNo = tr.querySelector('.new-card-no').value.trim(); 
+      let name = tr.querySelector('.card-name-fetch').innerText;
+      if (!cardNo) continue;
+
+      let another = tr.querySelector('.new-card-another').value.trim();
+      let proc = tr.querySelector('.new-card-proc').value;
+      let loc = tr.querySelector('.new-card-loc').value === 'DIRECT' ? tr.querySelector('.loc-direct').value.trim() : tr.querySelector('.new-card-loc').value;
+      const qty = parseInt(tr.querySelector('.new-card-qty').value);
+
+      let failReason = null;
+      if (name.includes("유효하지 않은") || name.includes("확인하세요") || name.includes("결과 없음")) { failReason = "invalid_no"; name = "유효하지 않은 카드 번호"; }
+      else if (name.includes("조회 중") || name.includes("오류")) { failReason = "error"; name = "조회 오류"; }
+      else if (!proc) { failReason = "no_proc"; proc = "미선택"; }
+      else if (!loc) { failReason = "no_loc"; loc = "미선택"; }
+
+      if (failReason) {
+        detailLog.push({ no, name, cardNo, another, proc, loc, qty, status: 'fail', failReason });
+        tr.dataset.status = 'fail';
+      } else {
+        validRows.push([name, cardNo, proc, qty, loc, another]);
+        detailLog.push({ no, name, cardNo, another, proc, loc, qty, status: 'success' });
+        successCount++;
+        successQty += qty;
+        tr.dataset.status = 'success';
+      }
+    }
+
+    if (validRows.length > 0) {
+        const btn = document.getElementById('add-submit-btn'); 
+        btn.classList.add('disabled'); 
+        showLoading(true, "기록 중...");
+
+        try {
+          await callApi('addCards', {}, validRows); 
+          showLoading(false); 
+          showResultModal(successCount, successQty, detailLog);
+        } catch (e) { 
+            showLoading(false); 
+            btn.classList.remove('disabled');
+            M.toast({html: '서버 통신 오류', classes: 'red darken-2 rounded'}); 
+        }
+    } else {
+        showResultModal(0, 0, detailLog);
+    }
+  }
+
+  function showResultModal(count, totalQty, detailLog) {
+    const modal = M.Modal.getInstance(document.getElementById('add-result-modal'));
+    document.getElementById('result-success-text').innerText = `${count}종의 카드 ${totalQty}장을 등록했습니다.`;
+    const failCount = detailLog.filter(l => l.status === 'fail').length;
+    document.getElementById('result-fail-text').innerText = failCount > 0 ? `(${failCount}종의 카드를 등록할 수 없습니다.)` : "";
+    
+    hasRegisteredInSession = true;
+
+    let summaryHtml = "";
+    const successLogs = detailLog.filter(l => l.status === 'success');
+    if (successLogs.length > 0) {
+        const aggregated = {};
+        successLogs.forEach(l => {
+            const name = l.name; const no = l.cardNo; const q = l.qty;
+            if(!aggregated[name]) aggregated[name] = {};
+            if(!aggregated[name][no]) aggregated[name][no] = 0;
+            aggregated[name][no] += q;
+        });
+
+        Object.keys(aggregated).forEach(name => {
+            const numbers = Object.keys(aggregated[name]);
+            numbers.forEach((no, idx) => {
+                summaryHtml += `<tr class="success-row">`;
+                if(idx === 0) summaryHtml += `<td rowspan="${numbers.length}">${name}</td>`;
+                summaryHtml += `<td>${no}</td><td>${aggregated[name][no]}장</td></tr>`;
+            });
+        });
+    }
+    
+    const failLogs = detailLog.filter(l => l.status === 'fail');
+    if (failLogs.length > 0) {
+        failLogs.forEach((l) => {
+            let reason = l.name; 
+            if(l.failReason === "no_proc" || l.failReason === "no_loc") reason = `${l.failReason === "no_proc" ? "레어도" : "보관 위치"} 미선택`;
+            else if(l.failReason === "invalid_no") reason = "존재하지 않은 카드 번호";
+            
+            summaryHtml += `<tr class="fail-row">`;
+            summaryHtml += `<td style="color:var(--error-red);">${reason}</td><td>${l.cardNo}</td><td>-</td></tr>`;
+        });
+    }
+    document.getElementById('result-summary-body').innerHTML = summaryHtml;
+
+    let detailHtml = "";
+    detailLog.forEach(l => {
+        const rowClass = l.status === 'success' ? 'success-row' : 'fail-row';
+        detailHtml += `<tr class="${rowClass}">
+            <td>${l.no}</td>
+            <td style="${l.status==='fail' && (l.failReason==='invalid_no' || l.failReason==='error') ? 'color:var(--error-red); font-weight:700;' : ''}">${l.name}</td>
+            <td>${l.cardNo}</td>
+            <td>${l.another || '-'}</td>
+            <td style="${l.status==='fail' && l.failReason==='no_proc' ? 'color:var(--error-red); font-weight:700;' : ''}">${l.proc}</td>
+            <td style="${l.status==='fail' && l.failReason==='no_loc' ? 'color:var(--error-red); font-weight:700;' : ''}">${l.loc}</td>
+            <td>${l.qty}</td>
+        </tr>`;
+    });
+    document.getElementById('result-detail-body').innerHTML = detailHtml;
+
+    document.getElementById('result-detail-box').style.display = 'none';
+    document.getElementById('toggle-icon').innerText = 'keyboard_arrow_down';
+    modal.open();
+  }
+
+  function toggleResultDetail() {
+    const box = document.getElementById('result-detail-box');
+    const icon = document.getElementById('toggle-icon');
+    const isHidden = box.style.display === 'none';
+    box.style.display = isHidden ? 'block' : 'none';
+    icon.innerText = isHidden ? 'keyboard_arrow_up' : 'keyboard_arrow_down';
+  }
+
+  function handleContinueRegistration() {
+    // Result Modal 닫기 (이 동작은 onCloseEnd 이벤트를 트리거하지만, 거기서 add-result-modal 체크를 뺐으므로 새로고침 안됨)
+    M.Modal.getInstance(document.getElementById('add-result-modal')).close();
+    
+    // add-card-tbody 행 정리 (성공한 행 제거, 실패한 행 유지)
+    const tbody = document.getElementById('add-card-tbody');
+    let hasFailures = false;
+    Array.from(tbody.children).forEach(tr => {
+        if (tr.dataset.status === 'success') {
+            tr.remove(); 
+        } else {
+            hasFailures = true; 
+            delete tr.dataset.status;
+        }
+    });
+    
+    if (!hasFailures) {
+        addMoreRows(1);
+    } else {
+        reIndexRows();
+        const currentCount = tbody.children.length;
+        const remainder = currentCount % 5;
+        if (remainder !== 0) {
+            addMoreRows(5 - remainder);
+        }
+    }
+    
+    document.getElementById('add-card-modal').dataset.keepData = "true";
+    
+    // Add Card Modal이 혹시 닫혀있다면 다시 엽니다.
+    const addCardModal = M.Modal.getInstance(document.getElementById('add-card-modal'));
+    if (!addCardModal.isOpen) {
+        addCardModal.open();
+    }
+  }
+
+  function saveSettings() { const url = document.getElementById('sheet-url').value; const match = url.match(/[-\w]{25,}/); if (match) { localStorage.setItem(STORAGE_KEY, match[0]); location.reload(); } }
+  function disconnectSheet() { localStorage.removeItem(STORAGE_KEY); location.reload(); }
+  
+  function saveRecentSearch(name) { let recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); recent = [name, ...recent.filter(n => n !== name)].slice(0, 5); localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); }
+  function clearAllHistory() { localStorage.removeItem(RECENT_KEY); } 
+  
+  function quickSearch(name) { document.getElementById('card-search').value = name; startSearch(); }
+  function showLoading(show, text) { document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none'; document.getElementById('loading-text').innerText = text; }
+</script>
+</body>
+</html>
