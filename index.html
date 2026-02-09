@@ -183,7 +183,7 @@
     .search-input-wrapper.active { border-radius: 24px 24px 0 0; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-bottom: 1px solid transparent; }
     #search-btn { border-radius: 50px !important; width: 80px; height: 45px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     input#card-search { text-align: left !important; font-size: 1.1rem; padding-left: 20px !important; padding-right: 40px !important; box-sizing: border-box; color: var(--text-primary); border-bottom: none !important; box-shadow: none !important; height: 46px !important; margin: 0 !important; width: 100%; display: block; }
-    .clear-search-btn { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: rgba(0,0,0,0.25); display: none; z-index: 5; transition: color 0.2s; }
+    .clear-search-btn { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-secondary); display: none; z-index: 5; transition: color 0.2s; }
     .btn.cyan-theme { background-color: var(--primary-color) !important; font-weight: 600; color: #fff; }
     .btn.cyan-theme:focus { background-color: var(--primary-dark) !important; box-shadow: none !important; }
     .btn.cyan-theme.disabled { background-color: var(--disabled-bg) !important; color: var(--disabled-text) !important; cursor: not-allowed; opacity: 0.6; }
@@ -519,7 +519,7 @@
         <span>해당 내용은 서버에 저장되지 않습니다.</span>
     </p>
     <div class="footer-info-box">
-        <span class="footer-item">ver. 0.21.8</span>
+        <span class="footer-item">ver. 0.22.12</span>
         <span class="footer-separator">|</span>
         <span class="footer-item">Made by <a href="https://www.youtube.com/@참혈" target="_blank" class="maker-link"><i class="fab fa-youtube"></i> 참혈</a></span>
         <span class="footer-separator mobile-hide">|</span>
@@ -611,15 +611,21 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
 <script>
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwmpn2TEr0cdbLJtgB6UZ51wBeUyAbaRvSPsXpqnttRbXLGj2xYDb5iwNlmqQ4DCpKIGg/exec";
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwjQsBUkgocGqttOrK-37HVETri_NpSc53vD4C9uciTbhSdXBXmRFRAW1tQn0AjQ-DUPw/exec";
   const STORAGE_KEY = 'yugioh_spreadsheet_id';
   const RECENT_KEY = 'recent_card_searches';
   const THEME_KEY = 'yugioh_theme_mode';
   const REGION_KEY = 'yugioh_region_setting';
 
-  let allProcessingTypes = [], allNames = [], allLocations = [], localCardDatabase = [], rarityMap = {}, clientCache = {}, nameDb = {};
+  let allProcessingTypes = [], allNames = [], allLocations = [], localCardDatabase = [], clientCache = {}, nameDb = {};
+  
+  // [NEW] Rarity Optimization Variables
   let rarityMappingRaw = []; 
-  let rarityLookup = {}; 
+  let rarityColMap = {}; 
+  let rarityRows = []; 
+  let rarityReverseMap = {}; 
+  let rarityOrderMap = {}; 
+  
   let cidLookup = {}; 
   let isAppConfigured = false, acInstance = null, isLoading = false, validationTimeout = null;
   let hasRegisteredInSession = false;
@@ -640,12 +646,12 @@
   let currentFocus = -1;
 
   let activeDropdownInput = null;
-  // [NEW] Toast State Variables
   let currentToastInstance = null;
   let currentToastMessage = null;
+  
+  let syncCounter = 0;
 
   function showToast(html, classes) {
-      // [MODIFIED] Smart replacement
       if (currentToastMessage === html) return; 
 
       if (currentToastInstance) {
@@ -671,6 +677,83 @@
       if (toastContainer && mainContainer && toastContainer.parentNode !== mainContainer) {
           mainContainer.appendChild(toastContainer);
       }
+  }
+  
+  function updateLocalInventory(updates) {
+      if (!updates || !Array.isArray(updates)) return;
+      updates.forEach(item => {
+          const idx = localCardDatabase.findIndex(row =>
+              String(row[1]).toUpperCase() === String(item.cardNo).toUpperCase() &&
+              String(row[2]) === String(item.proc) &&
+              String(row[4]) === String(item.loc) &&
+              String(row[5]) === String(item.another)
+          );
+
+          if (item.isDeleted) {
+              if (idx > -1) localCardDatabase.splice(idx, 1);
+          } else {
+              if (idx > -1) {
+                  localCardDatabase[idx][3] = item.qty; 
+              } else {
+                  localCardDatabase.push([item.name, item.cardNo, item.proc, item.qty, item.loc, item.another]);
+              }
+          }
+      });
+      refreshLocalLookups(); 
+  }
+  
+  function refreshLocalLookups() {
+      const distinctNos = new Set(localCardDatabase.map(r => String(r[1]).trim().toUpperCase())); 
+      ownedCardNumbers = Array.from(distinctNos).sort();
+      
+      nameToNosMap = {}; 
+      localCardDatabase.forEach(r => { 
+          const name = String(r[0]).trim(); 
+          const no = String(r[1]).trim().toUpperCase(); 
+          if(!nameToNosMap[name]) nameToNosMap[name] = new Set(); 
+          nameToNosMap[name].add(no); 
+      }); 
+      for(let key in nameToNosMap) { nameToNosMap[key] = Array.from(nameToNosMap[key]).sort(); }
+      
+      const locSet = new Set(localCardDatabase.map(r => String(r[4])).filter(l => l));
+      allLocations = Array.from(locSet).sort();
+      
+      const datalist = document.getElementById('loc-datalist'); 
+      if(datalist) datalist.innerHTML = allLocations.map(l => `<option value="${l}">`).join('');
+      
+      if (currentMode === 'search') {
+          const searchInput = document.getElementById('card-search');
+          if (searchInput && searchInput.value) {
+              startSearch();
+          }
+      }
+  }
+
+  // [NEW] Rarity Localization Logic
+  function getLocalizedRarity(key) {
+      var idx = rarityReverseMap[key];
+      if (idx === undefined) {
+          return key; 
+      }
+
+      var row = rarityRows[idx];
+      if (!row) return key;
+
+      var colIdx = rarityColMap[currentRegion];
+      if (colIdx === undefined) return key; 
+
+      var val = row[colIdx];
+      // Fallback to key (original value) if empty
+      if (!val || val === "") return key; 
+
+      return val;
+  }
+
+  // [NEW] Comparator for Rarity Sorting
+  function compareRarity(a, b) {
+      const idxA = (rarityReverseMap[a] !== undefined) ? rarityReverseMap[a] : 9999;
+      const idxB = (rarityReverseMap[b] !== undefined) ? rarityReverseMap[b] : 9999;
+      return idxA - idxB;
   }
 
   document.addEventListener('DOMContentLoaded', function() {
@@ -776,12 +859,12 @@
         removeActive(items);
         if (currentFocus >= items.length) currentFocus = 0;
         if (currentFocus < 0) currentFocus = items.length - 1;
-        items[currentFocus].classList.add("active");
+        items[currentFocus].classList.add("selected"); 
         items[currentFocus].scrollIntoView({ block: 'nearest', inline: 'start' });
     }
 
     function removeActive(items) {
-        for (let i = 0; i < items.length; i++) items[i].classList.remove("active");
+        for (let i = 0; i < items.length; i++) items[i].classList.remove("selected"); 
     }
     
     searchInput.addEventListener('blur', () => {
@@ -841,7 +924,6 @@
 
   let transitionTimer = null;
   function switchToMode(mode) {
-      // [MODIFIED] Conditional dismiss
       if (currentToastInstance && currentToastMessage !== '구글 시트 연결이 필요합니다.') {
           currentToastInstance.dismiss();
           currentToastInstance = null;
@@ -849,7 +931,6 @@
       }
 
       if (['add', 'move', 'discard'].includes(mode) && !localStorage.getItem(STORAGE_KEY)) {
-            // [MODIFIED] Optimized order: Toast first, then switch
             showToast('구글 시트 연결이 필요합니다.', 'warning-yellow black-text');
             switchToMode('settings'); 
             toggleGuide(true); 
@@ -1143,6 +1224,14 @@
               nameDiv.innerText = res.name;
           } else {
               clientCache[cardNo] = { name: res.name, anotherCount: res.anotherCount, rarities: res.rarities, linkData: res.linkData };
+              if (res.name) {
+                  if (!allNames.includes(res.name)) {
+                      allNames.push(res.name);
+                      allNames.sort();
+                      if(!nameDb[res.name]) nameDb[res.name] = { id: "/MISSING_CID" };
+                  }
+              }
+              
               const linkId = (res.linkData && res.linkData.id) ? res.linkData.id : "/MISSING_CID";
               const linkLocale = (res.linkData && res.linkData.locale) ? res.linkData.locale : currentRegion;
               const url = "https://www.db.yugioh-card.com" + linkId + "&request_locale=" + linkLocale;
@@ -1183,17 +1272,22 @@
       }
 
       let rareOptions = [];
+      let sources = [];
       if (!data.isFallback && data.rarities && data.rarities.length > 0) {
-          rareOptions = data.rarities.map(r => ({ val: r, text: getLocalizedRarity(r) }));
+          sources = [...data.rarities].sort(compareRarity);
       } else {
-          rareOptions = allProcessingTypes.map(p => ({ val: p, text: getLocalizedRarity(p) }));
+          sources = [...allProcessingTypes].sort(compareRarity);
       }
+      
+      // [MODIFIED] Store raw value in 'val', localized text in 'text'
+      rareOptions = sources.map(r => ({ val: r, text: getLocalizedRarity(r) }));
       
       procWrap.dataset.options = JSON.stringify(rareOptions);
       procWrap.classList.remove('no-option');
 
       if (rareOptions.length === 1) {
-          procInp.value = rareOptions[0].val;
+          procInp.value = rareOptions[0].text; // [MODIFIED] Set visible value
+          procInp.dataset.raw = rareOptions[0].val; // [MODIFIED] Set raw value
           procWrap.classList.add('single-option');
       } else {
           procInp.value = ""; 
@@ -1347,7 +1441,7 @@
           }
 
           let another = row.querySelector('.page-card-another').value;
-          let proc = row.querySelector('.page-card-proc').value;
+          let procRaw = row.querySelector('.page-card-proc').dataset.raw || row.querySelector('.page-card-proc').value; // [MODIFIED] Use raw value if available
           let loc = row.querySelector('.page-card-loc').value.trim();
           const qtyVal = row.querySelector('.page-card-qty').value;
           const qty = parseInt(qtyVal);
@@ -1359,16 +1453,19 @@
               failReason = "invalid_no"; nameText = "유효하지 않은 카드";
           } else if (!another) {
               failReason = "no_another"; another = "미선택";
-          } else if (!proc) failReason = "no_proc";
+          } else if (!procRaw) failReason = "no_proc"; // Check raw
           else if (!loc) failReason = "no_loc";
           else if (!qty || qty < 1) failReason = "invalid_qty";
 
           if (failReason) {
-              detailLog.push({ no, name: nameText, cardNo, another, proc: proc||"미선택", loc: loc||"미선택", qty: qty||0, status: 'fail', failReason });
+              // detailLog uses display value for user
+              let procDisp = row.querySelector('.page-card-proc').value;
+              detailLog.push({ no, name: nameText, cardNo, another, proc: procDisp||"미선택", loc: loc||"미선택", qty: qty||0, status: 'fail', failReason });
               row.dataset.status = 'fail'; 
           } else {
-              validRows.push([nameText, cardNo, proc, qty, loc, another]);
-              detailLog.push({ no, name: nameText, cardNo, another, proc, loc, qty, status: 'success' });
+              // validRows uses raw value for DB
+              validRows.push([nameText, cardNo, procRaw, qty, loc, another]);
+              detailLog.push({ no, name: nameText, cardNo, another, proc: procRaw, loc, qty, status: 'success' }); // Log uses raw, but display logic handles it
               successCount++; successQty += qty;
               row.dataset.status = 'success'; 
           }
@@ -1377,9 +1474,17 @@
       if (validRows.length > 0) {
           showLoading(true, "등록 중...");
           try {
-              await callApi('addCards', {}, validRows);
+              const res = await callApi('addCards', {}, validRows);
               showLoading(false);
-              showResultModal(successCount, successQty, detailLog);
+              
+              if (res.success) {
+                  updateLocalInventory(res.updatedItems);
+                  syncCounter++;
+                  showResultModal(successCount, successQty, detailLog);
+              } else {
+                  showToast('등록 실패: ' + (res.message || '오류 발생'), 'red darken-1');
+                  showResultModal(0, 0, [], res.message || '오류 발생');
+              }
           } catch (e) {
               showLoading(false);
               showToast('등록 실패: ' + e.toString(), 'red darken-1'); 
@@ -1408,9 +1513,79 @@
   const regionMap = { 'ko': '한국', 'ja': '일본', 'ae': '아시아', 'cn': '중국', 'en': '영미', 'de': '독일', 'fr': '프랑스', 'it': '이탈리아', 'es': '스페인', 'pt': '포르투갈' };
   function loadRegion() { const savedRegion = localStorage.getItem(REGION_KEY) || 'ko'; currentRegion = savedRegion; document.getElementById('region-text').innerText = regionMap[savedRegion]; }
   function toggleRegionDropdown(event) { event.stopPropagation(); const list = document.getElementById('region-dropdown'); const capsule = document.getElementById('region-capsule'); if (list.style.display === 'block') { list.style.display = 'none'; capsule.classList.remove('active'); } else { list.style.display = 'block'; capsule.classList.add('active'); } }
-  function selectRegion(code, text) { currentRegion = code; localStorage.setItem(REGION_KEY, code); document.getElementById('region-text').innerText = text; document.getElementById('region-dropdown').style.display = 'none'; document.getElementById('region-capsule').classList.remove('active'); }
+  
+  function selectRegion(code, text) { 
+      currentRegion = code; 
+      localStorage.setItem(REGION_KEY, code); 
+      document.getElementById('region-text').innerText = text; 
+      document.getElementById('region-dropdown').style.display = 'none'; 
+      document.getElementById('region-capsule').classList.remove('active');
+      
+      updateTooltipsOnly();
+      updateRarityInputs(); 
+  }
+  
+  function updateTooltipsOnly() {
+      const headers = document.querySelectorAll('th.sp-col.tooltipped');
+      if(headers.length === 0) return;
+
+      headers.forEach(th => {
+          const key = th.dataset.key; 
+          const idx = th.dataset.index;
+          
+          let newTooltip = key;
+
+          if(idx !== undefined && idx !== "undefined" && idx !== "") {
+              const row = rarityRows[idx];
+              if(row && rarityColMap[currentRegion] !== undefined) {
+                  const val = row[rarityColMap[currentRegion]];
+                  if(val && val !== "") newTooltip = val;
+              }
+          }
+          
+          newTooltip = String(newTooltip).replace(/\(/g, '<br>(');
+          th.setAttribute('data-tooltip', newTooltip);
+      });
+
+      const resultArea = document.getElementById('result-area');
+      if(resultArea) {
+           M.Tooltip.init(resultArea.querySelectorAll('.tooltipped'), { html: true, margin: 3 });
+      }
+  }
+
+  // [MODIFIED] Update Rarity Inputs and Dropdowns on Region Change
+  function updateRarityInputs() {
+      const inputs = document.querySelectorAll('.page-card-proc, .move-card-proc');
+      inputs.forEach(input => {
+          const rawVal = input.dataset.raw || input.value; // Prefer raw if available
+          if (rawVal) {
+              input.value = getLocalizedRarity(rawVal); // Set localized value
+              
+              // Only update raw if not set (first load scenario)
+              if (!input.dataset.raw) input.dataset.raw = rawVal;
+          }
+          
+          const wrapper = input.closest('.custom-select-wrapper');
+          if (wrapper && wrapper.dataset.options) {
+              try {
+                  const options = JSON.parse(wrapper.dataset.options);
+                  // Recalculate text for all options based on their raw 'val'
+                  const newOptions = options.map(opt => {
+                      return {
+                          val: opt.val, // Keep raw
+                          text: getLocalizedRarity(opt.val), // Localize text
+                          max: opt.max 
+                      };
+                  });
+                  wrapper.dataset.options = JSON.stringify(newOptions);
+              } catch(e) { console.error(e); }
+          }
+      });
+  }
+
   async function callApi(action, params = {}, postData = null) { const url = new URL(SCRIPT_URL); url.searchParams.append("action", action); const savedId = localStorage.getItem(STORAGE_KEY); if (savedId) url.searchParams.append("ssId", savedId); for (const key in params) { url.searchParams.append(key, params[key]); } const options = { method: postData ? 'POST' : 'GET' }; if (postData) options.body = JSON.stringify(postData); const response = await fetch(url, options); return await response.json(); }
   function resetAddModal() { document.getElementById('add-card-tbody').innerHTML = ''; addMoreRows(1); }
+  
   async function refreshInitialData() { 
       const savedId = localStorage.getItem(STORAGE_KEY); if (!savedId) return; 
       showLoading(true, "데이터 동기화 중..."); 
@@ -1423,8 +1598,30 @@
               allProcessingTypes = res.processingTypes; 
               allLocations = res.locations.sort(); 
               localCardDatabase = res.allCards; 
-              rarityMap = res.rarityMap || {}; 
-              rarityMappingRaw = res.rarityMappingRaw || []; 
+              
+              rarityMappingRaw = res.rarityMappingRaw || [];
+              if (rarityMappingRaw.length > 0) {
+                  const headers = rarityMappingRaw[0];
+                  rarityColMap = {};
+                  headers.forEach((h, i) => rarityColMap[h] = i);
+
+                  rarityRows = rarityMappingRaw.slice(1);
+                  rarityLookupMap = {};
+                  rarityReverseMap = {};
+                  rarityOrderMap = {}; 
+
+                  rarityRows.forEach((row, index) => {
+                      const id = row[0]; 
+                      if(id) {
+                          rarityLookupMap[id] = row;
+                          rarityOrderMap[id] = index; 
+                          row.forEach(cellVal => {
+                              if(cellVal) rarityReverseMap[cellVal] = index;
+                          });
+                      }
+                  });
+              }
+              
               clientCache = res.clientCache || {}; 
               nameDb = res.nameDb || {}; 
               if (res.sheetName) { currentSheetName = res.sheetName; document.getElementById('sheet-url').placeholder = "연결됨 : " + currentSheetName; } else { currentSheetName = ""; }
@@ -1433,10 +1630,11 @@
               nameToNosMap = {}; localCardDatabase.forEach(r => { const name = String(r[0]).trim(); const no = String(r[1]).trim().toUpperCase(); if(!nameToNosMap[name]) nameToNosMap[name] = new Set(); nameToNosMap[name].add(no); }); for(let key in nameToNosMap) { nameToNosMap[key] = Array.from(nameToNosMap[key]).sort(); }
               cidLookup = {}; Object.keys(nameDb).forEach(nameKey => { const entry = nameDb[nameKey]; if (entry && entry.id) { if (!cidLookup[entry.id]) cidLookup[entry.id] = new Set(); cidLookup[entry.id].add(nameKey); } }); 
               const expandedSet = new Set(allNames); allNames.forEach(name => { const entry = nameDb[name]; if (entry && entry.id) { const siblings = cidLookup[entry.id]; if (siblings) { siblings.forEach(sName => expandedSet.add(sName)); } } }); allNames = Array.from(expandedSet).sort(); 
-              rarityLookup = {}; rarityMappingRaw.forEach((row, index) => { Object.values(row).forEach(val => { const key = String(val).trim(); if(key) { rarityLookup[key] = { data: row, index: index }; } }); }); 
+              
               const moveRows = document.getElementById('page-move-tbody').querySelectorAll('tr'); moveRows.forEach(row => { const toWrap = row.querySelector('.input-wrap.w-move-to .custom-select-wrapper'); if(toWrap) { toWrap.dataset.options = JSON.stringify(allLocations.map(l => ({ val: l, text: l }))); } });
               const addRows = document.getElementById('page-add-tbody').querySelectorAll('tr'); addRows.forEach(row => { const locWrap = row.querySelector('.input-wrap.w-loc .custom-select-wrapper'); if(locWrap) { locWrap.dataset.options = JSON.stringify(allLocations.map(l => ({ val: l, text: l }))); if (allLocations.length > 0) locWrap.classList.remove('no-option'); } });
               updateDisconnectBtn();
+              updateRarityInputs(); 
           } 
       } catch (e) { showLoading(false); } 
   }
@@ -1458,7 +1656,6 @@
   }
   
   function findMappingRow(key) { if (!rarityMappingRaw || rarityMappingRaw.length === 0) return null; return rarityMappingRaw.find(row => Object.values(row).includes(key)); }
-  function getLocalizedRarity(key) { if (!key) return ""; const info = rarityLookup[key]; if (info && info.data[currentRegion]) { return info.data[currentRegion]; } return key; }
   
   function renderTable(rows) { 
       const resultArea = document.getElementById('result-area'); 
@@ -1482,8 +1679,15 @@
           const totalQty = cardRows.reduce((sum, r) => sum + (parseInt(r[3]) || 0), 0); 
           const locSet = new Set(cardRows.map(r => String(r[4])).filter(l => l)); 
           const distinctKeys = [...new Set(cardRows.map(r => String(r[2]).trim()).filter(k => k))]; 
-          distinctKeys.sort((a, b) => { const infoA = rarityLookup[a]; const infoB = rarityLookup[b]; const idxA = infoA ? infoA.index : 999999; const idxB = infoB ? infoB.index : 999999; return idxA - idxB || a.localeCompare(b); }); 
-          const displayNamesForSummary = [...new Set(distinctKeys.map(k => rarityMap[k] || k))]; 
+          
+          distinctKeys.sort(compareRarity); 
+          
+          const displayNamesForSummary = [...new Set(distinctKeys.map(k => {
+               let idx = rarityReverseMap[k];
+               let row = (idx !== undefined) ? rarityRows[idx] : null;
+               return (row && row[rarityColMap['display']]) ? row[rarityColMap['display']] : k;
+          }))];
+          
           const procStr = displayNamesForSummary.join(", "); 
           const locStr = [...locSet].join(", "); 
           
@@ -1496,7 +1700,28 @@
           
           let leftTableHtml = `<table class="split-table"><thead><tr><th class="fp-col-1">일러스트</th><th class="fp-col-2">보관 위치</th><th class="fp-col-3">총 수량</th></tr></thead><tbody>`; 
           let rightTableHtml = `<table class="split-table"><thead><tr>`; 
-          distinctKeys.forEach(key => { const info = rarityLookup[key]; let displayName = key; let tooltipContent = key; if (info) { displayName = info.data.display || key; tooltipContent = info.data[currentRegion] || key; } tooltipContent = tooltipContent.replace(/\(/g, '<br>('); rightTableHtml += `<th class="sp-col tooltipped" data-position="top" data-tooltip="${tooltipContent}">${displayName}</th>`; }); 
+          
+          distinctKeys.forEach(key => { 
+              let displayName = key;
+              let tooltipContent = key;
+              let idx = rarityReverseMap[key];
+              
+              if (idx !== undefined) {
+                  let row = rarityRows[idx];
+                  if(row) {
+                      displayName = row[rarityColMap['display']] || key;
+                      let localName = row[rarityColMap[currentRegion]];
+                      if(localName && localName !== "") {
+                          tooltipContent = localName;
+                      } else {
+                          tooltipContent = key;
+                      }
+                  }
+              }
+              
+              tooltipContent = String(tooltipContent).replace(/\(/g, '<br>('); 
+              rightTableHtml += `<th class="sp-col tooltipped" data-key="${key}" data-index="${idx !== undefined ? idx : ''}" data-position="top" data-tooltip="${tooltipContent}">${displayName}</th>`; 
+          }); 
           rightTableHtml += `</tr></thead><tbody>`; 
           
           const anotherKeys = Object.keys(anotherGroups).sort((a, b) => { if (a === "기본") return -1; if (b === "기본") return 1; return a.localeCompare(b, undefined, { numeric: true }); }); 
@@ -1539,7 +1764,13 @@
           } 
       }
       if (!hasFailures || tbody.children.length === 0) { addPageEntry(); } reindexRows();
-      if (hasSuccess) { await refreshInitialData(); }
+      
+      if (hasSuccess) {
+          if (syncCounter >= 9) {
+              syncCounter = 0;
+              await refreshInitialData();
+          }
+      }
   }
 
   function initPageMove() { const tbody = document.getElementById('page-move-tbody'); if(tbody.children.length === 0) { addMoveEntry(); } }
@@ -1754,9 +1985,34 @@
           else { filtered.forEach((opt, idx) => { const li = document.createElement('li'); li.className = 'custom-option'; if (opt.text === input.value) li.classList.add('selected'); li.innerText = opt.text; li.dataset.val = opt.val; if (opt.max) li.dataset.max = opt.max; li.onmousedown = (e) => e.preventDefault(); li.onclick = () => selectOption(opt); globalDropdown.appendChild(li); }); }
           globalDropdown.style.display = 'block';
       };
-      const selectOption = (optData) => { input.value = optData.val; if (optData.max) { input.dataset.maxQty = optData.max; } closeDropdown(); if (changeCallback) changeCallback(input); };
+      const selectOption = (optData) => { 
+          // [MODIFIED v0.22.12] Branch logic based on input type
+          if (input.classList.contains('move-card-from')) {
+              input.value = optData.val; // Show pure location name
+          } else {
+              input.value = optData.text; // Show localized text (for rarity)
+          }
+
+          input.dataset.raw = optData.val; // Always store raw value
+          if (optData.max) { input.dataset.maxQty = optData.max; } 
+          closeDropdown(); 
+          if (changeCallback) changeCallback(input); 
+      };
       const updateFromLocOptionsDynamic = (wrap) => {
-          const row = wrap.closest('tr'); const cardNo = row.querySelector('.move-card-no').value.trim(); const illust = row.querySelector('.move-card-another').value; const rare = row.querySelector('.move-card-proc').value;
+          const row = wrap.closest('tr'); const cardNo = row.querySelector('.move-card-no').value.trim(); const illust = row.querySelector('.move-card-another').value; 
+          
+          const rareInput = row.querySelector('.move-card-proc');
+          let rareRaw = rareInput.dataset.raw;
+          
+          if (!rareRaw && rareInput.value) {
+              const currentVal = rareInput.value;
+              const potentialMatches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo && String(r[5] || "기본").trim() === illust);
+              const matchedRow = potentialMatches.find(r => getLocalizedRarity(r[2]) === currentVal);
+              if (matchedRow) rareRaw = matchedRow[2];
+          }
+          
+          const rare = rareRaw; 
+
           const matches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo && String(r[5] || "기본").trim() === illust && String(r[2]).trim() === rare);
           const locMap = {};
           matches.forEach(r => { const loc = String(r[4]).trim(); const qty = parseInt(r[3]) || 0; if (qty > 0) locMap[loc] = (locMap[loc] || 0) + qty; });
@@ -1783,7 +2039,11 @@
               if (filtered.length > 0) { selectOption(filtered[0]); } else { if (rawData.length === 1 && !isFreeType) { selectOption(rawData[0]); } else if (!isFreeType) { input.value = ""; if (changeCallback) changeCallback(input); } closeDropdown(); }
           }; pendingBlurFn = setTimeout(logic, 200);
       });
-      input.addEventListener('input', (e) => { const rawData = JSON.parse(wrapper.dataset.options || "[]"); if (rawData.length === 1 && !isFreeType) { input.value = rawData[0].val; return; } if (!wrapper.classList.contains('active')) wrapper.classList.add('active'); currentFocusIdx = -1; renderGlobalDropdown(true); });
+      input.addEventListener('input', (e) => { 
+          delete input.dataset.raw;
+          
+          const rawData = JSON.parse(wrapper.dataset.options || "[]"); if (rawData.length === 1 && !isFreeType) { input.value = rawData[0].val; return; } if (!wrapper.classList.contains('active')) wrapper.classList.add('active'); currentFocusIdx = -1; renderGlobalDropdown(true); 
+      });
       input.addEventListener('keydown', (e) => {
           if (!wrapper.classList.contains('active')) { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { openDropdown(); return; } }
           const items = globalDropdown.querySelectorAll('li:not([style*="default"])');
@@ -1837,31 +2097,44 @@
       updateMoveRarities(row, matches);
   }
   function updateMoveRarities(row, matches) {
-      const rareInp = row.querySelector('.move-card-proc'); const rareWrap = row.querySelector('[id^="wrap-rare"]'); const uniqueRares = [...new Set(matches.map(r => String(r[2]).trim()))].sort();
+      const rareInp = row.querySelector('.move-card-proc'); const rareWrap = row.querySelector('[id^="wrap-rare"]'); const uniqueRares = [...new Set(matches.map(r => String(r[2]).trim()))].sort(compareRarity); // [MODIFIED] Use comparator
       const options = uniqueRares.map(r => ({ val: r, text: getLocalizedRarity(r) }));
       rareWrap.dataset.options = JSON.stringify(options);
       rareInp.removeAttribute('readonly'); rareWrap.classList.remove('no-option'); 
       const currentVal = rareInp.value; const isValid = options.some(o => o.val === currentVal);
-      if (isValid) { handleMoveRareChange(rareInp); } else { if (options.length === 1) { rareWrap.classList.add('single-option'); rareInp.value = options[0].val; handleMoveRareChange(rareInp); } else { rareInp.value = ""; rareWrap.classList.remove('single-option'); handleMoveRareChange(rareInp); } }
+      if (isValid) { handleMoveRareChange(rareInp); } else { if (options.length === 1) { rareWrap.classList.add('single-option'); rareInp.value = options[0].text; rareInp.dataset.raw = options[0].val; handleMoveRareChange(rareInp); } else { rareInp.value = ""; delete rareInp.dataset.raw; rareWrap.classList.remove('single-option'); handleMoveRareChange(rareInp); } }
   }
   function handleMoveRareChange(input) {
-      const row = input.closest('tr'); const cardNo = row.querySelector('.move-card-no').value.trim(); const selectedIllust = row.querySelector('.move-card-another').value; const selectedRare = input.value;
-      if (!selectedRare) { const fromInp = row.querySelector('.move-card-from'); fromInp.value = ""; handleMoveLocChange(fromInp); return; }
+      const row = input.closest('tr'); const cardNo = row.querySelector('.move-card-no').value.trim(); const selectedIllust = row.querySelector('.move-card-another').value; const selectedRare = input.dataset.raw || input.value; // Use raw if available
+      if (!input.value) { const fromInp = row.querySelector('.move-card-from'); fromInp.value = ""; handleMoveLocChange(fromInp); return; }
       const dbIllust = selectedIllust;
       const matches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo && String(r[5] || "기본").trim() === dbIllust && String(r[2]).trim() === selectedRare);
       updateMoveLocations(row, matches);
   }
   function getAvailableQty(cardNo, illust, rare, loc, currentRow) {
-      const dbIllust = illust;
-      const dbMatches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo && String(r[5] || "기본").trim() === dbIllust && String(r[2]).trim() === rare && String(r[4]).trim() === loc);
+      const dbMatches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo && String(r[5] || "기본").trim() === illust && String(r[2]).trim() === rare && String(r[4]).trim() === loc);
       const totalDbQty = dbMatches.reduce((sum, r) => sum + (parseInt(r[3])||0), 0);
       const allRows = document.getElementById('page-move-tbody').querySelectorAll('tr'); let usedQty = 0;
-      allRows.forEach(r => { if (r === currentRow) return; const rNo = r.querySelector('.move-card-no').value.trim().toUpperCase(); const rIllust = r.querySelector('.move-card-another').value; const rRare = r.querySelector('.move-card-proc').value; const rLoc = r.querySelector('.move-card-from').value; const rQty = parseInt(r.querySelector('.move-card-qty').value) || 0; if (rNo === cardNo && rIllust === illust && rRare === rare && rLoc === loc) { usedQty += rQty; } });
+      allRows.forEach(r => { 
+          if (r === currentRow) return; 
+          const rNo = r.querySelector('.move-card-no').value.trim().toUpperCase(); 
+          const rIllust = r.querySelector('.move-card-another').value; 
+          const rRareInput = r.querySelector('.move-card-proc');
+          const rRare = rRareInput.dataset.raw || rRareInput.value; // Check raw
+          const rLoc = r.querySelector('.move-card-from').value; 
+          const rQty = parseInt(r.querySelector('.move-card-qty').value) || 0; 
+          if (rNo === cardNo && rIllust === illust && rRare === rare && rLoc === loc) { usedQty += rQty; } 
+      });
       return Math.max(0, totalDbQty - usedQty);
   }
   function updateMoveLocations(row, matches) {
       const fromInp = row.querySelector('.move-card-from'); const fromWrap = row.querySelector('[id^="wrap-from"]'); fromInp.removeAttribute('readonly'); fromWrap.classList.remove('no-option'); 
-      const cardNo = row.querySelector('.move-card-no').value.trim(); const illust = row.querySelector('.move-card-another').value; const rare = row.querySelector('.move-card-proc').value; const locMap = {};
+      const cardNo = row.querySelector('.move-card-no').value.trim(); const illust = row.querySelector('.move-card-another').value; 
+      
+      const rareInput = row.querySelector('.move-card-proc');
+      const rare = rareInput.dataset.raw || rareInput.value; // Use raw
+      
+      const locMap = {};
       matches.forEach(r => { const loc = String(r[4]).trim(); const qty = parseInt(r[3]) || 0; if (qty > 0) locMap[loc] = (locMap[loc] || 0) + qty; });
       const validLocs = []; Object.keys(locMap).forEach(loc => { const avail = getAvailableQty(cardNo, illust, rare, loc, row); if (avail > 0) { validLocs.push({ val: loc, text: `${loc} (잔여: ${avail})`, max: avail }); } });
       fromWrap.dataset.options = JSON.stringify(validLocs);
@@ -1921,7 +2194,7 @@
           let locTxt = `${move.currentLoc} ► ${move.targetLoc}`;
           let qtyTxt = move.moveQty;
           let anotherTxt = move.another;
-          let procTxt = getLocalizedRarity(move.proc);
+          let procTxt = getLocalizedRarity(move.proc); // Localize for display
           let cardNoStyle = ''; let nameStyle = ''; let anotherStyle = ''; let procStyle = ''; let locStyle = ''; let qtyStyle = '';
 
           if (!move.cardNo || !ownedCardNumbers.includes(move.cardNo)) {
@@ -1967,7 +2240,6 @@
       const rows = Array.from(tbody.children);
       
       rows.forEach(row => {
-          // [MODIFIED] Cleanup condition: success or empty input
           const cardNoVal = row.querySelector('.move-card-no').value.trim();
           if (row.dataset.moveStatus === 'success' || !cardNoVal) {
               row.remove();
@@ -1982,14 +2254,24 @@
           reindexMoveRows();
       }
       
-      if(hasSuccess) { await refreshInitialData(); } 
+      // [NEW] Hybrid Sync Check
+      if(hasSuccess) { 
+          if (syncCounter >= 9) {
+              syncCounter = 0;
+              await refreshInitialData();
+          }
+      } 
   }
 
   async function submitMoveEntries() {
       if(document.getElementById('move-submit-main-btn').classList.contains('disabled')) return;
       const tbody = document.getElementById('page-move-tbody'); const rows = tbody.querySelectorAll('tr'); const moves = []; let failCount = 0;
       rows.forEach(row => {
-          const cardNo = row.querySelector('.move-card-no').value.trim(); const cardName = row.querySelector('.card-name-input').value.trim(); const proc = row.querySelector('.move-card-proc').value; const another = row.querySelector('.move-card-another').value; const currentLoc = row.querySelector('.move-card-from').value; const moveQty = parseInt(row.querySelector('.move-card-qty').value); const targetLoc = row.querySelector('.move-card-to').value.trim();
+          const cardNo = row.querySelector('.move-card-no').value.trim(); const cardName = row.querySelector('.card-name-input').value.trim(); 
+          const procInput = row.querySelector('.move-card-proc');
+          const proc = procInput.dataset.raw || procInput.value; // Use raw
+          
+          const another = row.querySelector('.move-card-another').value; const currentLoc = row.querySelector('.move-card-from').value; const moveQty = parseInt(row.querySelector('.move-card-qty').value); const targetLoc = row.querySelector('.move-card-to').value.trim();
           if (!cardNo) return; 
           const maxQty = parseInt(row.querySelector('.move-card-qty').max) || 0; let isValid = true;
           if (!proc || !currentLoc || !targetLoc || !moveQty || moveQty < 1) isValid = false; if (moveQty > maxQty) isValid = false; 
@@ -2013,6 +2295,10 @@
           const res = await callApi('moveCards', {}, pendingMoves); 
           showLoading(false); 
           if (res.success) { 
+              // [NEW] Partial Sync Logic
+              updateLocalInventory(res.updatedItems);
+              syncCounter++;
+              
               rows.forEach(r => { if(r.dataset.moveStatus === 'pending') r.dataset.moveStatus = 'success'; });
               moves.forEach(m => { if(m.status === 'pending') m.status = 'success'; });
               showMoveResultModal(moves); 
