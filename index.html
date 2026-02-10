@@ -38,7 +38,7 @@
     body { color: var(--text-primary); padding-left: 0; padding-top: env(safe-area-inset-top); min-height: 100dvh; margin: 0; display: flex; flex-direction: column; }
     :root { --bg-body: #f4f7f6; --bg-surface: #ffffff; --bg-sub: #fafafa; --bg-header: #f5f5f5; --text-primary: #333333; --text-secondary: #666666; --text-muted: #9e9e9e; --primary-color: #009688; --primary-rgb: 0, 150, 136; --primary-light: #b2dfdb; --primary-dark: #00796b; --border-color: #ddd; --error-red: #f44336; --success-green: #2e7d32; --warning-yellow: #fbc02d; --bg-success: #e0f2f1; --bg-fail: #ffebee; --input-bg: #ffffff; --disabled-bg: #e0e0e0; --disabled-text: #9e9e9e; --overlay-bg: rgba(255, 255, 255, 0.95); --nav-bg: #F0F0F0; --nav-text: #424242; --nav-text-active: #009688; --nav-border: rgba(0, 0, 0, 0.1); --nav-shadow: 0 -1px 5px rgba(0,0,0,0.05); --bg-odd-row: #80cbc4; --text-table-light: #424242; --text-table-dark: #333333; --table-border-specific: rgb(200, 240, 240); }
     html.dark-mode { --bg-body: #121212; --bg-surface: #1e1e1e; --bg-sub: #252525; --bg-header: #2c2c2c; --text-primary: #e0e0e0; --text-secondary: #b0b0b0; --text-muted: #757575; --primary-color: #4db6ac; --primary-rgb: 77, 182, 172; --primary-light: #80cbc4; --primary-dark: #26a69a; --border-color: #424242; --error-red: #ef5350; --success-green: #66bb6a; --warning-yellow: #fdd835; --bg-success: #59D981; --bg-fail: #EB5260; --input-bg: #2c2c2c; --disabled-bg: #424242; --disabled-text: #757575; --overlay-bg: rgba(18, 18, 18, 0.9); --nav-bg: #000000; --nav-text: #9e9e9e; --nav-text-active: #4db6ac; --nav-border: rgba(255, 255, 255, 0.1); --nav-shadow: 0 -1px 10px rgba(0,0,0,0.3); --bg-odd-row: #56B0AB; --table-border-specific: rgb(180, 220, 220); }
-    html.dark-mode #result-summary-body td, html.dark-mode #move-summary-body td { color: #181818 !important; }
+    html.dark-mode #result-summary-body td, html.dark-mode #move-summary-body td, html.dark-mode #discard-summary-body td { color: #181818 !important; }
     html.dark-mode .btn.cyan-theme { color: #282828 !important; }
     body, input, button, table, .btn, .modal-content, select { font-family: 'Pretendard', sans-serif !important; }
     #dynamic-header-wrapper { position: relative; width: 100%; max-width: 700px; margin: 20px auto; height: 220px; transition: height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), margin-top 0.4s ease; z-index: 100; overflow: visible; }
@@ -75,18 +75,16 @@
     .col-delete.disabled { pointer-events: none; opacity: 0.3; cursor: default; }
     .content-cell { padding: 0; }
     .content-wrapper { width: 100%; height: 100%; margin: 0; padding: 0; box-sizing: border-box; }
-    .entry-row-top { display: flex; width: 100%; height: 42px; border-bottom: 1px solid var(--table-border-specific) !important; }
-    .name-area { flex: 3; min-width: 0; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--table-border-specific) !important; }
+    .tri-row-top { display: flex; width: 100%; height: 42px; border-bottom: 1px solid var(--table-border-specific) !important; }
+    .tri-row-mid { display: flex; width: 100%; height: 42px; border-bottom: 1px solid var(--table-border-specific) !important; }
+    .tri-row-bot { display: flex; width: 100%; height: 42px; align-items: stretch; }
+    .name-area { flex: 3; min-width: 0; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--table-border-specific) !important; position: relative; }
     .no-area { flex: 1; min-width: 110px; flex-shrink: 0; }
-    .entry-row-bottom { display: flex; width: 100%; height: 42px; }
-    .input-wrap { width: 0; border-right: 1px solid var(--table-border-specific) !important; position: relative; }
-    #page-add-table .input-wrap { transition: flex 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
-    #page-move-table .input-wrap { transition: none !important; }
-    .input-wrap:last-child { border-right: none; }
-    .w-img { flex: 0 0 27.5%; } .w-rare { flex: 0 0 25%; } .w-loc { flex: 0 0 30%; } .w-qty { flex: 0 0 17.5%; min-width: 0; }
-    @media only screen and (min-width: 601px) { .entry-row-bottom .input-wrap, .move-row-bot .input-wrap { flex: 0 0 25%; } .move-row-mid .input-wrap { flex: 1 0 0%; } .name-area { flex: 0 0 75%; } .no-area { flex: 0 0 25%; } .w-qty { min-width: 0; } }
-    .move-row-top { display: flex; width: 100%; height: 42px; border-bottom: 1px solid var(--table-border-specific) !important; }
-    .move-row-mid { display: flex; width: 100%; height: 42px; border-bottom: 1px solid var(--table-border-specific) !important; }
+    .input-wrap { width: 0; border-right: 1px solid var(--table-border-specific) !important; position: relative; transition: none !important; }
+    .input-wrap:last-child { border-right: none !important; }
+    .w-half { flex: 1 !important; border-right: 1px solid var(--table-border-specific) !important; }
+    .w-half:last-child { border-right: none !important; }
+    .move-row-top, .move-row-mid { display: flex; width: 100%; height: 42px; border-bottom: 1px solid var(--table-border-specific) !important; }
     .move-row-bot { display: flex; width: 100%; height: 42px; align-items: stretch; }
     .move-row-bot .input-wrap { transition: none !important; }
     .arrow-cell { flex: 0 0 30px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; color: var(--text-table-light); user-select: none; }
@@ -96,6 +94,12 @@
     .w-move-to { flex: 1.5 !important; border-left: 1px solid var(--table-border-specific) !important; }
     .w-move-illust { flex: 1; border-right: 1px solid var(--table-border-specific) !important; }
     .w-move-rare { flex: 1; }
+    @media only screen and (min-width: 601px) { 
+        .tri-row-bot .input-wrap, .move-row-bot .input-wrap { flex: 0 0 25%; } 
+        .tri-row-mid .input-wrap, .move-row-mid .input-wrap { flex: 1 0 0%; } 
+        .name-area { flex: 0 0 75%; } 
+        .no-area { flex: 0 0 25%; } 
+    }
     input::-webkit-calendar-picker-indicator { display: none !important; }
     .page-entry-table input, .page-entry-table select { width: 100% !important; height: 100% !important; border: none !important; background-color: transparent !important; border-radius: 0 !important; margin: 0 !important; font-size: 0.95rem !important; padding: 0 10px !important; box-shadow: none !important; box-sizing: border-box !important; display: block; cursor: pointer; color: var(--text-table-light); outline: none !important; text-align: center; }
     .page-entry-table input:focus, .page-entry-table select:focus, .custom-input:focus { background-color: rgba(0,0,0,0.15) !important; color: var(--text-primary) !important; }
@@ -104,11 +108,7 @@
     input#card-search::placeholder, #sheet-url::placeholder { color: #B0B0B0 !important; opacity: 1 !important; }
     html.dark-mode input#card-search::placeholder, html.dark-mode #sheet-url::placeholder { color: #666666 !important; opacity: 1 !important; }
     .error-placeholder::placeholder { color: var(--error-red) !important; font-weight: 700; opacity: 1 !important; }
-    .page-card-loc, .move-card-to, .move-card-from { appearance: none !important; -webkit-appearance: none !important; text-align: center !important; text-align-last: center !important; padding-right: 10px !important; background-image: none !important; }
-    .entry-row-bottom input, .entry-row-bottom select, .move-row-bot input, .move-row-bot select { text-align: left !important; padding: 0 5px !important; }
-    .move-row-bot input, .move-row-bot select, .move-row-bot input:placeholder-shown, .move-row-bot input:not(:placeholder-shown), .move-row-bot input:focus { text-align: center !important; text-align-last: center !important; }
-    .entry-row-bottom input.page-card-loc:placeholder-shown, .entry-row-bottom input.page-card-qty:placeholder-shown { text-align: center !important; }
-    .entry-row-bottom input.page-card-loc:not(:placeholder-shown), .entry-row-bottom input.page-card-loc:focus, .entry-row-bottom input.page-card-qty:not(:placeholder-shown), .entry-row-bottom input.page-card-qty:focus { text-align: left !important; }
+    .page-card-loc, .move-card-to, .move-card-from, .discard-card-loc { appearance: none !important; -webkit-appearance: none !important; text-align: center !important; text-align-last: center !important; padding-right: 10px !important; background-image: none !important; }
     .card-name-input { text-align: center !important; font-weight: 700 !important; font-size: 0.9rem !important; color: inherit !important; padding: 0 10px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; }
     html.dark-mode .page-entry-table input, html.dark-mode .page-entry-table select, html.dark-mode .card-name-disp, html.dark-mode .page-entry-table .no-cell, html.dark-mode .card-link { color: var(--text-table-dark) !important; }
     .entry-group.odd { background-color: var(--bg-odd-row); color: var(--text-table-light); }
@@ -145,11 +145,10 @@
     .nav-item.active { color: var(--nav-text-active); background-color: rgba(128,128,128,0.15); border-left: 4px solid var(--primary-color); font-weight: 700; }
     .nav-item i { margin-right: 16px; font-size: 24px; }
     .nav-text { font-size: 0.95rem; font-weight: 600; white-space: nowrap; opacity: 1; transition: opacity 0.3s; }
-    .mobile-nav-container { display: flex; position: fixed; bottom: 0; left: 0; right: 0; width: 100%; height: calc(60px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); z-index: 1050; justify-content: space-around; align-items: center; background-color: var(--nav-bg); border-top: 1px solid var(--nav-border); box-shadow: var(--nav-shadow); transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), background-color 0.3s ease; transform: translateY(100%); pointer-events: none; }
+    .mobile-nav-container { display: flex; position: fixed; bottom: 0; left: 0; right: 0; width: 100%; height: calc(60px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); z-index: 1050; justify-content: space-around; align-items: center; background-color: var(--nav-bg); border-top: none !important; box-shadow: var(--nav-shadow); transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), background-color 0.3s ease; transform: translateY(100%); pointer-events: none; }
     .mobile-nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--nav-text); font-size: 0.65rem; cursor: pointer; flex: 1; height: 100%; transition: color 0.3s, transform 0.3s; font-weight: 500; min-width: 48px; padding: 6px 0; }
     .mobile-nav-item.active { color: var(--nav-text-active); font-weight: 700; }
     .mobile-nav-item i { font-size: 24px; margin-bottom: 3px; }
-    body.is-loading .mobile-nav-container, body.is-loading .app-sidebar { z-index: 11001 !important; pointer-events: none; }
     @media only screen and (min-width: 993px) { body { padding-left: 240px; } }
     @media only screen and (min-width: 601px) and (max-width: 992px) { body { padding-left: 72px; } .app-sidebar { width: 72px; } .nav-text { opacity: 0; display: none; } .nav-item { justify-content: center; padding: 16px 0; border-left: 4px solid transparent; border-right: 0; } .nav-item i { margin-right: 0; } .nav-item.active { border-left: 4px solid var(--primary-color); border-right: 0; } }
     @media only screen and (max-width: 600px) { body { padding-bottom: 80px; padding-left: 0; } .app-sidebar { width: 72px !important; transform: translateX(-100%); overflow: hidden; box-shadow: none !important; border: none !important; } .nav-text { display: none !important; } .mobile-nav-container { transform: translateY(0); pointer-events: auto; } .header-right-container { top: 8px; } .container { margin-left: 0 !important; margin-right: 0 !important; } }
@@ -170,9 +169,7 @@
     .region-dropdown-list { display: none; position: absolute; top: 100%; right: 0; left: 0; background-color: var(--bg-surface); border: 1px solid var(--border-color); border-top: 1px solid #eee; border-radius: 0 0 12px 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); list-style: none; margin: 0; padding: 5px 0; width: 100%; z-index: 1003; text-align: center; }
     html.dark-mode .region-dropdown-list { border-top: 1px solid #444; }
     .region-dropdown-list li { padding: 8px 0; font-size: 0.8rem; color: var(--text-primary); cursor: pointer; white-space: nowrap; }
-    
     .container { margin-top: 30px; width: auto !important; max-width: 100% !important; min-height: 60vh; margin-left: 15px !important; margin-right: 15px !important; transition: margin 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); flex: 1 0 auto; position: relative; transform: translate3d(0,0,0); }
-    
     #content-slider-wrapper { position: relative; width: 100%; overflow: hidden; transition: height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); min-height: 100px; }
     .content-section { display: none; opacity: 0; width: 100%; transition: opacity 0.4s ease; top: 0; left: 0; }
     .content-section.active { opacity: 1; display: block; }
@@ -198,12 +195,10 @@
     .recent-item-row { display: flex !important; align-items: center; justify-content: space-between !important; }
     .item-delete-btn { color: var(--text-muted); font-size: 1rem; padding: 4px; cursor: pointer; display: flex; align-items: center; }
     .input-control-row { display: flex; justify-content: flex-end !important; align-items: center; margin-bottom: 10px; max-width: 700px; width: 100%; margin-left: auto; margin-right: auto; gap: 10px; }
-    
     #toast-container { top: 50% !important; left: 50% !important; right: auto !important; bottom: auto !important; transform: translate(-50%, -50%) !important; max-width: 80%; width: auto !important; border-radius: 8px; text-align: center; justify-content: center; position: fixed !important; }
     #toast-container .toast.warning-yellow { background-color: var(--warning-yellow) !important; color: #000 !important; }
     #toast-container .toast.red { background-color: var(--error-red) !important; }
     #toast-container .toast.red.darken-1 { background-color: #d32f2f !important; }
-    
     .valid-icon { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); margin-top: -3px; display: none; }
     .guide-btn { cursor: pointer; color: var(--primary-dark); font-size: 1rem; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 4px; }
     .guide-btn i { transition: transform 0.2s; } 
@@ -215,7 +210,7 @@
     th { background: var(--bg-header); color: var(--text-secondary); font-weight: 700; padding: 10px 4px; text-align: center; border: 1px solid var(--border-color); font-size: 0.8rem; word-break: break-all; border-radius: 0px !important; }
     td { border: 1px solid var(--border-color); text-align: center; padding: 6px 4px; position: relative; word-break: break-all; color: var(--text-primary); border-radius: 0px !important; }
     .modal { border-radius: 12px; width: 95% !important; max-width: 600px !important; background-color: var(--bg-surface); color: var(--text-primary); }
-    #add-result-modal, #move-result-modal { max-width: 700px !important; }
+    #add-result-modal, #move-result-modal, #discard-result-modal { max-width: 700px !important; }
     .modal .modal-content { background-color: var(--bg-surface); }
     .modal .modal-footer { background-color: var(--bg-surface); border-top: 1px solid var(--border-color); }
     #loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100dvh; background: var(--overlay-bg); z-index: 11000; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(2px); transition: padding-left 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); padding-left: 0; }
@@ -261,17 +256,17 @@
     .footer-separator { margin: 0 8px; user-select: none; opacity: 0.5; }
     #main-footer a.maker-link { color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; transition: color 0.2s; font-weight: 600; }
     @media (hover: hover) { #main-footer a.maker-link:hover { color: #f44336; } }
-    @media only screen and (max-width: 600px) { .footer-separator.mobile-hide { display: none; } .footer-item.copyright { width: 100%; margin-top: 4px; } }
+    @media only screen and (max-width: 600px) { .footer-separator.mobile-hide { display: none; } .footer-item copyright { width: 100%; margin-top: 4px; } }
     .sheet-name-display { display: none; }
     .result-icon-area { text-align: center; margin-top: 20px; margin-bottom: 10px; }
     .result-icon-area i { font-size: 4rem; }
     .result-summary, .result-fail-summary { text-align: center; }
     .toggle-result-btn { display: flex; justify-content: center; width: 100%; cursor: pointer; } 
-    #result-summary-table-box { max-width: 300px; margin: 0 auto 20px auto; }
-    #result-summary-body td:first-child, #move-summary-body td:first-child { width: 80%; } 
-    #result-summary-body td:last-child, #move-summary-body td:last-child { width: 20%; white-space: nowrap; }
-    #result-success-text { margin-bottom: 4px !important; }
-    #result-fail-text { margin-top: 0 !important; }
+    #result-summary-table-box, #discard-summary-table-box { max-width: 300px; margin: 0 auto 20px auto; }
+    #result-summary-body td:first-child, #move-summary-body td:first-child, #discard-summary-body td:first-child { width: 80%; } 
+    #result-summary-body td:last-child, #move-summary-body td:last-child, #discard-summary-body td:last-child { width: 20%; white-space: nowrap; }
+    #result-success-text, #discard-success-text { margin-bottom: 4px !important; }
+    #result-fail-text, #discard-fail-text { margin-top: 0 !important; }
     #result-detail-box { display: none; margin-top: 5px; }
     .w-qty, .w-move-rare, .w-move-to { border-right: none !important; }
     html.dark-mode input[type="text"], html.dark-mode input[type="number"] { color: var(--text-primary); }
@@ -416,7 +411,32 @@
 
       <div id="discard-content-area" class="content-section centered-content-area">
           <h5 class="content-title">카드 제거</h5>
-          <p style="color: var(--text-secondary);">폐기 기능을 준비 중입니다.</p>
+          <p class="content-subtitle">목록에서 원하는 카드를 제거할 수 있습니다.</p>
+          
+          <div class="table-wrapper">
+              <table id="page-discard-table" class="page-entry-table">
+                  <tbody id="page-discard-tbody">
+                  </tbody>
+                  <tfoot id="page-discard-tfoot">
+                      <tr>
+                          <td colspan="3" class="add-row-btn-cell">
+                              <button class="add-page-row-btn" onclick="addMultipleDiscardRows(event)" tabindex="0" onkeydown="handleAddButtonKey(event, 'discard')">
+                                  <span style="font-weight: 700;">카드 추가 등록</span>
+                                  <div class="qty-control-box" onclick="event.stopPropagation()">
+                                      <span class="ctrl-btn" onclick="adjustDiscardCount(-1)">-</span>
+                                      <span id="add-discard-count" class="ctrl-val">1장</span>
+                                      <span class="ctrl-btn" onclick="adjustDiscardCount(1)">+</span>
+                                  </div>
+                              </button>
+                          </td>
+                      </tr>
+                  </tfoot>
+              </table>
+          </div>
+
+          <div class="page-btn-container">
+              <button id="discard-submit-main-btn" class="btn cyan-theme waves-effect waves-light" onclick="submitDiscardEntries()" tabindex="0">제거</button>
+          </div>
       </div>
 
       <div id="add-content-area" class="content-section centered-content-area">
@@ -519,7 +539,7 @@
         <span>해당 내용은 서버에 저장되지 않습니다.</span>
     </p>
     <div class="footer-info-box">
-        <span class="footer-item">ver. 0.22.12</span>
+        <span class="footer-item">ver. 0.23.19</span>
         <span class="footer-separator">|</span>
         <span class="footer-item">Made by <a href="https://www.youtube.com/@참혈" target="_blank" class="maker-link"><i class="fab fa-youtube"></i> 참혈</a></span>
         <span class="footer-separator mobile-hide">|</span>
@@ -578,6 +598,26 @@
     </div>
 </div>
 
+<div id="discard-result-modal" class="modal">
+  <div class="modal-content">
+    <div id="discard-result-icon-area" class="result-icon-area"></div>
+    <h5 id="discard-modal-title" style="font-weight: 800; text-align: center; margin-bottom: 20px;">카드 제거 완료!</h5>
+    <p id="discard-success-text" class="result-summary"></p>
+    <p id="discard-fail-text" class="result-fail-summary"></p>
+    <div id="discard-summary-table-box"><table class="result-table"><tbody id="discard-summary-body"></tbody></table></div>
+    <div class="toggle-result-btn" onclick="toggleResultDetail_Discard()"><span>자세히</span><i id="discard-toggle-icon" class="material-icons" style="font-size:1.2rem; transform: translateY(1px);">keyboard_arrow_down</i></div>
+    <div id="discard-result-detail-box" class="result-detail-wrapper">
+        <table class="result-table">
+            <thead><tr><th style="width:10%;">No</th><th style="width:20%;">카드 이름</th><th style="width:15%;">카드 번호</th><th style="width:15%;">일러스트</th><th style="width:15%;">레어도</th><th style="width:15%;">보관 위치</th><th style="width:10%;">수량</th></tr></thead>
+            <tbody id="discard-result-detail-body"></tbody>
+        </table>
+    </div>
+  </div>
+  <div class="modal-footer" style="display:flex; justify-content:flex-end; padding-right:24px; gap:8px;">
+    <button class="btn cyan-theme modal-close">확인</button>
+  </div>
+</div>
+
 <div id="add-card-modal" class="modal">
   <div class="modal-content">
     <h5 style="font-weight: 800; margin-bottom: 10px;">카드 등록</h5>
@@ -617,9 +657,13 @@
   const THEME_KEY = 'yugioh_theme_mode';
   const REGION_KEY = 'yugioh_region_setting';
 
-  let allProcessingTypes = [], allNames = [], allLocations = [], localCardDatabase = [], clientCache = {}, nameDb = {};
+  let allProcessingTypes = [];
+  let allNames = [];
+  let allLocations = [];
+  let localCardDatabase = [];
+  let clientCache = {};
+  let nameDb = {};
   
-  // [NEW] Rarity Optimization Variables
   let rarityMappingRaw = []; 
   let rarityColMap = {}; 
   let rarityRows = []; 
@@ -627,7 +671,10 @@
   let rarityOrderMap = {}; 
   
   let cidLookup = {}; 
-  let isAppConfigured = false, acInstance = null, isLoading = false, validationTimeout = null;
+  let isAppConfigured = false;
+  let acInstance = null;
+  let isLoading = false;
+  let validationTimeout = null;
   let hasRegisteredInSession = false;
   let isContinuingRegistration = false;
   let pendingBlurFn = null; 
@@ -642,6 +689,7 @@
   let rowAddCount = 1; 
 
   let rowMoveCount = 1;
+  let rowDiscardCount = 1;
 
   let currentFocus = -1;
 
@@ -698,6 +746,12 @@
                   localCardDatabase.push([item.name, item.cardNo, item.proc, item.qty, item.loc, item.another]);
               }
           }
+          
+          // [v0.23.19] 신규 등록된 이름을 전역 이름 목록에 추가
+          if (item.name && !allNames.includes(item.name)) {
+              allNames.push(item.name);
+              allNames.sort();
+          }
       });
       refreshLocalLookups(); 
   }
@@ -729,7 +783,6 @@
       }
   }
 
-  // [NEW] Rarity Localization Logic
   function getLocalizedRarity(key) {
       var idx = rarityReverseMap[key];
       if (idx === undefined) {
@@ -743,13 +796,11 @@
       if (colIdx === undefined) return key; 
 
       var val = row[colIdx];
-      // Fallback to key (original value) if empty
       if (!val || val === "") return key; 
 
       return val;
   }
 
-  // [NEW] Comparator for Rarity Sorting
   function compareRarity(a, b) {
       const idxA = (rarityReverseMap[a] !== undefined) ? rarityReverseMap[a] : 9999;
       const idxB = (rarityReverseMap[b] !== undefined) ? rarityReverseMap[b] : 9999;
@@ -774,9 +825,12 @@
                 if(el.id === 'add-result-modal') {
                    handleContinueRegistration();
                 }
+                if(el.id === 'discard-result-modal') {
+                   handleContinueDiscard();
+                }
             } 
         };
-        if (modal.id === 'add-result-modal' || modal.id === 'move-result-modal') {
+        if (modal.id === 'add-result-modal' || modal.id === 'move-result-modal' || modal.id === 'discard-result-modal') {
             options.dismissible = false; 
         }
         M.Modal.init(modal, options);
@@ -967,7 +1021,7 @@
       let targetContentId = '';
       if (mode === 'home') targetContentId = 'intro-area';
       else if (mode === 'search') targetContentId = 'result-content-wrapper'; 
-      else if (mode === 'discard') targetContentId = 'discard-content-area';
+      else if (mode === 'discard') { targetContentId = 'discard-content-area'; initPageDiscard(); }
       else if (mode === 'add') targetContentId = 'add-content-area';
       else if (mode === 'move') { targetContentId = 'move-content-area'; initPageMove(); }
       else if (mode === 'settings') targetContentId = 'settings-content-area'; 
@@ -1001,9 +1055,6 @@
   function checkClearBtn() { const val = document.getElementById('card-search').value; const btn = document.getElementById('clear-btn'); btn.style.display = val ? 'block' : 'none'; }
   function toggleSearchWrapper(isOpen) { const wrapper = document.getElementById('search-wrapper'); if(isOpen) wrapper.classList.add('active'); else wrapper.classList.remove('active'); }
   function toggleAutoCopy() { isAutoCopyEnabled = document.getElementById('auto-copy-switch').checked; }
-  
-  function addMoreRows() { console.warn("Called legacy function: addMoreRows"); }
-  function submitNewCards() { console.warn("Called legacy function: submitNewCards"); }
   
   function initPageAdd() {
       document.getElementById('page-add-tbody').innerHTML = '';
@@ -1040,15 +1091,42 @@
       }
   }
 
+  function initPageDiscard() {
+      const tbody = document.getElementById('page-discard-tbody');
+      if(tbody.children.length === 0) {
+          addDiscardEntry();
+      }
+  }
+
+  function adjustDiscardCount(delta) {
+      rowDiscardCount += delta;
+      if(rowDiscardCount < 1) rowDiscardCount = 1;
+      document.getElementById('add-discard-count').innerText = rowDiscardCount + "장";
+  }
+
+  function addMultipleDiscardRows(e) {
+      let firstNewRow = null;
+      for(let i=0; i<rowDiscardCount; i++) {
+          const row = addDiscardEntry();
+          if(i === 0) firstNewRow = row;
+      }
+      if(firstNewRow && e && e.detail === 0) {
+          const input = firstNewRow.querySelector('.card-name-input');
+          if(input) input.focus();
+      }
+  }
+
   function handleAddButtonKey(e, type) {
       if (e.key === 'ArrowUp') {
           e.preventDefault();
           if(type === 'add') adjustAddCount(1);
-          else adjustMoveCount(1);
+          else if(type === 'move') adjustMoveCount(1);
+          else if(type === 'discard') adjustDiscardCount(1);
       } else if (e.key === 'ArrowDown') {
           e.preventDefault();
           if(type === 'add') adjustAddCount(-1);
-          else adjustMoveCount(-1);
+          else if(type === 'move') adjustMoveCount(-1);
+          else if(type === 'discard') adjustDiscardCount(-1);
       }
   }
 
@@ -1066,30 +1144,32 @@
           <td class="no-cell">${nextNum}</td>
           <td class="content-cell">
               <div class="content-wrapper">
-                  <div class="entry-row-top">
+                  <div class="tri-row-top">
                       <div class="name-area"><div class="card-name-disp">카드 번호 입력</div></div>
                       <div class="no-area"><input type="text" class="page-card-no" oninput="handleCardNoInput(this)" onblur="fetchCardNameForPage(this)" onkeydown="if(event.key==='Enter') fetchCardNameForPage(this)" placeholder="카드 번호"></div>
                   </div>
-                  <div class="entry-row-bottom">
-                      <div class="input-wrap w-img">
+                  <div class="tri-row-mid">
+                      <div class="input-wrap w-half">
                           <div class="custom-select-wrapper no-option" id="wrap-add-illust-${nextNum}" data-type="strict">
                             <input type="text" class="custom-input page-card-another" placeholder="일러스트" readonly>
                             <i class="material-icons arrow-icon">arrow_drop_down</i>
                           </div>
                       </div>
-                      <div class="input-wrap w-rare">
+                      <div class="input-wrap w-half">
                           <div class="custom-select-wrapper no-option" id="wrap-add-rare-${nextNum}" data-type="strict">
                             <input type="text" class="custom-input page-card-proc" placeholder="레어도" readonly>
                             <i class="material-icons arrow-icon">arrow_drop_down</i>
                           </div>
                       </div>
-                      <div class="input-wrap w-loc">
+                  </div>
+                  <div class="tri-row-bot">
+                      <div class="input-wrap w-half">
                           <div class="custom-select-wrapper no-option" id="wrap-add-loc-${nextNum}" data-type="free">
                             <input type="text" class="custom-input page-card-loc" placeholder="보관위치" readonly>
                             <i class="material-icons arrow-icon">arrow_drop_down</i>
                           </div>
                       </div>
-                      <div class="input-wrap w-qty"><input type="number" class="page-card-qty" min="1" readonly placeholder="수량"></div>
+                      <div class="input-wrap w-half"><input type="number" class="page-card-qty" min="1" readonly placeholder="수량"></div>
                   </div>
               </div>
           </td>
@@ -1110,6 +1190,347 @@
       return tr;
   }
   
+  function addDiscardEntry() {
+      const tbody = document.getElementById('page-discard-tbody');
+      const currentCount = tbody.querySelectorAll('tr').length;
+      const nextNum = currentCount + 1;
+      const isOdd = nextNum % 2 !== 0;
+      const groupClass = isOdd ? 'odd' : 'even';
+
+      const tr = document.createElement('tr');
+      tr.className = `entry-row entry-group ${groupClass}`;
+      
+      tr.innerHTML = `
+          <td class="no-cell">${nextNum}</td>
+          <td class="content-cell">
+              <div class="content-wrapper">
+                  <div class="tri-row-top">
+                      <div class="name-area">
+                        <div class="custom-select-wrapper no-arrow" id="wrap-discard-name-${nextNum}">
+                            <input type="text" class="custom-input card-name-input" placeholder="카드 이름" oninput="handleDiscardNameInput(this)" autocomplete="off">
+                            <i class="material-icons arrow-icon">arrow_drop_down</i>
+                        </div>
+                      </div>
+                      <div class="no-area">
+                        <div class="custom-select-wrapper no-arrow" id="wrap-discard-no-${nextNum}">
+                            <input type="text" class="custom-input discard-card-no" oninput="handleDiscardNoInput(this)" onblur="validateDiscardNoInput(this)" onkeydown="if(event.key==='Enter') validateDiscardNoInput(this)" placeholder="카드 번호" autocomplete="off">
+                            <i class="material-icons arrow-icon">arrow_drop_down</i>
+                        </div>
+                      </div>
+                  </div>
+                  <div class="tri-row-mid">
+                      <div class="input-wrap w-half">
+                          <div class="custom-select-wrapper no-option" id="wrap-discard-illust-${nextNum}" data-type="strict">
+                            <input type="text" class="custom-input discard-card-another" placeholder="일러스트" readonly>
+                            <i class="material-icons arrow-icon">arrow_drop_down</i>
+                          </div>
+                      </div>
+                      <div class="input-wrap w-half">
+                          <div class="custom-select-wrapper no-option" id="wrap-discard-rare-${nextNum}" data-type="strict">
+                            <input type="text" class="custom-input discard-card-proc" placeholder="레어도" readonly>
+                            <i class="material-icons arrow-icon">arrow_drop_down</i>
+                          </div>
+                      </div>
+                  </div>
+                  <div class="tri-row-bot">
+                      <div class="input-wrap w-half">
+                          <div class="custom-select-wrapper no-option" id="wrap-discard-loc-${nextNum}" data-type="strict">
+                            <input type="text" class="custom-input discard-card-loc" placeholder="보관위치">
+                            <i class="material-icons arrow-icon">arrow_drop_down</i>
+                          </div>
+                      </div>
+                      <div class="input-wrap w-half"><input type="number" class="discard-card-qty" min="1" placeholder="수량"></div>
+                  </div>
+              </div>
+          </td>
+          <td class="col-delete" tabindex="0" onclick="deleteDiscardEntry(this)" onkeydown="if(event.key==='Enter') deleteDiscardEntry(this)"><i class="material-icons">delete</i></td>
+      `;
+
+      tbody.appendChild(tr);
+      reindexDiscardRows();
+      setupCustomDropdown(tr.querySelector(`#wrap-discard-illust-${nextNum}`), handleDiscardIllustChange);
+      setupCustomDropdown(tr.querySelector(`#wrap-discard-rare-${nextNum}`), handleDiscardRareChange);
+      setupCustomDropdown(tr.querySelector(`#wrap-discard-loc-${nextNum}`), handleDiscardLocChange);
+      setupCardNoAutocomplete(tr.querySelector(`#wrap-discard-no-${nextNum}`));
+      setupCardNameAutocomplete(tr.querySelector(`#wrap-discard-name-${nextNum}`));
+      
+      const qtyInput = tr.querySelector('.discard-card-qty');
+      qtyInput.addEventListener('input', function() {
+          const locVal = tr.querySelector('.discard-card-loc').value;
+          if(!locVal) { this.value = ""; return; }
+          const max = parseInt(this.max);
+          const current = parseInt(this.value);
+          if(!isNaN(max) && current > max) { this.value = max; }
+      });
+
+      return tr;
+  }
+
+  function handleDiscardNameInput(input) {
+      const row = input.closest('tr');
+      const noInput = row.querySelector('.discard-card-no');
+      const nameVal = input.value.trim();
+      if (!input.dataset.programmatic) { noInput.dataset.programmatic = "true"; noInput.value = ""; handleDiscardNoInput(noInput); delete noInput.dataset.programmatic; }
+      if (nameToNosMap[nameVal]) { const matchedNos = nameToNosMap[nameVal]; if (matchedNos.length === 1) { noInput.value = matchedNos[0]; noInput.dataset.programmatic = "true"; handleDiscardNoInput(noInput); validateDiscardNoInput(noInput); delete noInput.dataset.programmatic; } }
+  }
+
+  function validateDiscardNoInput(input) {
+      const val = input.value.trim().toUpperCase();
+      const row = input.closest('tr');
+      const nameInput = row.querySelector('.card-name-input');
+      if (!val) { resetDiscardRow(row, 'no'); return; }
+      if (!ownedCardNumbers.includes(val)) { 
+          input.value = ""; input.placeholder = "번호 확인!"; input.classList.add('error-placeholder'); 
+          setTimeout(() => { input.placeholder = "카드 번호"; input.classList.remove('error-placeholder'); }, 5000); 
+          resetDiscardRow(row, 'no'); 
+      } else {
+          if(isCardDepleted(val, row)) {
+              input.value = ""; input.placeholder = "모두 선택됨"; input.classList.add('error-placeholder');
+              setTimeout(() => { input.placeholder = "카드 번호"; input.classList.remove('error-placeholder'); }, 5000);
+              resetDiscardRow(row, 'no');
+              return;
+          }
+          const matches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === val); 
+          if (matches.length > 0) { 
+              const name = matches[0][0]; 
+              nameInput.dataset.programmatic = "true"; 
+              nameInput.value = name; 
+              delete nameInput.dataset.programmatic; 
+              updateDiscardIllusts(row, matches); 
+          } 
+      }
+  }
+
+  function handleDiscardNoInput(input) {
+      const row = input.closest('tr'); const start = input.selectionStart; input.value = input.value.replace(/[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/g, '').toUpperCase(); input.setSelectionRange(start, start);
+      if (!input.dataset.programmatic) { const nameInput = row.querySelector('.card-name-input'); nameInput.value = ""; }
+      const cardNo = input.value.trim().toUpperCase();
+      if (!cardNo) { resetDiscardRow(row, 'no'); return; }
+      const matches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo);
+      if (matches.length > 0) { updateDiscardIllusts(row, matches); } else { resetDiscardRow(row, 'no'); }
+  }
+
+  function resetDiscardRow(row, level) {
+      const illustInp = row.querySelector('.discard-card-another'); const rareInp = row.querySelector('.discard-card-proc'); const locInp = row.querySelector('.discard-card-loc'); const qtyInput = row.querySelector('.discard-card-qty');
+      const illustWrap = row.querySelector('[id^="wrap-discard-illust"]'); const rareWrap = row.querySelector('[id^="wrap-discard-rare"]'); const locWrap = row.querySelector('[id^="wrap-discard-loc"]');
+      illustWrap.classList.remove('single-option'); rareWrap.classList.remove('single-option'); locWrap.classList.remove('single-option');
+      illustWrap.classList.add('no-option'); rareWrap.classList.add('no-option'); locWrap.classList.add('no-option');
+      if (level === 'no') { 
+          illustInp.value = ""; illustInp.setAttribute('readonly', true); illustWrap.dataset.options = "[]"; 
+          rareInp.value = ""; rareInp.setAttribute('readonly', true); rareWrap.dataset.options = "[]"; 
+          locInp.value = ""; locWrap.dataset.options = "[]"; qtyInput.value = ''; 
+      }
+  }
+
+  function updateDiscardIllusts(row, matches) {
+      const illustInp = row.querySelector('.discard-card-another'); const illustWrap = row.querySelector('[id^="wrap-discard-illust"]');
+      const cardNo = row.querySelector('.discard-card-no').value.trim();
+      const uniqueIllusts = [...new Set(matches.map(r => String(r[5] || "기본").trim()))].sort();
+      
+      const validIllusts = uniqueIllusts.filter(illust => checkDiscardIllustAvailability(cardNo, illust, row));
+      const options = validIllusts.map(i => ({ val: i, text: i }));
+      illustWrap.dataset.options = JSON.stringify(options);
+      illustInp.removeAttribute('readonly'); illustWrap.classList.remove('no-option'); 
+      const currentVal = illustInp.value; const isValid = options.some(o => o.val === currentVal);
+      if (isValid) { handleDiscardIllustChange(illustInp); } else { 
+          if (options.length === 1) { illustWrap.classList.add('single-option'); illustInp.value = options[0].val; handleDiscardIllustChange(illustInp); } 
+          else if(options.length === 0) { illustInp.value = ""; illustWrap.classList.add('no-option'); resetDiscardRow(row, 'no'); }
+          else { illustInp.value = ""; illustWrap.classList.remove('single-option'); handleDiscardIllustChange(illustInp); } 
+      }
+  }
+  
+  function updateDiscardIllustsDynamic(wrap) {
+      const row = wrap.closest('tr');
+      const cardNo = row.querySelector('.discard-card-no').value.trim().toUpperCase();
+      if(!cardNo) return;
+      const matches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo);
+      
+      const uniqueIllusts = [...new Set(matches.map(r => String(r[5] || "기본").trim()))].sort();
+      const validIllusts = uniqueIllusts.filter(illust => checkDiscardIllustAvailability(cardNo, illust, row));
+      const options = validIllusts.map(i => ({ val: i, text: i }));
+      wrap.dataset.options = JSON.stringify(options);
+      
+      if(options.length <= 1) wrap.classList.add('single-option');
+      else wrap.classList.remove('single-option');
+  }
+
+  function handleDiscardIllustChange(input) {
+      const row = input.closest('tr'); const cardNo = row.querySelector('.discard-card-no').value.trim(); const selectedIllust = input.value;
+      if (!selectedIllust) { const rareInp = row.querySelector('.discard-card-proc'); rareInp.value = ""; handleDiscardRareChange(rareInp); return; }
+      const dbIllust = selectedIllust;
+      const matches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo && String(r[5] || "기본").trim() === dbIllust);
+      updateDiscardRarities(row, matches);
+  }
+
+  function updateDiscardRarities(row, matches) {
+      const rareInp = row.querySelector('.discard-card-proc'); const rareWrap = row.querySelector('[id^="wrap-discard-rare"]'); 
+      const cardNo = row.querySelector('.discard-card-no').value.trim();
+      const illust = row.querySelector('.discard-card-another').value.trim();
+      
+      const uniqueRares = [...new Set(matches.map(r => String(r[2]).trim()))].sort(compareRarity);
+      const validRares = uniqueRares.filter(rare => checkDiscardRareAvailability(cardNo, illust, rare, row));
+
+      const options = validRares.map(r => ({ val: r, text: getLocalizedRarity(r) }));
+      rareWrap.dataset.options = JSON.stringify(options);
+      rareInp.removeAttribute('readonly'); rareWrap.classList.remove('no-option'); 
+      const currentVal = rareInp.value; 
+      const currentRaw = rareInp.dataset.raw || currentVal;
+      const isValid = options.some(o => o.val === currentRaw);
+      
+      if (isValid) { handleDiscardRareChange(rareInp); } else { 
+          if (options.length === 1) { rareWrap.classList.add('single-option'); rareInp.value = options[0].text; rareInp.dataset.raw = options[0].val; handleDiscardRareChange(rareInp); } 
+          else if(options.length === 0) { rareInp.value = ""; rareWrap.classList.add('no-option'); }
+          else { rareInp.value = ""; delete rareInp.dataset.raw; rareWrap.classList.remove('single-option'); handleDiscardRareChange(rareInp); } 
+      }
+  }
+  
+  function updateDiscardRaritiesDynamic(wrap) {
+      const row = wrap.closest('tr');
+      const cardNo = row.querySelector('.discard-card-no').value.trim().toUpperCase();
+      const illust = row.querySelector('.discard-card-another').value;
+      if(!cardNo || !illust) return;
+      
+      const matches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo && String(r[5] || "기본").trim() === illust);
+      const uniqueRares = [...new Set(matches.map(r => String(r[2]).trim()))].sort(compareRarity);
+      const validRares = uniqueRares.filter(rare => checkDiscardRareAvailability(cardNo, illust, rare, row));
+      const options = validRares.map(r => ({ val: r, text: getLocalizedRarity(r) }));
+      
+      wrap.dataset.options = JSON.stringify(options);
+      if(options.length <= 1) wrap.classList.add('single-option');
+      else wrap.classList.remove('single-option');
+  }
+
+  function handleDiscardRareChange(input) {
+      const row = input.closest('tr'); const cardNo = row.querySelector('.discard-card-no').value.trim(); const selectedIllust = row.querySelector('.discard-card-another').value; const selectedRare = input.dataset.raw || input.value; 
+      if (!input.value) { const locInp = row.querySelector('.discard-card-loc'); locInp.value = ""; handleDiscardLocChange(locInp); return; }
+      const dbIllust = selectedIllust;
+      const matches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo && String(r[5] || "기본").trim() === dbIllust && String(r[2]).trim() === selectedRare);
+      updateDiscardLocations(row, matches);
+  }
+
+  function updateDiscardLocations(row, matches) {
+      const locInp = row.querySelector('.discard-card-loc'); const locWrap = row.querySelector('[id^="wrap-discard-loc"]'); locInp.removeAttribute('readonly'); locWrap.classList.remove('no-option'); 
+      const cardNo = row.querySelector('.discard-card-no').value.trim(); const illust = row.querySelector('.discard-card-another').value; 
+      
+      const rareInput = row.querySelector('.discard-card-proc');
+      const rare = rareInput.dataset.raw || rareInput.value; 
+      
+      const locMap = {};
+      matches.forEach(r => { const loc = String(r[4]).trim(); const qty = parseInt(r[3]) || 0; if (qty > 0) locMap[loc] = (locMap[loc] || 0) + qty; });
+      
+      const globalUsage = getGlobalUsageMap(row); 
+      let usedLocs = new Set();
+      if(globalUsage[cardNo] && globalUsage[cardNo][illust] && globalUsage[cardNo][illust][rare]) {
+          usedLocs = globalUsage[cardNo][illust][rare];
+      }
+
+      const validLocs = []; 
+      Object.keys(locMap).forEach(loc => { 
+          if(!usedLocs.has(loc)) {
+              validLocs.push({ val: loc, text: `${loc} (보유: ${locMap[loc]})`, max: locMap[loc] }); 
+          }
+      });
+      validLocs.sort((a,b) => a.val.localeCompare(b.val));
+      locWrap.dataset.options = JSON.stringify(validLocs);
+      
+      const currentVal = locInp.value; const validOption = validLocs.find(o => o.val === currentVal);
+      if (validOption) { locInp.dataset.maxQty = validOption.max; handleDiscardLocChange(locInp); } else { 
+          if (validLocs.length === 1) { locWrap.classList.add('single-option'); locInp.value = validLocs[0].val; locInp.dataset.maxQty = validLocs[0].max; handleDiscardLocChange(locInp); } 
+          else { locInp.value = ""; locWrap.classList.remove('single-option'); handleDiscardLocChange(locInp); } 
+      }
+      if (validLocs.length === 0) locWrap.classList.add('no-option');
+  }
+  
+  function updateDiscardLocationsDynamic(wrap) {
+      const row = wrap.closest('tr');
+      const cardNo = row.querySelector('.discard-card-no').value.trim();
+      const illust = row.querySelector('.discard-card-another').value;
+      const rareInput = row.querySelector('.discard-card-proc');
+      const rare = rareInput.dataset.raw || rareInput.value;
+      if(!cardNo || !illust || !rare) return;
+      
+      const matches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo && String(r[5] || "기본").trim() === illust && String(r[2]).trim() === rare);
+      
+      const locMap = {};
+      matches.forEach(r => { const loc = String(r[4]).trim(); const qty = parseInt(r[3]) || 0; if (qty > 0) locMap[loc] = (locMap[loc] || 0) + qty; });
+      
+      const globalUsage = getGlobalUsageMap(row);
+      let usedLocs = new Set();
+      if(globalUsage[cardNo] && globalUsage[cardNo][illust] && globalUsage[cardNo][illust][rare]) {
+          usedLocs = globalUsage[cardNo][illust][rare];
+      }
+      
+      const validLocs = [];
+      Object.keys(locMap).forEach(loc => {
+          if(!usedLocs.has(loc)) {
+              validLocs.push({ val: loc, text: `${loc} (보유: ${locMap[loc]})`, max: locMap[loc] });
+          }
+      });
+      validLocs.sort((a,b) => a.val.localeCompare(b.val));
+      wrap.dataset.options = JSON.stringify(validLocs);
+      
+      if(validLocs.length <= 1) wrap.classList.add('single-option');
+      else wrap.classList.remove('single-option');
+  }
+
+  function handleDiscardLocChange(input) {
+      const row = input.closest('tr'); const qtyInput = row.querySelector('.discard-card-qty'); const maxQty = parseInt(input.dataset.maxQty) || 0;
+      if (!input.value) { qtyInput.value = ""; return; }
+      if (maxQty > 0) { qtyInput.max = maxQty; qtyInput.placeholder = `최대 ${maxQty}`; const currentQty = parseInt(qtyInput.value); if (!isNaN(currentQty) && currentQty > maxQty) { qtyInput.value = maxQty; } } else { qtyInput.value = ""; qtyInput.placeholder = "재고 없음"; }
+  }
+
+  function getGlobalUsageMap(excludeRow) {
+      const usage = {};
+      const rows = document.getElementById('page-discard-tbody').querySelectorAll('tr');
+      rows.forEach(r => {
+          if (r === excludeRow) return;
+          const no = r.querySelector('.discard-card-no').value.trim().toUpperCase();
+          if(!no) return;
+          const illust = r.querySelector('.discard-card-another').value;
+          const rareInp = r.querySelector('.discard-card-proc');
+          const rare = rareInp.dataset.raw || rareInp.value;
+          const loc = r.querySelector('.discard-card-loc').value;
+          
+          if(no && illust && rare && loc) {
+              if(!usage[no]) usage[no] = {};
+              if(!usage[no][illust]) usage[no][illust] = {};
+              if(!usage[no][illust][rare]) usage[no][illust][rare] = new Set();
+              usage[no][illust][rare].add(loc);
+          }
+      });
+      return usage;
+  }
+
+  function checkDiscardIllustAvailability(cardNo, illust, excludeRow) {
+      const matches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo && String(r[5] || "기본").trim() === illust);
+      const uniqueRares = [...new Set(matches.map(r => String(r[2]).trim()))];
+      return uniqueRares.some(rare => checkDiscardRareAvailability(cardNo, illust, rare, excludeRow));
+  }
+
+  function checkDiscardRareAvailability(cardNo, illust, rare, currentRow) {
+      const dbMatches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo && String(r[5] || "기본").trim() === illust && String(r[2]).trim() === rare);
+      const dbLocs = new Set(dbMatches.map(r => String(r[4]).trim()));
+      
+      const globalUsage = getGlobalUsageMap(currentRow);
+      let usedLocs = new Set();
+      if(globalUsage[cardNo] && globalUsage[cardNo][illust] && globalUsage[cardNo][illust][rare]) {
+          usedLocs = globalUsage[cardNo][illust][rare];
+      }
+      
+      for (let loc of dbLocs) {
+          if (!usedLocs.has(loc)) return true;
+      }
+      return false;
+  }
+
+  function isCardDepleted(cardNo, excludeRow) {
+      const matches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo);
+      if(matches.length === 0) return true; 
+      
+      const uniqueIllusts = [...new Set(matches.map(r => String(r[5] || "기본").trim()))];
+      return !uniqueIllusts.some(illust => checkDiscardIllustAvailability(cardNo, illust, excludeRow));
+  }
+
   function handleAddLocChange(input) {
       const row = input.closest('tr');
       const qtyInp = row.querySelector('.page-card-qty');
@@ -1159,6 +1580,29 @@
 
   function reindexRows() {
       const tbody = document.getElementById('page-add-tbody');
+      const rows = tbody.querySelectorAll('tr');
+      rows.forEach((row, index) => {
+          const num = index + 1;
+          const noCell = row.querySelector('.no-cell');
+          if (noCell) noCell.innerText = num;
+          row.classList.remove('odd', 'even');
+          const groupClass = (num % 2 !== 0) ? 'odd' : 'even';
+          row.classList.add(groupClass);
+          const delBtn = row.querySelector('.col-delete');
+          if (rows.length <= 1) { delBtn.classList.add('disabled'); } else { delBtn.classList.remove('disabled'); }
+      });
+  }
+
+  function deleteDiscardEntry(btn) {
+      const row = btn.closest('tr');
+      const tbody = document.getElementById('page-discard-tbody');
+      if (tbody.querySelectorAll('tr').length <= 1) return;
+      tbody.removeChild(row);
+      reindexDiscardRows();
+  }
+
+  function reindexDiscardRows() {
+      const tbody = document.getElementById('page-discard-tbody');
       const rows = tbody.querySelectorAll('tr');
       rows.forEach((row, index) => {
           const num = index + 1;
@@ -1223,6 +1667,26 @@
           if (res.name.includes("오류") || res.name.includes("확인하세요")) {
               nameDiv.innerText = res.name;
           } else {
+              if (res.rarityMappingRaw) {
+                  rarityMappingRaw = res.rarityMappingRaw;
+                  const headers = rarityMappingRaw[0];
+                  rarityColMap = {};
+                  headers.forEach((h, i) => rarityColMap[h] = i);
+                  rarityRows = rarityMappingRaw.slice(1);
+                  rarityReverseMap = {};
+                  rarityOrderMap = {}; 
+                  rarityRows.forEach((row, index) => {
+                      const id = row[0]; 
+                      if(id) {
+                          rarityOrderMap[id] = index; 
+                          row.forEach(cellVal => {
+                              if(cellVal) rarityReverseMap[cellVal] = index;
+                          });
+                      }
+                  });
+                  allProcessingTypes = rarityRows.map(r => r[0]).filter(Boolean);
+              }
+
               clientCache[cardNo] = { name: res.name, anotherCount: res.anotherCount, rarities: res.rarities, linkData: res.linkData };
               if (res.name) {
                   if (!allNames.includes(res.name)) {
@@ -1279,15 +1743,14 @@
           sources = [...allProcessingTypes].sort(compareRarity);
       }
       
-      // [MODIFIED] Store raw value in 'val', localized text in 'text'
       rareOptions = sources.map(r => ({ val: r, text: getLocalizedRarity(r) }));
       
       procWrap.dataset.options = JSON.stringify(rareOptions);
       procWrap.classList.remove('no-option');
 
       if (rareOptions.length === 1) {
-          procInp.value = rareOptions[0].text; // [MODIFIED] Set visible value
-          procInp.dataset.raw = rareOptions[0].val; // [MODIFIED] Set raw value
+          procInp.value = rareOptions[0].text; 
+          procInp.dataset.raw = rareOptions[0].val; 
           procWrap.classList.add('single-option');
       } else {
           procInp.value = ""; 
@@ -1315,6 +1778,12 @@
   function toggleResultDetail_Move() { 
       const box = document.getElementById('move-result-detail-box'); 
       const icon = document.getElementById('move-toggle-icon'); 
+      if (box.style.display !== 'block') { box.style.display = 'block'; icon.innerText = 'keyboard_arrow_up'; } else { box.style.display = 'none'; icon.innerText = 'keyboard_arrow_down'; }
+  }
+  
+  function toggleResultDetail_Discard() { 
+      const box = document.getElementById('discard-result-detail-box'); 
+      const icon = document.getElementById('discard-toggle-icon'); 
       if (box.style.display !== 'block') { box.style.display = 'block'; icon.innerText = 'keyboard_arrow_up'; } else { box.style.display = 'none'; icon.innerText = 'keyboard_arrow_down'; }
   }
 
@@ -1410,6 +1879,119 @@
       toggleBackgroundInert(true);
       M.Modal.getInstance(modal).open();
   }
+  
+  function showDiscardResultModal(successCount, successQty, detailLog, errorMsg) {
+      const modal = document.getElementById('discard-result-modal');
+      const iconArea = document.getElementById('discard-result-icon-area');
+      const successText = document.getElementById('discard-success-text');
+      const failText = document.getElementById('discard-fail-text');
+      const summaryBody = document.getElementById('discard-summary-body');
+      const detailBody = document.getElementById('discard-result-detail-body');
+      
+      const titleEl = document.getElementById('discard-modal-title');
+      if (successCount > 0) { titleEl.innerText = "카드 제거 완료!"; } 
+      else { titleEl.innerText = "카드 제거 실패!"; }
+
+      summaryBody.innerHTML = ''; detailBody.innerHTML = '';
+      successText.innerHTML = ""; failText.innerHTML = "";
+      document.getElementById('discard-result-detail-box').style.display = 'none';
+      document.getElementById('discard-toggle-icon').innerText = 'keyboard_arrow_down';
+
+      if (errorMsg) {
+           iconArea.innerHTML = '<i class="material-icons" style="color: var(--error-red);">error</i>';
+           failText.innerText = "오류 발생: " + errorMsg;
+           failText.style.color = 'var(--error-red)';
+      } else {
+           const failCount = detailLog.length - successCount;
+           if (failCount === 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--success-green);">check_circle</i>'; }
+           else if (successCount === 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--error-red);">cancel</i>'; }
+           else { iconArea.innerHTML = '<i class="material-icons" style="color: var(--warning-yellow);">warning</i>'; }
+
+           if (successCount > 0) { successText.innerHTML = `<div style="margin-bottom:4px;">${successQty}장 성공, ${failCount}건 실패</div>`; }
+           else if (failCount > 0) { successText.innerHTML = `<div style="margin-bottom:4px; color:var(--error-red);">${successQty}장 성공, ${failCount}건 실패</div>`; }
+
+           const successLogs = detailLog.filter(l => l.status === 'success');
+           if (successLogs.length > 0) {
+               const nameAgg = {};
+               successLogs.forEach(l => { if(!nameAgg[l.name]) nameAgg[l.name] = 0; nameAgg[l.name] += l.qty; });
+               for(const [name, qty] of Object.entries(nameAgg)) {
+                   summaryBody.innerHTML += `<tr style="background-color: var(--bg-success);"><td>${name}</td><td style="color:var(--success-green); font-weight:700;">${qty}장</td></tr>`;
+               }
+           }
+           const failLogs = detailLog.filter(l => l.status === 'fail');
+           if (failLogs.length > 0) {
+               const failAgg = {};
+               failLogs.forEach(l => {
+                   let reason = l.failReason;
+                   if(reason === 'empty_no' || reason === 'invalid_no') reason = "카드 번호 오류";
+                   else if(reason === 'no_another') reason = "일러스트 미선택";
+                   else if(reason === 'no_proc') reason = "레어도 미선택";
+                   else if(reason === 'no_loc') reason = "보관 위치 미선택";
+                   else if(reason === 'invalid_qty') reason = "수량 오류";
+
+                   if(!failAgg[reason]) failAgg[reason] = 0;
+                   failAgg[reason]++;
+               });
+               for(const [reason, count] of Object.entries(failAgg)) {
+                   summaryBody.innerHTML += `<tr style="background-color: var(--bg-fail);"><td style="color:var(--error-red);">${reason}</td><td style="color:var(--error-red); font-weight:700;">${count}건</td></tr>`;
+               }
+           }
+           
+           detailLog.forEach((log, idx) => {
+               const tr = document.createElement('tr');
+               let procTxt = log.proc; let locTxt = log.loc; let qtyTxt = log.qty;
+               let anotherTxt = log.another;
+               let cardNoStyle = ''; let anotherStyle = ''; let procStyle = ''; let locStyle = ''; let qtyStyle = '';
+
+               if (log.status === 'fail') {
+                   if (log.failReason === 'empty_no') {
+                      log.cardNo = "미입력"; log.name = "-"; anotherTxt = "-"; procTxt = ""; locTxt = "-"; qtyTxt = "-";
+                      cardNoStyle = 'color:var(--error-red); font-weight:700;';
+                   } else if (log.failReason === 'invalid_no') {
+                      log.cardNo = "오류"; log.name = "-"; procTxt = "-"; locTxt = "-"; qtyTxt = "-"; anotherTxt = "-";
+                      cardNoStyle = 'color:var(--error-red); font-weight:700;';
+                   } else if (log.failReason === 'no_another') {
+                      anotherTxt = "미선택"; procTxt = "-"; locTxt = "-"; qtyTxt = "-"; anotherStyle = 'color:var(--error-red); font-weight:700;';
+                   } else if (log.failReason === 'no_proc') {
+                      procTxt = "미선택"; locTxt = "-"; qtyTxt = "-"; procStyle = 'color:var(--error-red); font-weight:700;';
+                   } else if (log.failReason === 'no_loc') {
+                      locTxt = "미선택"; qtyTxt = "-"; lStyle = 'color:var(--error-red); font-weight:700;';
+                   } else if (log.failReason === 'invalid_qty') {
+                      qtyStyle = 'color:var(--error-red); font-weight:700;';
+                   }
+               }
+               tr.innerHTML = `<td>${idx+1}</td><td>${log.name}</td><td style="${cardNoStyle}">${log.cardNo}</td><td style="${anotherStyle}">${anotherTxt}</td><td style="${procStyle}">${getLocalizedRarity(procTxt) || "-"}</td><td style="${locStyle}">${locTxt}</td><td style="${qtyStyle}">${qtyTxt}</td>`;
+               detailBody.appendChild(tr);
+           });
+      }
+      
+      toggleBackgroundInert(true);
+      M.Modal.getInstance(modal).open();
+  }
+  
+  async function handleContinueDiscard() { 
+      M.Modal.getInstance(document.getElementById('discard-result-modal')).close(); 
+      toggleBackgroundInert(false);
+      const tbody = document.getElementById('page-discard-tbody'); 
+      const rows = Array.from(tbody.children); 
+      let hasFailures = false; let hasSuccess = false; 
+      for (let i = rows.length - 1; i >= 0; i--) { 
+          const row = rows[i]; 
+          if (row.dataset.status === 'success') { 
+              tbody.removeChild(row); hasSuccess = true; 
+          } else { 
+              hasFailures = true; delete row.dataset.status; 
+          } 
+      }
+      if (!hasFailures || tbody.children.length === 0) { addDiscardEntry(); } reindexDiscardRows();
+      
+      if (hasSuccess) {
+          if (syncCounter >= 9) {
+              syncCounter = 0;
+              await refreshInitialData();
+          }
+      }
+  }
 
   async function submitPageEntries() {
       if(document.getElementById('add-submit-main-btn').classList.contains('disabled')) return;
@@ -1441,7 +2023,7 @@
           }
 
           let another = row.querySelector('.page-card-another').value;
-          let procRaw = row.querySelector('.page-card-proc').dataset.raw || row.querySelector('.page-card-proc').value; // [MODIFIED] Use raw value if available
+          let procRaw = row.querySelector('.page-card-proc').dataset.raw || row.querySelector('.page-card-proc').value; 
           let loc = row.querySelector('.page-card-loc').value.trim();
           const qtyVal = row.querySelector('.page-card-qty').value;
           const qty = parseInt(qtyVal);
@@ -1453,19 +2035,17 @@
               failReason = "invalid_no"; nameText = "유효하지 않은 카드";
           } else if (!another) {
               failReason = "no_another"; another = "미선택";
-          } else if (!procRaw) failReason = "no_proc"; // Check raw
+          } else if (!procRaw) failReason = "no_proc"; 
           else if (!loc) failReason = "no_loc";
           else if (!qty || qty < 1) failReason = "invalid_qty";
 
           if (failReason) {
-              // detailLog uses display value for user
               let procDisp = row.querySelector('.page-card-proc').value;
               detailLog.push({ no, name: nameText, cardNo, another, proc: procDisp||"미선택", loc: loc||"미선택", qty: qty||0, status: 'fail', failReason });
               row.dataset.status = 'fail'; 
           } else {
-              // validRows uses raw value for DB
               validRows.push([nameText, cardNo, procRaw, qty, loc, another]);
-              detailLog.push({ no, name: nameText, cardNo, another, proc: procRaw, loc, qty, status: 'success' }); // Log uses raw, but display logic handles it
+              detailLog.push({ no, name: nameText, cardNo, another, proc: procRaw, loc, qty, status: 'success' }); 
               successCount++; successQty += qty;
               row.dataset.status = 'success'; 
           }
@@ -1497,16 +2077,213 @@
       }
   }
 
-  function decomposeHangul(str) { const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ']; const JUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ']; const JONG = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','흐','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ']; let result = ""; for (let i = 0; i < str.length; i++) { const charCode = str.charCodeAt(i); if (charCode >= 0xAC00 && charCode <= 0xD7A3) { const code = charCode - 0xAC00; const choIndex = Math.floor(code / 588); const jungIndex = Math.floor((code % 588) / 28); const jongIndex = code % 28; result += CHO[choIndex] + JUNG[jungIndex] + JONG[jongIndex]; } else { result += str.charAt(i); } } return result; }
+  async function submitDiscardEntries() {
+      if(document.getElementById('discard-submit-main-btn').classList.contains('disabled')) return;
+      const tbody = document.getElementById('page-discard-tbody');
+      const rows = tbody.querySelectorAll('tr'); 
+      
+      const validRows = [];
+      const detailLog = []; 
+      let successCount = 0; let successQty = 0;
+      let hasFail = false;
+
+      rows.forEach(row => {
+          const no = row.querySelector('.no-cell').innerText;
+          const cardNo = row.querySelector('.discard-card-no').value.trim();
+          let nameText = row.querySelector('.card-name-input').value.trim();
+          
+          if (!cardNo) return; 
+
+          let another = row.querySelector('.discard-card-another').value;
+          let procInput = row.querySelector('.discard-card-proc');
+          let proc = procInput.dataset.raw || procInput.value; 
+          let loc = row.querySelector('.discard-card-loc').value.trim();
+          const qtyVal = row.querySelector('.discard-card-qty').value;
+          const qty = parseInt(qtyVal);
+
+          let failReason = null;
+          if (!cardNo || !nameText) {
+              failReason = "invalid_no";
+          } else if (!another) {
+              failReason = "no_another";
+          } else if (!proc) {
+              failReason = "no_proc";
+          } else if (!loc) {
+              failReason = "no_loc";
+          } else if (!qty || qty < 1) {
+              failReason = "invalid_qty";
+          }
+
+          if (failReason) {
+              hasFail = true;
+              row.dataset.status = 'fail'; 
+              detailLog.push({ no, name: nameText, cardNo, another: another||"-", proc: proc||"-", loc: loc||"-", qty: qty||0, status: 'fail', failReason });
+          } else {
+              validRows.push({ cardNo, name: nameText, proc, another, loc, qty });
+              detailLog.push({ no, name: nameText, cardNo, another, proc, loc, qty, status: 'success' });
+              successCount++; successQty += qty;
+              row.dataset.status = 'success'; 
+          }
+      });
+
+      if (validRows.length === 0 && !hasFail) {
+          showToast('제거할 카드가 없습니다.', 'warning-yellow black-text');
+          return;
+      }
+      
+      if (validRows.length === 0 && hasFail) {
+           showDiscardResultModal(0, 0, detailLog); 
+           return;
+      }
+
+      showLoading(true, "카드 제거 중...");
+      try {
+          const res = await callApi('discardCards', {}, validRows);
+          showLoading(false);
+          
+          if (res.success) {
+              updateLocalInventory(res.updatedItems);
+              syncCounter++;
+              showDiscardResultModal(successCount, successQty, detailLog);
+          } else {
+              showToast('제거 실패: ' + (res.message || '오류 발생'), 'red darken-1');
+              showDiscardResultModal(0, 0, detailLog, res.message || '오류 발생');
+          }
+      } catch (e) {
+          showLoading(false);
+          showToast('제거 실패: ' + e.toString(), 'red darken-1'); 
+          showDiscardResultModal(0, 0, detailLog, e.toString());
+      }
+  }
+
+  function decomposeHangul(str) { 
+    if (!str) return "";
+    return str.normalize('NFD');
+  }
+
   function normalizeStr(str) { return str.replace(/\s+/g, '').toLowerCase(); }
   function showRecentInDropdown() { const recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); const list = document.getElementById('custom-dropdown'); currentFocus = -1; Array.from(list.children).forEach(child => { if (!child.classList.contains('recent-header-item')) { child.remove(); } }); let header = list.querySelector('.recent-header-item'); if (!header) { header = document.createElement('li'); header.className = 'recent-header-item'; header.innerHTML = `<span class="recent-title">최근 검색</span><span class="clear-all-btn">전체 제거</span>`; list.prepend(header); } if (recent.length === 0) { const noResultLi = document.createElement('li'); noResultLi.className = 'no-result-item'; noResultLi.innerText = '검색 기록이 없습니다.'; list.appendChild(noResultLi); } else { recent.slice(0, 5).forEach(r => { const li = document.createElement('li'); li.className = 'recent-item-row'; li.dataset.val = r; li.innerHTML = `<span class="recent-text text-suggest">${r}</span><i class="material-icons item-delete-btn">close</i>`; list.appendChild(li); }); } list.style.display = 'block'; toggleSearchWrapper(true); }
-  function filterAndShowDropdown(val) { if(!isAppConfigured) return; const list = document.getElementById('custom-dropdown'); const normalizedInput = normalizeStr(val); const decomposedInput = decomposeHangul(normalizedInput); currentFocus = -1; let matches = allNames.filter(name => { const normName = normalizeStr(name); const decompName = decomposeHangul(normName); return decompName.includes(decomposedInput); }); matches.sort((a, b) => { const normVal = normalizedInput; const normA = normalizeStr(a); const normB = normalizeStr(b); if (normA === normVal) return -1; if (normB === normVal) return 1; const aStarts = normA.startsWith(normVal); const bStarts = normB.startsWith(normVal); if (aStarts && !bStarts) return -1; if (!aStarts && bStarts) return 1; return a.length - b.length || a.localeCompare(b); }); list.innerHTML = ''; if (matches.length === 0) { list.innerHTML = '<li class="no-result-item">등록되지 않은 카드</li>'; list.style.display = 'block'; toggleSearchWrapper(true); return; } matches.slice(0, 10).forEach(m => { const li = document.createElement('li'); li.className = 'text-suggest'; li.dataset.val = m; let html = ""; let searchIdx = 0; const lowerM = m.toLowerCase(); const lowerVal = val.toLowerCase().replace(/\s+/g, ''); for(let i=0; i<m.length; i++) { if(searchIdx < lowerVal.length && lowerM[i] === lowerVal[searchIdx]) { html += `<span class="text-match">${m[i]}</span>`; searchIdx++; } else { html += m[i]; } } li.innerHTML = html; list.appendChild(li); }); list.style.display = 'block'; toggleSearchWrapper(true); }
+  
+  function filterAndShowDropdown(val) { 
+      if(!isAppConfigured) return; 
+      const list = document.getElementById('custom-dropdown'); 
+      const normalizedInput = normalizeStr(val); 
+      const decomposedInput = decomposeHangul(normalizedInput); 
+      currentFocus = -1; 
+      
+      // [v0.23.19] 실제 수량이 있는 이름만 필터링
+      const ownedNames = new Set(localCardDatabase.filter(r => (parseInt(r[3]) || 0) > 0).map(r => String(r[0])));
+      
+      let matches = allNames.filter(name => { 
+          if (!ownedNames.has(name)) return false;
+          const normName = normalizeStr(name); 
+          const decompName = decomposeHangul(normName); 
+          return decompName.includes(decomposedInput); 
+      }); 
+      
+      matches.sort((a, b) => { 
+          const normVal = normalizedInput; 
+          const normA = normalizeStr(a); 
+          const normB = normalizeStr(b); 
+          if (normA === normVal) return -1; 
+          if (normB === normVal) return 1; 
+          const aStarts = normA.startsWith(normVal); 
+          const bStarts = normB.startsWith(normVal); 
+          if (aStarts && !bStarts) return -1; 
+          if (!aStarts && bStarts) return 1; 
+          return a.length - b.length || a.localeCompare(b); 
+      }); 
+      
+      list.innerHTML = ''; 
+      if (matches.length === 0) { 
+          list.innerHTML = '<li class="no-result-item">등록되지 않은 카드</li>'; 
+          list.style.display = 'block'; 
+          toggleSearchWrapper(true); 
+          return; 
+      } 
+      
+      matches.slice(0, 10).forEach(m => { 
+          const li = document.createElement('li'); 
+          li.className = 'text-suggest'; 
+          li.dataset.val = m; 
+          let html = ""; 
+          let searchIdx = 0; 
+          const lowerM = m.toLowerCase(); 
+          const lowerVal = val.toLowerCase().replace(/\s+/g, ''); 
+          for(let i=0; i<m.length; i++) { 
+              if(searchIdx < lowerVal.length && lowerM[i] === lowerVal[searchIdx]) { 
+                  html += `<span class="text-match">${m[i]}</span>`; 
+                  searchIdx++; 
+              } else { 
+                  html += m[i]; 
+              } 
+          } 
+          li.innerHTML = html; 
+          list.appendChild(li); 
+      }); 
+      list.style.display = 'block'; 
+      toggleSearchWrapper(true); 
+  }
+
   function deleteRecentItem(name) { let recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); recent = recent.filter(r => r !== name); localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); showRecentInDropdown(); }
   function updateDisconnectBtn() { const btn = document.getElementById('disconnect-btn'); if (localStorage.getItem(STORAGE_KEY)) { btn.classList.remove('disabled'); } else { btn.classList.add('disabled'); } }
   function disconnectSheet() { localStorage.removeItem(STORAGE_KEY); updateDisconnectBtn(); isAppConfigured = false; currentSheetName = ""; document.getElementById('sheet-url').placeholder = "주소 입력 (예 : https://docs.google.com/spreadsheets/...)"; cancelSettings(); showToast('연결이 해제되었습니다.', 'red darken-1'); }
   function saveSettings() { const url = document.getElementById('sheet-url').value.trim(); const match = url.match(/[-\w]{25,}/); if(match) { localStorage.setItem(STORAGE_KEY, match[0]); refreshInitialData(); cancelSettings(); } }
   function cancelSettings() { clearTimeout(validationTimeout); const input = document.getElementById('sheet-url'); const mark = document.getElementById('valid-mark'); const msg = document.getElementById('status-msg'); const confirmBtn = document.getElementById('confirm-btn'); input.value = ''; input.classList.remove('state-error', 'state-warning', 'state-success'); mark.style.display = 'none'; msg.innerText = ''; confirmBtn.classList.add('disabled'); if (currentSheetName) { input.placeholder = "연결됨 : " + currentSheetName; } else { input.placeholder = "주소 입력 (예 : https://docs.google.com/spreadsheets/...)"; } }
-  function validateSheetLink() { clearTimeout(validationTimeout); const input = document.getElementById('sheet-url'); const url = input.value.trim(); const mark = document.getElementById('valid-mark'), msg = document.getElementById('status-msg'), confirmBtn = document.getElementById('confirm-btn'); input.classList.remove('state-error', 'state-warning', 'state-success'); if (!url) { mark.style.display = 'none'; msg.innerText = ''; confirmBtn.classList.add('disabled'); return; } const match = url.match(/[-\w]{25,}/); if (!match) { mark.innerHTML = '<i class="material-icons" style="color: var(--error-red)">cancel</i>'; mark.style.display = 'block'; msg.innerText = '구글 시트 링크를 적어주세요.'; msg.style.color = 'var(--error-red)'; input.classList.add('state-error'); confirmBtn.classList.add('disabled'); return; } mark.innerHTML = '<div class="loading-spinner"></div>'; mark.style.display = 'block'; msg.innerText = '확인 중...'; msg.style.color = 'var(--text-secondary)'; validationTimeout = setTimeout(async () => { try { const res = await callApi('checkSheet', { targetId: match[0] }); input.classList.remove('state-error', 'state-warning', 'state-success'); if (res.status === 'OK') { mark.innerHTML = '<i class="material-icons" style="color: var(--success-green)">check_circle</i>'; msg.innerText = '유효한 시트입니다.'; msg.style.color = 'var(--success-green)'; input.classList.add('state-success'); confirmBtn.classList.remove('disabled'); } else { mark.innerHTML = '<i class="material-icons" style="color: var(--warning-yellow)">warning</i>'; msg.innerText = (res.status === 'NO_EDIT_ACCESS') ? '공유 설정을 링크를 가진 모든 사용자 / 편집자로 설정해주세요.' : '접근할 수 없거나 형식이 잘못되었습니다.'; msg.style.color = 'var(--warning-yellow)'; input.classList.add('state-warning'); confirmBtn.classList.add('disabled'); } mark.style.display = 'block'; } catch (e) { input.classList.remove('state-error', 'state-warning', 'state-success'); mark.innerHTML = '<i class="material-icons" style="color: var(--error-red)">error</i>'; msg.innerText = '확인 실패'; msg.style.color = 'var(--error-red)'; input.classList.add('state-error'); } }, 500); }
+  
+  function validateSheetLink() { 
+      clearTimeout(validationTimeout); 
+      const input = document.getElementById('sheet-url'); 
+      const url = input.value.trim(); 
+      const mark = document.getElementById('valid-mark'), msg = document.getElementById('status-msg'), confirmBtn = document.getElementById('confirm-btn'); 
+      input.classList.remove('state-error', 'state-warning', 'state-success'); 
+      
+      if (!url) { mark.style.display = 'none'; msg.innerText = ''; confirmBtn.classList.add('disabled'); return; } 
+      const match = url.match(/[-\w]{25,}/); 
+      
+      if (!match) { 
+          mark.innerHTML = '<i class="material-icons" style="color: var(--error-red)">cancel</i>'; 
+          mark.style.display = 'block'; 
+          msg.innerText = '구글 시트 링크를 적어주세요.'; 
+          msg.style.color = 'var(--error-red)'; 
+          input.classList.add('state-error'); 
+          confirmBtn.classList.add('disabled'); 
+          return; 
+      } 
+      
+      mark.innerHTML = '<div class="loading-spinner"></div>'; 
+      mark.style.display = 'block'; 
+      msg.innerText = '확인 중...'; 
+      msg.style.color = 'var(--text-secondary)'; 
+      
+      validationTimeout = setTimeout(async () => { 
+          try { 
+              const res = await callApi('checkSheet', { targetId: match[0] }); 
+              input.classList.remove('state-error', 'state-warning', 'state-success'); 
+              if (res.status === 'OK') { 
+                  mark.innerHTML = '<i class="material-icons" style="color: var(--success-green)">check_circle</i>'; 
+                  msg.innerText = '유효한 시트입니다.'; 
+                  msg.style.color = 'var(--success-green)'; 
+                  input.classList.add('state-success'); 
+                  confirmBtn.classList.remove('disabled'); 
+              } else { 
+                  mark.innerHTML = '<i class="material-icons" style="color: var(--warning-yellow)">warning</i>'; 
+                  msg.innerText = (res.status === 'NO_EDIT_ACCESS') ? '공유 설정을 링크를 가진 모든 사용자 / 편집자로 설정해주세요.' : '접근할 수 없거나 형식이 잘못되었습니다.'; 
+                  msg.style.color = 'var(--warning-yellow)'; 
+                  input.classList.add('state-warning'); 
+                  confirmBtn.classList.add('disabled'); 
+              } 
+              mark.style.display = 'block'; 
+          } catch (e) { 
+              input.classList.remove('state-error', 'state-warning', 'state-success'); 
+              mark.innerHTML = '<i class="material-icons" style="color: var(--error-red)">error</i>'; 
+              msg.innerText = '확인 실패'; 
+              msg.style.color = 'var(--error-red)'; 
+              input.classList.add('state-error'); 
+          } 
+      }, 500); 
+  }
+
   function toggleGuide(forceOpen = null) { const btn = document.getElementById('guide-accordion-btn'); const box = document.getElementById('guide-box'); const isOpen = (forceOpen !== null) ? forceOpen : box.style.display === 'none'; box.style.display = isOpen ? 'block' : 'none'; if (isOpen) btn.classList.add('active'); else btn.classList.remove('active'); }
   function loadTheme() { const savedTheme = localStorage.getItem(THEME_KEY); if (savedTheme === 'dark') { document.documentElement.classList.add('dark-mode'); document.getElementById('checkbox-theme').checked = true; updateMetaThemeColor('dark'); } else { updateMetaThemeColor('light'); } }
   function toggleTheme() { if (document.getElementById('checkbox-theme').checked) { document.documentElement.classList.add('dark-mode'); localStorage.setItem(THEME_KEY, 'dark'); updateMetaThemeColor('dark'); } else { document.documentElement.classList.remove('dark-mode'); localStorage.setItem(THEME_KEY, 'light'); updateMetaThemeColor('light'); } }
@@ -1553,15 +2330,13 @@
       }
   }
 
-  // [MODIFIED] Update Rarity Inputs and Dropdowns on Region Change
   function updateRarityInputs() {
-      const inputs = document.querySelectorAll('.page-card-proc, .move-card-proc');
+      const inputs = document.querySelectorAll('.page-card-proc, .move-card-proc, .discard-card-proc');
       inputs.forEach(input => {
-          const rawVal = input.dataset.raw || input.value; // Prefer raw if available
+          const rawVal = input.dataset.raw || input.value; 
           if (rawVal) {
-              input.value = getLocalizedRarity(rawVal); // Set localized value
+              input.value = getLocalizedRarity(rawVal); 
               
-              // Only update raw if not set (first load scenario)
               if (!input.dataset.raw) input.dataset.raw = rawVal;
           }
           
@@ -1569,11 +2344,10 @@
           if (wrapper && wrapper.dataset.options) {
               try {
                   const options = JSON.parse(wrapper.dataset.options);
-                  // Recalculate text for all options based on their raw 'val'
                   const newOptions = options.map(opt => {
                       return {
-                          val: opt.val, // Keep raw
-                          text: getLocalizedRarity(opt.val), // Localize text
+                          val: opt.val, 
+                          text: getLocalizedRarity(opt.val), 
                           max: opt.max 
                       };
                   });
@@ -1606,14 +2380,12 @@
                   headers.forEach((h, i) => rarityColMap[h] = i);
 
                   rarityRows = rarityMappingRaw.slice(1);
-                  rarityLookupMap = {};
                   rarityReverseMap = {};
                   rarityOrderMap = {}; 
 
                   rarityRows.forEach((row, index) => {
                       const id = row[0]; 
                       if(id) {
-                          rarityLookupMap[id] = row;
                           rarityOrderMap[id] = index; 
                           row.forEach(cellVal => {
                               if(cellVal) rarityReverseMap[cellVal] = index;
@@ -1632,7 +2404,17 @@
               const expandedSet = new Set(allNames); allNames.forEach(name => { const entry = nameDb[name]; if (entry && entry.id) { const siblings = cidLookup[entry.id]; if (siblings) { siblings.forEach(sName => expandedSet.add(sName)); } } }); allNames = Array.from(expandedSet).sort(); 
               
               const moveRows = document.getElementById('page-move-tbody').querySelectorAll('tr'); moveRows.forEach(row => { const toWrap = row.querySelector('.input-wrap.w-move-to .custom-select-wrapper'); if(toWrap) { toWrap.dataset.options = JSON.stringify(allLocations.map(l => ({ val: l, text: l }))); } });
-              const addRows = document.getElementById('page-add-tbody').querySelectorAll('tr'); addRows.forEach(row => { const locWrap = row.querySelector('.input-wrap.w-loc .custom-select-wrapper'); if(locWrap) { locWrap.dataset.options = JSON.stringify(allLocations.map(l => ({ val: l, text: l }))); if (allLocations.length > 0) locWrap.classList.remove('no-option'); } });
+              const addRows = document.getElementById('page-add-tbody').querySelectorAll('tr'); 
+              addRows.forEach(row => { 
+                  const locInput = row.querySelector('.page-card-loc');
+                  if(locInput) {
+                      const locWrap = locInput.closest('.custom-select-wrapper');
+                      if(locWrap) { 
+                          locWrap.dataset.options = JSON.stringify(allLocations.map(l => ({ val: l, text: l }))); 
+                          if (allLocations.length > 0) locWrap.classList.remove('no-option'); 
+                      }
+                  }
+              });
               updateDisconnectBtn();
               updateRarityInputs(); 
           } 
@@ -1654,8 +2436,6 @@
       } else { renderTable(filteredRows); switchToMode('search'); }
       document.getElementById('custom-dropdown').style.display = 'none'; toggleSearchWrapper(false); checkClearBtn(); showLoading(false); 
   }
-  
-  function findMappingRow(key) { if (!rarityMappingRaw || rarityMappingRaw.length === 0) return null; return rarityMappingRaw.find(row => Object.values(row).includes(key)); }
   
   function renderTable(rows) { 
       const resultArea = document.getElementById('result-area'); 
@@ -1884,23 +2664,79 @@
       const globalDropdown = document.getElementById('global-custom-options');
       let currentFocusIdx = -1;
       const closeDropdown = () => { wrapper.classList.remove('active'); globalDropdown.style.display = 'none'; currentFocusIdx = -1; };
+      
       const renderDropdown = (filtered) => {
           if (filtered.length === 0) { closeDropdown(); return; }
           wrapper.classList.add('active');
           const rect = wrapper.getBoundingClientRect(); globalDropdown.style.top = (rect.bottom + window.scrollY) + 'px'; globalDropdown.style.left = (rect.left + window.scrollX) + 'px'; globalDropdown.style.width = rect.width + 'px';
           globalDropdown.innerHTML = "";
-          filtered.forEach(name => { const li = document.createElement('li'); li.className = 'custom-option'; li.innerText = name; li.onmousedown = (e) => e.preventDefault(); li.onclick = () => { input.value = name; closeDropdown(); handleMoveNameInput(input); }; globalDropdown.appendChild(li); });
+          filtered.forEach(name => { const li = document.createElement('li'); li.className = 'custom-option'; li.innerText = name; li.onmousedown = (e) => e.preventDefault(); li.onclick = () => { input.value = name; closeDropdown(); 
+              if(input.classList.contains('card-name-input') && input.closest('tr').querySelector('.discard-card-no')) {
+                  handleDiscardNameInput(input);
+              } else if(input.classList.contains('card-name-input')) {
+                  handleMoveNameInput(input);
+              }
+          }; globalDropdown.appendChild(li); });
           globalDropdown.style.display = 'block';
       };
-      input.addEventListener('input', () => { const val = input.value.trim(); if (!val) { closeDropdown(); return; } const normalized = normalizeStr(val); const decomposed = decomposeHangul(normalized); const matches = allNames.filter(name => { const normName = normalizeStr(name); const decompName = decomposeHangul(normName); return decompName.includes(decomposed); }).slice(0, 5); renderDropdown(matches); });
-      input.addEventListener('focus', () => { if (pendingBlurFn) { clearTimeout(pendingBlurFn); pendingBlurFn = null; } const val = input.value.trim(); if (val) { const normalized = normalizeStr(val); const decomposed = decomposeHangul(normalized); const matches = allNames.filter(name => { const normName = normalizeStr(name); const decompName = decomposeHangul(normName); return decompName.includes(decomposed); }).slice(0, 5); renderDropdown(matches); } else { if(allNames.length > 0) renderDropdown(allNames.slice(0, 5)); } });
+      
+      const isDiscard = wrapper.id && wrapper.id.startsWith('wrap-discard');
+
+      input.addEventListener('input', () => { 
+          const val = input.value.trim(); 
+          if (!val) { closeDropdown(); return; } 
+          const normalized = normalizeStr(val); 
+          const decomposed = decomposeHangul(normalized); 
+
+          // [v0.23.19] 실제 수량이 있는 이름만 필터링 (이동/제거 공통)
+          const ownedNamesSet = new Set(localCardDatabase.filter(r => (parseInt(r[3]) || 0) > 0).map(r => String(r[0])));
+          
+          let matches = allNames.filter(name => { 
+              if (!ownedNamesSet.has(name)) return false;
+              const normName = normalizeStr(name); 
+              const decompName = decomposeHangul(normName); 
+              return decompName.includes(decomposed); 
+          });
+          
+          matches = matches.slice(0, 5); 
+          renderDropdown(matches); 
+      });
+      
+      input.addEventListener('focus', () => { 
+          if (pendingBlurFn) { clearTimeout(pendingBlurFn); pendingBlurFn = null; } 
+          const val = input.value.trim(); 
+          if (val) { 
+              const normalized = normalizeStr(val); 
+              const decomposed = decomposeHangul(normalized); 
+              
+              const ownedNamesSet = new Set(localCardDatabase.filter(r => (parseInt(r[3]) || 0) > 0).map(r => String(r[0])));
+              
+              let matches = allNames.filter(name => { 
+                  if (!ownedNamesSet.has(name)) return false;
+                  const normName = normalizeStr(name); 
+                  const decompName = decomposeHangul(normName); 
+                  return decompName.includes(decomposed); 
+              });
+              
+              matches = matches.slice(0, 5); 
+              renderDropdown(matches); 
+          } else { 
+              const ownedNamesSet = new Set(localCardDatabase.filter(r => (parseInt(r[3]) || 0) > 0).map(r => String(r[0])));
+              let source = allNames.filter(name => ownedNamesSet.has(name));
+              if(source.length > 0) renderDropdown(source.slice(0, 5)); 
+          } 
+      });
       input.addEventListener('blur', () => { const logic = () => closeDropdown(); pendingBlurFn = setTimeout(logic, 200); });
       input.addEventListener('keydown', (e) => {
           if (e.key === 'Tab') {
               if (globalDropdown.style.display === 'block') {
                    let selectedVal = null; const items = globalDropdown.querySelectorAll('li');
                    if (currentFocusIdx > -1 && items[currentFocusIdx]) { selectedVal = items[currentFocusIdx].innerText; } else if (items.length > 0) { selectedVal = items[0].innerText; }
-                   if (selectedVal) { input.value = selectedVal; handleMoveNameInput(input); }
+                   if (selectedVal) { 
+                       input.value = selectedVal; 
+                       if(input.closest('tr').querySelector('.discard-card-no')) handleDiscardNameInput(input);
+                       else handleMoveNameInput(input); 
+                   }
                    closeDropdown();
               } return; 
           }
@@ -1924,18 +2760,55 @@
           wrapper.classList.add('active');
           const rect = wrapper.getBoundingClientRect(); globalDropdown.style.top = (rect.bottom + window.scrollY) + 'px'; globalDropdown.style.left = (rect.left + window.scrollX) + 'px'; globalDropdown.style.width = rect.width + 'px';
           globalDropdown.innerHTML = "";
-          filtered.forEach(no => { const li = document.createElement('li'); li.className = 'custom-option'; li.innerText = no; li.onmousedown = (e) => e.preventDefault(); li.onclick = () => { input.value = no; closeDropdown(); validateMoveNoInput(input); }; globalDropdown.appendChild(li); });
+          filtered.forEach(no => { const li = document.createElement('li'); li.className = 'custom-option'; li.innerText = no; li.onmousedown = (e) => e.preventDefault(); li.onclick = () => { input.value = no; closeDropdown(); 
+              if(input.classList.contains('discard-card-no')) validateDiscardNoInput(input);
+              else validateMoveNoInput(input); 
+          }; globalDropdown.appendChild(li); });
           globalDropdown.style.display = 'block';
       };
-      input.addEventListener('input', () => { const val = input.value.trim(); const row = input.closest('tr'); const nameVal = row.querySelector('.card-name-input').value.trim(); let source = ownedCardNumbers; if (nameVal && nameToNosMap[nameVal]) { source = nameToNosMap[nameVal]; } if (!val && !nameVal) { closeDropdown(); return; } const matches = source.filter(no => no.includes(val)).slice(0, 5); renderDropdown(matches); });
-      input.addEventListener('focus', () => { if (pendingBlurFn) { clearTimeout(pendingBlurFn); pendingBlurFn = null; } const val = input.value.trim().toUpperCase(); const row = input.closest('tr'); const nameVal = row.querySelector('.card-name-input').value.trim(); let source = ownedCardNumbers; if (nameVal && nameToNosMap[nameVal]) { source = nameToNosMap[nameVal]; } if (val || nameVal) { const matches = source.filter(no => no.includes(val)).slice(0, 5); renderDropdown(matches); } else { if(source.length > 0) renderDropdown(source.slice(0, 5)); } });
-      input.addEventListener('blur', () => { const logic = () => { closeDropdown(); validateMoveNoInput(input); }; pendingBlurFn = setTimeout(logic, 200); });
+      
+      const isDiscard = wrapper.id && wrapper.id.startsWith('wrap-discard');
+
+      input.addEventListener('input', () => { 
+          const val = input.value.trim(); const row = input.closest('tr'); const nameVal = row.querySelector('.card-name-input').value.trim(); 
+          let source = ownedCardNumbers; 
+          if (nameVal && nameToNosMap[nameVal]) { source = nameToNosMap[nameVal]; } 
+          
+          if(isDiscard) {
+              source = source.filter(no => !isCardDepleted(no, null)); 
+          }
+
+          if (!val && !nameVal) { closeDropdown(); return; } 
+          const matches = source.filter(no => no.includes(val.toUpperCase())).slice(0, 5); renderDropdown(matches); 
+      });
+      
+      input.addEventListener('focus', () => { 
+          if (pendingBlurFn) { clearTimeout(pendingBlurFn); pendingBlurFn = null; } 
+          const val = input.value.trim().toUpperCase(); const row = input.closest('tr'); const nameVal = row.querySelector('.card-name-input').value.trim(); 
+          let source = ownedCardNumbers; 
+          if (nameVal && nameToNosMap[nameVal]) { source = nameToNosMap[nameVal]; } 
+          
+          if(isDiscard) {
+              source = source.filter(no => !isCardDepleted(no, null));
+          }
+
+          if (val || nameVal) { const matches = source.filter(no => no.includes(val)).slice(0, 5); renderDropdown(matches); } 
+          else { if(source.length > 0) renderDropdown(source.slice(0, 5)); } 
+      });
+      input.addEventListener('blur', () => { const logic = () => { closeDropdown(); 
+          if(input.classList.contains('discard-card-no')) validateDiscardNoInput(input);
+          else validateMoveNoInput(input); 
+      }; pendingBlurFn = setTimeout(logic, 200); });
       input.addEventListener('keydown', (e) => {
           if (e.key === 'Tab') {
               if (globalDropdown.style.display === 'block') {
                    let selectedVal = null; const items = globalDropdown.querySelectorAll('li');
                    if (currentFocusIdx > -1 && items[currentFocusIdx]) { selectedVal = items[currentFocusIdx].innerText; } else if (items.length > 0) { selectedVal = items[0].innerText; }
-                   if (selectedVal) { input.value = selectedVal; validateMoveNoInput(input); }
+                   if (selectedVal) { 
+                       input.value = selectedVal; 
+                       if(input.classList.contains('discard-card-no')) validateDiscardNoInput(input);
+                       else validateMoveNoInput(input); 
+                   }
                    closeDropdown();
               } return; 
           }
@@ -1961,7 +2834,12 @@
           if (input.disabled) return;
           if (activeDropdownInput && activeDropdownInput !== input) { activeDropdownInput.blur(); }
           activeDropdownInput = input;
+          
           if (input.classList.contains('move-card-from')) { updateFromLocOptionsDynamic(wrapper); }
+          else if (input.classList.contains('discard-card-another')) { updateDiscardIllustsDynamic(wrapper); }
+          else if (input.classList.contains('discard-card-proc')) { updateDiscardRaritiesDynamic(wrapper); }
+          else if (input.classList.contains('discard-card-loc')) { updateDiscardLocationsDynamic(wrapper); } 
+
           const rawData = JSON.parse(wrapper.dataset.options || "[]");
           if (!isFreeType && rawData.length === 0) return;
           if (rawData.length === 1 && !isFreeType) { return; }
@@ -1986,14 +2864,13 @@
           globalDropdown.style.display = 'block';
       };
       const selectOption = (optData) => { 
-          // [MODIFIED v0.22.12] Branch logic based on input type
-          if (input.classList.contains('move-card-from')) {
-              input.value = optData.val; // Show pure location name
+          if (input.classList.contains('move-card-from') || input.classList.contains('discard-card-loc')) {
+              input.value = optData.val; 
           } else {
-              input.value = optData.text; // Show localized text (for rarity)
+              input.value = optData.text; 
           }
 
-          input.dataset.raw = optData.val; // Always store raw value
+          input.dataset.raw = optData.val; 
           if (optData.max) { input.dataset.maxQty = optData.max; } 
           closeDropdown(); 
           if (changeCallback) changeCallback(input); 
@@ -2023,6 +2900,7 @@
           if (validLocs.length === 1) wrap.classList.add('single-option'); else wrap.classList.remove('single-option');
           if (validLocs.length === 0) wrap.classList.add('no-option'); else wrap.classList.remove('no-option');
       };
+
       input.addEventListener('focus', openDropdown); input.addEventListener('click', openDropdown);
       input.addEventListener('blur', () => {
           const logic = () => {
@@ -2041,7 +2919,6 @@
       });
       input.addEventListener('input', (e) => { 
           delete input.dataset.raw;
-          
           const rawData = JSON.parse(wrapper.dataset.options || "[]"); if (rawData.length === 1 && !isFreeType) { input.value = rawData[0].val; return; } if (!wrapper.classList.contains('active')) wrapper.classList.add('active'); currentFocusIdx = -1; renderGlobalDropdown(true); 
       });
       input.addEventListener('keydown', (e) => {
@@ -2097,7 +2974,7 @@
       updateMoveRarities(row, matches);
   }
   function updateMoveRarities(row, matches) {
-      const rareInp = row.querySelector('.move-card-proc'); const rareWrap = row.querySelector('[id^="wrap-rare"]'); const uniqueRares = [...new Set(matches.map(r => String(r[2]).trim()))].sort(compareRarity); // [MODIFIED] Use comparator
+      const rareInp = row.querySelector('.move-card-proc'); const rareWrap = row.querySelector('[id^="wrap-rare"]'); const uniqueRares = [...new Set(matches.map(r => String(r[2]).trim()))].sort(compareRarity); 
       const options = uniqueRares.map(r => ({ val: r, text: getLocalizedRarity(r) }));
       rareWrap.dataset.options = JSON.stringify(options);
       rareInp.removeAttribute('readonly'); rareWrap.classList.remove('no-option'); 
@@ -2105,7 +2982,7 @@
       if (isValid) { handleMoveRareChange(rareInp); } else { if (options.length === 1) { rareWrap.classList.add('single-option'); rareInp.value = options[0].text; rareInp.dataset.raw = options[0].val; handleMoveRareChange(rareInp); } else { rareInp.value = ""; delete rareInp.dataset.raw; rareWrap.classList.remove('single-option'); handleMoveRareChange(rareInp); } }
   }
   function handleMoveRareChange(input) {
-      const row = input.closest('tr'); const cardNo = row.querySelector('.move-card-no').value.trim(); const selectedIllust = row.querySelector('.move-card-another').value; const selectedRare = input.dataset.raw || input.value; // Use raw if available
+      const row = input.closest('tr'); const cardNo = row.querySelector('.move-card-no').value.trim(); const selectedIllust = row.querySelector('.move-card-another').value; const selectedRare = input.dataset.raw || input.value; 
       if (!input.value) { const fromInp = row.querySelector('.move-card-from'); fromInp.value = ""; handleMoveLocChange(fromInp); return; }
       const dbIllust = selectedIllust;
       const matches = localCardDatabase.filter(r => String(r[1]).trim().toUpperCase() === cardNo && String(r[5] || "기본").trim() === dbIllust && String(r[2]).trim() === selectedRare);
@@ -2120,7 +2997,7 @@
           const rNo = r.querySelector('.move-card-no').value.trim().toUpperCase(); 
           const rIllust = r.querySelector('.move-card-another').value; 
           const rRareInput = r.querySelector('.move-card-proc');
-          const rRare = rRareInput.dataset.raw || rRareInput.value; // Check raw
+          const rRare = rRareInput.dataset.raw || rRareInput.value; 
           const rLoc = r.querySelector('.move-card-from').value; 
           const rQty = parseInt(r.querySelector('.move-card-qty').value) || 0; 
           if (rNo === cardNo && rIllust === illust && rRare === rare && rLoc === loc) { usedQty += rQty; } 
@@ -2132,7 +3009,7 @@
       const cardNo = row.querySelector('.move-card-no').value.trim(); const illust = row.querySelector('.move-card-another').value; 
       
       const rareInput = row.querySelector('.move-card-proc');
-      const rare = rareInput.dataset.raw || rareInput.value; // Use raw
+      const rare = rareInput.dataset.raw || rareInput.value; 
       
       const locMap = {};
       matches.forEach(r => { const loc = String(r[4]).trim(); const qty = parseInt(r[3]) || 0; if (qty > 0) locMap[loc] = (locMap[loc] || 0) + qty; });
@@ -2155,7 +3032,6 @@
       
       summaryBody.innerHTML = ''; detailBody.innerHTML = ''; let successCount = 0; let failCount = 0; let successQty = 0; 
       
-      // Calculate Counts based on status
       moves.forEach(m => { 
           if (m.status === 'fail') { failCount++; } 
           else { successCount++; successQty += m.moveQty; } 
@@ -2164,7 +3040,6 @@
       if (successCount > 0) { titleEl.innerText = "카드 이동 완료!"; }
       else { titleEl.innerText = "카드 이동 실패!"; }
       
-      // Store success state for closing logic
       modal.dataset.hasSuccess = (successCount > 0) ? "true" : "false";
 
       if (failCount === 0 && successCount > 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--success-green);">check_circle</i>'; successText.innerHTML = `<span style="color:var(--text-primary);">${successQty}장 성공, ${failCount}건 실패</span>`; } 
@@ -2194,7 +3069,7 @@
           let locTxt = `${move.currentLoc} ► ${move.targetLoc}`;
           let qtyTxt = move.moveQty;
           let anotherTxt = move.another;
-          let procTxt = getLocalizedRarity(move.proc); // Localize for display
+          let procTxt = getLocalizedRarity(move.proc); 
           let cardNoStyle = ''; let nameStyle = ''; let anotherStyle = ''; let procStyle = ''; let locStyle = ''; let qtyStyle = '';
 
           if (!move.cardNo || !ownedCardNumbers.includes(move.cardNo)) {
@@ -2254,7 +3129,6 @@
           reindexMoveRows();
       }
       
-      // [NEW] Hybrid Sync Check
       if(hasSuccess) { 
           if (syncCounter >= 9) {
               syncCounter = 0;
@@ -2269,7 +3143,7 @@
       rows.forEach(row => {
           const cardNo = row.querySelector('.move-card-no').value.trim(); const cardName = row.querySelector('.card-name-input').value.trim(); 
           const procInput = row.querySelector('.move-card-proc');
-          const proc = procInput.dataset.raw || procInput.value; // Use raw
+          const proc = procInput.dataset.raw || procInput.value; 
           
           const another = row.querySelector('.move-card-another').value; const currentLoc = row.querySelector('.move-card-from').value; const moveQty = parseInt(row.querySelector('.move-card-qty').value); const targetLoc = row.querySelector('.move-card-to').value.trim();
           if (!cardNo) return; 
@@ -2295,7 +3169,6 @@
           const res = await callApi('moveCards', {}, pendingMoves); 
           showLoading(false); 
           if (res.success) { 
-              // [NEW] Partial Sync Logic
               updateLocalInventory(res.updatedItems);
               syncCounter++;
               
