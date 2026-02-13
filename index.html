@@ -1,433 +1,533 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  
-  <script>
-    /* 다크모드 깜빡임 방지를 위한 초기 테마 감지 로직 */
-    (function() {
-      try {
-        var savedTheme = localStorage.getItem('yugioh_theme_mode');
-        var sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        var mode = 'light';
-        
-        if (savedTheme === 'dark' || (!savedTheme && sysDark)) {
-          mode = 'dark';
-        }
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
-        if (mode === 'dark') {
-          document.documentElement.classList.add('dark-mode');
-        }
+    <script>
+        /* 다크모드 깜빡임 방지를 위한 초기 테마 감지 로직 */
+        (function () {
+            try {
+                var savedTheme = localStorage.getItem('yugioh_theme_mode');
+                var sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                var mode = 'light';
 
-        var themeColor = (mode === 'dark') ? '#000000' : '#F0F0F0';
-        document.write('<meta name="theme-color" id="meta-theme-color" content="' + themeColor + '">');
-      } catch(e) {
-        console.error(e);
-      }
-    })();
-  </script>
-  
-  <title>YGO 시냅스 - 보유 카드 관리 시스템</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
-  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-  <link rel="stylesheet" href="style.css">
+                if (savedTheme === 'dark' || (!savedTheme && sysDark)) {
+                    mode = 'dark';
+                }
+
+                if (mode === 'dark') {
+                    document.documentElement.classList.add('dark-mode');
+                }
+
+                var themeColor = (mode === 'dark') ? '#000000' : '#F0F0F0';
+                document.write('<meta name="theme-color" id="meta-theme-color" content="' + themeColor + '">');
+            } catch (e) {
+                console.error(e);
+            }
+        })();
+    </script>
+
+    <title>YGO 시냅스 - 보유 카드 관리 시스템</title>
+    <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css?v=10">
 </head>
+
 <body>
 
-<datalist id="loc-datalist"></datalist>
+    <datalist id="loc-datalist"></datalist>
 
-<ul id="global-custom-options" class="global-dropdown custom-options"></ul>
 
-<aside class="app-sidebar">
-    <a class="nav-item" onclick="switchToMode('home')" data-mode="home">
-        <i class="material-icons">home</i>
-        <span class="nav-text">홈</span>
-    </a>
-    <a class="nav-item" onclick="switchToMode('add')" data-mode="add">
-        <i class="material-icons">library_add</i>
-        <span class="nav-text">카드 등록</span>
-    </a>
-    <a class="nav-item" onclick="switchToMode('move')" data-mode="move">
-        <i class="material-icons">import_export</i>
-        <span class="nav-text">카드 이동</span>
-    </a>
-    <a class="nav-item" onclick="switchToMode('discard')" data-mode="discard">
-        <i class="material-icons">delete_outline</i>
-        <span class="nav-text">카드 제거</span>
-    </a>
-    <a class="nav-item" onclick="switchToMode('settings')" data-mode="settings">
-        <i class="material-icons">settings</i>
-        <span class="nav-text">환경 설정</span>
-    </a>
-</aside>
+    <aside class="app-sidebar">
+        <a class="nav-item" onclick="switchToMode('home')" data-mode="home">
+            <i class="material-icons">home</i>
+            <span class="nav-text">홈</span>
+        </a>
+        <a class="nav-item" onclick="switchToMode('add')" data-mode="add">
+            <i class="material-icons">library_add</i>
+            <span class="nav-text">카드 등록</span>
+        </a>
+        <a class="nav-item" onclick="switchToMode('move')" data-mode="move">
+            <i class="material-icons">import_export</i>
+            <span class="nav-text">카드 이동</span>
+        </a>
+        <a class="nav-item" onclick="switchToMode('discard')" data-mode="discard">
+            <i class="material-icons">delete_outline</i>
+            <span class="nav-text">카드 제거</span>
+        </a>
+        <a class="nav-item" onclick="switchToMode('settings')" data-mode="settings">
+            <i class="material-icons">settings</i>
+            <span class="nav-text">환경 설정</span>
+        </a>
+    </aside>
 
-<div class="mobile-nav-container">
-    <div class="mobile-nav-item" onclick="switchToMode('add')" data-mode="add">
-        <i class="material-icons">library_add</i>
-        <span>등록</span>
-    </div>
-    <div class="mobile-nav-item" onclick="switchToMode('move')" data-mode="move">
-        <i class="material-icons">import_export</i>
-        <span>이동</span>
-    </div>
-    <div class="mobile-nav-item" onclick="switchToMode('home')" data-mode="home">
-        <i class="material-icons">home</i>
-        <span>홈</span>
-    </div>
-    <div class="mobile-nav-item" onclick="switchToMode('discard')" data-mode="discard">
-        <i class="material-icons">delete_outline</i>
-        <span>제거</span>
-    </div>
-    <div class="mobile-nav-item" onclick="switchToMode('settings')" data-mode="settings">
-        <i class="material-icons">settings</i>
-        <span>설정</span>
-    </div>
-</div>
-
-<div class="header-right-container">
-    <div class="theme-switch-wrapper">
-        <span id="theme-label">다크 모드</span>
-        <label class="theme-switch" for="checkbox-theme">
-            <input type="checkbox" id="checkbox-theme" onchange="toggleTheme()">
-            <div class="slider"></div>
-        </label>
-    </div>
-
-    <div class="region-container">
-        <div id="region-capsule" class="region-capsule" onclick="toggleRegionDropdown(event)">
-            <i class="material-icons region-icon">public</i>
-            <span id="region-text" class="region-text">한국</span>
+    <div class="mobile-nav-container">
+        <div class="mobile-nav-item" onclick="switchToMode('add')" data-mode="add">
+            <i class="material-icons">library_add</i>
+            <span>등록</span>
         </div>
-        <ul id="region-dropdown" class="region-dropdown-list">
-            <li onclick="selectRegion('ko', '한국')">한국</li>
-            <li onclick="selectRegion('ja', '일본')">일본</li>
-            <li onclick="selectRegion('ae', '아시아')">아시아</li>
-            <li onclick="selectRegion('cn', '중국')">중국</li>
-            <li onclick="selectRegion('en', '영미')">영미</li>
-            <li onclick="selectRegion('de', '독일')">독일</li>
-            <li onclick="selectRegion('fr', '프랑스')">프랑스</li>
-            <li onclick="selectRegion('it', '이탈리아')">이탈리아</li>
-            <li onclick="selectRegion('es', '스페인')">스페인</li>
-            <li onclick="selectRegion('pt', '포르투갈')">포르투갈</li>
-        </ul>
+        <div class="mobile-nav-item" onclick="switchToMode('move')" data-mode="move">
+            <i class="material-icons">import_export</i>
+            <span>이동</span>
+        </div>
+        <div class="mobile-nav-item" onclick="switchToMode('home')" data-mode="home">
+            <i class="material-icons">home</i>
+            <span>홈</span>
+        </div>
+        <div class="mobile-nav-item" onclick="switchToMode('discard')" data-mode="discard">
+            <i class="material-icons">delete_outline</i>
+            <span>제거</span>
+        </div>
+        <div class="mobile-nav-item" onclick="switchToMode('settings')" data-mode="settings">
+            <i class="material-icons">settings</i>
+            <span>설정</span>
+        </div>
     </div>
-</div>
 
-<div id="loading-overlay">
-  <div class="preloader-wrapper big active"><div class="spinner-layer spinner-teal-only"><div class="circle-clipper left"><div class="circle"></div></div><div class="gap-patch"><div class="circle"></div></div><div class="circle-clipper right"><div class="circle"></div></div></div></div>
-  <p id="loading-text" style="margin-top: 20px; font-weight: bold; color: var(--text-primary);">데이터 동기화 중...</p>
-</div>
+    <div class="header-right-container">
+        <div class="theme-switch-wrapper">
+            <span id="theme-label">다크 모드</span>
+            <label class="theme-switch" for="checkbox-theme">
+                <input type="checkbox" id="checkbox-theme" onchange="toggleTheme()">
+                <div class="slider"></div>
+            </label>
+        </div>
 
-<div class="container">
-  
-  <div id="dynamic-header-wrapper">
-      <div class="app-title-container" onclick="switchToMode('home')" style="cursor:pointer;">
-          <span class="title-ygo">유희왕</span>
-          <div class="synapse-logo-container">
-            <div class="logo-bg-wrapper">
-              <div class="bg-triangle-top"></div>
-              <div class="bg-triangle-bottom"></div>
+        <div class="region-container" id="region-wrapper">
+            <div class="region-expansion-bg">
+                <ul id="region-dropdown" class="region-dropdown-list">
+                    <li onclick="selectRegion('ko', '한국')">한국</li>
+                    <li onclick="selectRegion('ja', '일본')">일본</li>
+                    <li onclick="selectRegion('ae', '아시아')">아시아</li>
+                    <li onclick="selectRegion('cn', '중국')">중국</li>
+                    <li onclick="selectRegion('en', '영미')">영미</li>
+                    <li onclick="selectRegion('de', '독일')">독일</li>
+                    <li onclick="selectRegion('fr', '프랑스')">프랑스</li>
+                    <li onclick="selectRegion('it', '이탈리아')">이탈리아</li>
+                    <li onclick="selectRegion('es', '스페인')">스페인</li>
+                    <li onclick="selectRegion('pt', '포르투갈')">포르투갈</li>
+                </ul>
             </div>
-            <span class="synapse-text-logo">SYNAPSE</span>
-          </div>
-          <span class="title-beta">BETA</span>
-      </div>
-      
-      <div class="search-box">
-        <div class="search-header-row">
-            <div class="help-trigger-btn" onclick="switchToMode('settings'); toggleGuide(true);">
-                <i class="fas fa-question-circle"></i>
-                <span>사용법</span>
+            <div id="region-capsule" class="region-capsule" onclick="toggleRegionDropdown(event)">
+                <i class="material-icons region-icon">public</i>
+                <span id="region-text" class="region-text">한국</span>
             </div>
         </div>
-        <div class="search-row">
-            <div class="search-input-wrapper" id="search-wrapper">
-                <input type="text" id="card-search" autocomplete="off" placeholder="">
-                <i id="clear-btn" class="material-icons clear-search-btn" onmousedown="event.preventDefault()">cancel</i>
-                <ul id="custom-dropdown" class="custom-dropdown"></ul>
-            </div>
-            <button id="search-btn" class="btn waves-effect waves-light cyan-theme" onclick="startSearch()"><i class="material-icons">search</i></button>
-        </div>
-        <div class="sub-row"></div>
-      </div>
-  </div>
+    </div>
 
-  <div id="content-slider-wrapper">
-      <div id="intro-area" class="content-section active" style="display:block; opacity:1;">
-        <p>본 서비스는 실물 유희왕 카드의 체계적인 관리를 위해 제작됐습니다.<br>
-        사용자가 보유한 카드의 정보는 직접 등록해야 합니다.<br>
-        자세한 사용법은 <a onclick="switchToMode('settings'); toggleGuide(true);">[여기]</a>를 확인하세요.</p>
-      </div>
-
-      <div id="result-content-wrapper" class="content-section">
-          <div id="result-area"></div>
-      </div>
-
-      <div id="discard-content-area" class="content-section centered-content-area">
-          <h5 class="content-title">카드 제거</h5>
-          <p class="content-subtitle">목록에서 원하는 카드를 제거할 수 있습니다.</p>
-          
-          <div class="table-wrapper">
-              <table id="page-discard-table" class="page-entry-table">
-                  <tbody id="page-discard-tbody">
-                  </tbody>
-                  <tfoot id="page-discard-tfoot">
-                      <tr>
-                          <td colspan="3" class="add-row-btn-cell">
-                              <button class="add-page-row-btn" onclick="addMultipleDiscardRows(event)" tabindex="0" onkeydown="handleAddButtonKey(event, 'discard')">
-                                  <span style="font-weight: 700;">카드 추가 등록</span>
-                                  <div class="qty-control-box" onclick="event.stopPropagation()">
-                                      <span class="ctrl-btn" onclick="adjustDiscardCount(-1)">-</span>
-                                      <span id="add-discard-count" class="ctrl-val">1장</span>
-                                      <span class="ctrl-btn" onclick="adjustDiscardCount(1)">+</span>
-                                  </div>
-                              </button>
-                          </td>
-                      </tr>
-                  </tfoot>
-              </table>
-          </div>
-
-          <div class="page-btn-container">
-              <button id="discard-submit-main-btn" class="btn cyan-theme waves-effect waves-light" onclick="submitDiscardEntries()" tabindex="0">제거</button>
-          </div>
-      </div>
-
-      <div id="add-content-area" class="content-section centered-content-area">
-          <h5 class="content-title">카드 등록</h5>
-          <p class="content-subtitle">카드 정보를 입력하여 카드를 등록할 수 있습니다.</p>
-          
-          <div class="input-control-row" style="justify-content: space-between !important;">
-              <div id="pack-add-container" style="position: relative;">
-                  <button id="pack-add-btn" class="btn-flat waves-effect" onclick="togglePackAddPopup(event)" style="font-weight: 700; color: var(--primary-color);">팩 추가</button>
-                  <div id="pack-add-popup" class="pack-popup-bubble">
-                      <div class="popup-content">
-                          <div class="popup-input-group">
-                              <label>첫 카드 번호</label>
-                              <input type="text" id="pack-start-no" placeholder="DUNE-KR001" oninput="validatePackInputs()">
-                          </div>
-                          <div class="popup-input-group">
-                              <label>마지막 카드 번호</label>
-                              <input type="text" id="pack-end-no" placeholder="DUNE-KR034" oninput="validatePackInputs()">
-                          </div>
-                          <div class="popup-footer">
-                              <button class="btn-flat" onclick="togglePackAddPopup(event, false)">취소</button>
-                              <button id="pack-submit-btn" class="btn cyan-theme disabled tooltipped" data-position="top" data-tooltip="카드 번호 확인" onclick="generatePackRows()">등록표 제작</button>
-                          </div>
-                      </div>
-                  </div>
-              </div>
-
-              <div class="capsule-input-container">
-                  <div class="custom-select-wrapper no-arrow" id="wrap-auto-loc" data-type="free">
-                      <input type="text" id="auto-location-input" class="custom-input capsule-input" placeholder="보관 위치 자동 입력" oninput="handleAutoLocInput(this)" autocomplete="off">
-                      <i class="material-icons arrow-icon">arrow_drop_down</i>
-                  </div>
-              </div>
-          </div>
-
-          <div class="table-wrapper">
-              <table id="page-add-table" class="page-entry-table">
-                  <tbody id="page-add-tbody">
-                  </tbody>
-                  <tfoot id="page-add-tfoot">
-                      <tr>
-                          <td colspan="3" class="add-row-btn-cell">
-                              <button class="add-page-row-btn" onclick="addMultipleRows(event)" tabindex="0" onkeydown="handleAddButtonKey(event, 'add')">
-                                  <span style="font-weight: 700;">카드 추가 등록</span>
-                                  <div class="qty-control-box" onclick="event.stopPropagation()">
-                                      <span class="ctrl-btn" onclick="adjustAddCount(-1)">-</span>
-                                      <span id="add-row-count" class="ctrl-val">1장</span>
-                                      <span class="ctrl-btn" onclick="adjustAddCount(1)">+</span>
-                                  </div>
-                              </button>
-                          </td>
-                      </tr>
-                  </tfoot>
-              </table>
-          </div>
-
-          <div class="page-btn-container">
-              <button id="add-submit-main-btn" class="btn cyan-theme waves-effect waves-light" onclick="submitPageEntries()" tabindex="0">등록</button>
-          </div>
-      </div>
-
-      <div id="move-content-area" class="content-section centered-content-area">
-          <h5 class="content-title">카드 이동</h5>
-          <p style="color: var(--text-secondary); margin-bottom: 20px;">보관 중인 카드의 위치를 변경합니다.</p>
-          
-          <div class="table-wrapper">
-              <table id="page-move-table" class="page-entry-table">
-                  <tbody id="page-move-tbody">
-                      </tbody>
-                  <tfoot id="page-move-tfoot">
-                      <tr>
-                          <td colspan="3" class="add-row-btn-cell">
-                              <button class="add-page-row-btn" onclick="addMultipleMoveRows(event)" tabindex="0" onkeydown="handleAddButtonKey(event, 'move')">
-                                  <span style="font-weight: 700;">이동 항목 추가</span>
-                                  <div class="qty-control-box" onclick="event.stopPropagation()">
-                                      <span class="ctrl-btn" onclick="adjustMoveCount(-1)">-</span>
-                                      <span id="add-move-count" class="ctrl-val">1건</span>
-                                      <span class="ctrl-btn" onclick="adjustMoveCount(1)">+</span>
-                                  </div>
-                              </button>
-                          </td>
-                      </tr>
-                  </tfoot>
-              </table>
-          </div>
-
-          <div class="page-btn-container">
-              <button id="move-submit-main-btn" class="btn cyan-theme waves-effect waves-light" onclick="submitMoveEntries()" tabindex="0">이동</button>
-          </div>
-      </div>
-
-      <div id="settings-content-area" class="content-section centered-content-area">
-          <h5 class="content-title">환경 설정</h5>
-          <p style="color: var(--text-secondary); margin-bottom: 30px;">구글 시트 연결 및 사용법을 확인합니다.</p>
-          
-          <div class="settings-container" style="max-width: 600px; margin: 0 auto; text-align: left;">
-              <div class="guide-btn" id="guide-accordion-btn" onclick="toggleGuide()"><i class="material-icons">keyboard_arrow_right</i><span>양식 다운로드 및 연결법</span></div>
-              <div id="guide-box" class="guide-content"><ol><li><a href="https://docs.google.com/spreadsheets/d/16AVBIJvass2Zl6f4IwMpK5KcZkPOuGATWfo0FIdeOdw/copy" target="_blank" style="color: var(--primary-color); font-weight: 800; text-decoration: underline;">링크</a>를 눌러 양식 시트를 구글 드라이브에 복사합니다.</li><li>해당 파일을 <b style="color: var(--primary-color);">링크가 있는 모든 사용자 / 편집자</b>로 공유 설정을 변경합니다.</li><li>해당 파일의 공유 링크를 입력 후 연결을 눌러주세요.</li></ol></div>
-              <div class="url-input-container">
-                  <input type="text" id="sheet-url" placeholder="주소 입력 (예 : https://docs.google.com/spreadsheets/...)" oninput="validateSheetLink()">
-                  <div id="valid-mark" class="valid-icon"></div>
-              </div>
-              <div id="status-msg" class="status-msg"></div>
-
-              <div class="settings-footer" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
-                <div style="display: flex; align-items: center;">
-                    <button id="disconnect-btn" class="btn red darken-1 waves-effect waves-light" onclick="disconnectSheet()">연결 끊기</button>
-                    </div>
-                <div>
-                    <button class="btn-flat" style="color: var(--text-primary);" onclick="cancelSettings()">취소</button>
-                    <button id="confirm-btn" class="btn cyan-theme waves-effect waves-light disabled" onclick="saveSettings()">저장</button>
+    <div id="loading-overlay">
+        <div class="preloader-wrapper big active">
+            <div class="spinner-layer spinner-teal-only">
+                <div class="circle-clipper left">
+                    <div class="circle"></div>
                 </div>
-              </div>
-          </div>
-      </div>
-  </div>
-
-  <footer id="main-footer">
-    <p class="footer-disclaimer">
-        <span>사용자가 입력한 모든 정보는 사용자가 등록한 구글 시트 파일에 기록되며,</span>
-        <span>해당 내용은 서버에 저장되지 않습니다.</span>
-    </p>
-    <div class="footer-info-box">
-        <span class="footer-item">ver. 0.23.21</span>
-        <span class="footer-separator">|</span>
-        <span class="footer-item">Made by <a href="https://www.youtube.com/@참혈" target="_blank" class="maker-link"><i class="fab fa-youtube"></i> 참혈</a></span>
-        <span class="footer-separator mobile-hide">|</span>
-        <span class="footer-item copyright">© 2026 YGO Synapse. All rights reserved.</span>
+                <div class="gap-patch">
+                    <div class="circle"></div>
+                </div>
+                <div class="circle-clipper right">
+                    <div class="circle"></div>
+                </div>
+            </div>
+        </div>
+        <p id="loading-text" style="margin-top: 20px; font-weight: bold; color: var(--text-primary);">데이터 동기화 중...</p>
     </div>
-  </footer>
-</div>
 
-<div id="add-result-modal" class="modal">
-  <div class="modal-content">
-    <div id="result-icon-area" class="result-icon-area"></div>
-    <h5 id="add-modal-title" style="font-weight: 800; text-align: center; margin-bottom: 20px;">카드 등록 완료!</h5>
-    <p id="result-success-text" class="result-summary"></p>
-    <p id="result-fail-text" class="result-fail-summary"></p>
-    <div id="result-summary-table-box"><table class="result-table"><tbody id="result-summary-body"></tbody></table></div>
-    <div class="toggle-result-btn" onclick="toggleResultDetail_Add()"><span>자세히</span><i id="toggle-icon" class="material-icons" style="font-size:1.2rem; transform: translateY(1px);">keyboard_arrow_down</i></div>
-    <div id="result-detail-box" class="result-detail-wrapper">
-        <table class="result-table">
-            <thead><tr><th style="width:10%;">No</th><th style="width:20%;">카드 이름</th><th style="width:15%;">카드 번호</th><th style="width:15%;">일러스트</th><th style="width:15%;">레어도</th><th style="width:15%;">보관 위치</th><th style="width:10%;">수량</th></tr></thead>
-            <tbody id="result-detail-body"></tbody>
-        </table>
+    <div class="container">
+
+        <div id="dynamic-header-wrapper">
+            <div class="app-title-container" onclick="switchToMode('home')" style="cursor:pointer;">
+                <span class="title-ygo">유희왕</span>
+                <div class="synapse-logo-container">
+                    <div class="logo-bg-wrapper">
+                        <div class="bg-triangle-top"></div>
+                        <div class="bg-triangle-bottom"></div>
+                    </div>
+                    <span class="synapse-text-logo">SYNAPSE</span>
+                </div>
+                <span class="title-beta">BETA</span>
+            </div>
+
+            <div class="search-box">
+                <div class="search-header-row">
+                    <div class="help-trigger-btn" onclick="switchToMode('settings'); toggleGuide(true);">
+                        <i class="fas fa-question-circle"></i>
+                        <span>사용법</span>
+                    </div>
+                </div>
+                <div class="search-row">
+                    <div class="search-input-wrapper" id="search-wrapper">
+                        <div class="search-expansion-bg">
+                            <ul id="custom-dropdown" class="custom-dropdown"></ul>
+                        </div>
+                        <input type="text" id="card-search" autocomplete="off" placeholder="">
+                        <i id="clear-btn" class="material-icons clear-search-btn"
+                            onmousedown="event.preventDefault()">cancel</i>
+                    </div>
+                    <button id="search-btn" class="btn waves-effect waves-light cyan-theme" onclick="startSearch()"><i
+                            class="material-icons">search</i></button>
+                </div>
+                <div class="sub-row"></div>
+            </div>
+        </div>
+
+        <div id="content-slider-wrapper">
+            <div id="intro-area" class="content-section active" style="display:block; opacity:1;">
+                <p>본 서비스는 실물 유희왕 카드의 체계적인 관리를 위해 제작됐습니다.<br>
+                    사용자가 보유한 카드의 정보는 직접 등록해야 합니다.<br>
+                    자세한 사용법은 <a onclick="switchToMode('settings'); toggleGuide(true);">[여기]</a>를 확인하세요.</p>
+            </div>
+
+            <div id="result-content-wrapper" class="content-section">
+                <div id="result-area"></div>
+            </div>
+
+            <div id="discard-content-area" class="content-section centered-content-area">
+                <h5 class="content-title">카드 제거</h5>
+                <p class="content-subtitle">목록에서 원하는 카드를 제거할 수 있습니다.</p>
+
+                <div class="table-wrapper">
+                    <table id="page-discard-table" class="page-entry-table">
+                        <tbody id="page-discard-tbody">
+                        </tbody>
+                        <tfoot id="page-discard-tfoot">
+                            <tr>
+                                <td colspan="3" class="add-row-btn-cell">
+                                    <button class="add-page-row-btn" onclick="addMultipleDiscardRows(event)"
+                                        tabindex="0" onkeydown="handleAddButtonKey(event, 'discard')">
+                                        <span style="font-weight: 700;">제거 카드 추가</span>
+                                        <div class="qty-control-box" onclick="event.stopPropagation()">
+                                            <span class="ctrl-btn" onclick="adjustDiscardCount(-1)">-</span>
+                                            <span id="add-discard-count" class="ctrl-val">1장</span>
+                                            <span class="ctrl-btn" onclick="adjustDiscardCount(1)">+</span>
+                                        </div>
+                                    </button>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <div class="page-btn-container">
+                    <button id="discard-submit-main-btn" class="btn cyan-theme waves-effect waves-light"
+                        onclick="submitDiscardEntries()" tabindex="0">제거</button>
+                </div>
+            </div>
+
+            <div id="add-content-area" class="content-section centered-content-area">
+                <h5 class="content-title">카드 등록</h5>
+                <p class="content-subtitle">카드 정보를 입력하여 카드를 등록할 수 있습니다.</p>
+
+                <div class="input-control-row" style="justify-content: space-between !important;">
+                    <div id="pack-add-container" style="position: relative;">
+                        <button id="pack-add-btn" class="btn-flat waves-effect" onclick="togglePackAddPopup(event)"
+                            style="font-weight: 700; color: var(--primary-color);">팩 추가</button>
+                        <div id="pack-add-popup" class="pack-popup-bubble">
+                            <div class="popup-content">
+                                <div class="popup-input-group">
+                                    <label>마지막 카드 번호</label>
+                                    <div class="popup-input-wrapper"
+                                        style="position: relative; display: flex; align-items: center;">
+                                        <input type="text" id="pack-end-no" placeholder="마지막 카드 번호"
+                                            oninput="validatePackInputs()">
+                                        <div id="pack-check-spinner" class="loading-spinner"
+                                            style="position: absolute; right: 10px; width: 18px; height: 18px; display: none;">
+                                        </div>
+                                    </div>
+                                    <div id="pack-status-msg"
+                                        style="margin-top: 5px; font-size: 0.75rem; min-height: 1rem; text-align: left;">
+                                    </div>
+                                </div>
+                                <div class="popup-footer">
+                                    <button class="btn-flat" onclick="togglePackAddPopup(event, false)">취소</button>
+                                    <button id="pack-submit-btn" class="btn cyan-theme disabled"
+                                        onclick="generatePackRows()">등록표 제작</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="capsule-input-container">
+                        <div class="custom-select-wrapper no-arrow" id="wrap-auto-loc" data-type="free">
+                            <div class="search-expansion-bg"></div>
+                            <input type="text" id="auto-location-input" class="custom-input capsule-input"
+                                placeholder="보관 위치 자동 입력" oninput="handleAutoLocInput(this)" autocomplete="off">
+                            <i id="auto-loc-clear-btn" class="material-icons clear-btn">cancel</i>
+                            <i class="material-icons arrow-icon">arrow_drop_down</i>
+                            <span class="tooltip-enter">엔터를 눌러주세요.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table id="page-add-table" class="page-entry-table">
+                        <tbody id="page-add-tbody">
+                        </tbody>
+                        <tfoot id="page-add-tfoot">
+                            <tr>
+                                <td colspan="3" class="add-row-btn-cell">
+                                    <button class="add-page-row-btn" onclick="addMultipleRows(event)" tabindex="0"
+                                        onkeydown="handleAddButtonKey(event, 'add')">
+                                        <span style="font-weight: 700;">등록 카드 추가</span>
+                                        <div class="qty-control-box" onclick="event.stopPropagation()">
+                                            <span class="ctrl-btn" onclick="adjustAddCount(-1)">-</span>
+                                            <span id="add-row-count" class="ctrl-val">1장</span>
+                                            <span class="ctrl-btn" onclick="adjustAddCount(1)">+</span>
+                                        </div>
+                                    </button>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <div class="page-btn-container">
+                    <button id="add-submit-main-btn" class="btn cyan-theme waves-effect waves-light"
+                        onclick="submitPageEntries()" tabindex="0">등록</button>
+                </div>
+            </div>
+
+            <div id="move-content-area" class="content-section centered-content-area">
+                <h5 class="content-title">카드 이동</h5>
+                <p style="color: var(--text-secondary); margin-bottom: 20px;">보관 중인 카드의 위치를 변경합니다.</p>
+
+                <div class="table-wrapper">
+                    <table id="page-move-table" class="page-entry-table">
+                        <tbody id="page-move-tbody">
+                        </tbody>
+                        <tfoot id="page-move-tfoot">
+                            <tr>
+                                <td colspan="3" class="add-row-btn-cell">
+                                    <button class="add-page-row-btn" onclick="addMultipleMoveRows(event)" tabindex="0"
+                                        onkeydown="handleAddButtonKey(event, 'move')">
+                                        <span style="font-weight: 700;">이동 카드 추가</span>
+                                        <div class="qty-control-box" onclick="event.stopPropagation()">
+                                            <span class="ctrl-btn" onclick="adjustMoveCount(-1)">-</span>
+                                            <span id="add-move-count" class="ctrl-val">1장</span>
+                                            <span class="ctrl-btn" onclick="adjustMoveCount(1)">+</span>
+                                        </div>
+                                    </button>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <div class="page-btn-container">
+                    <button id="move-submit-main-btn" class="btn cyan-theme waves-effect waves-light"
+                        onclick="submitMoveEntries()" tabindex="0">이동</button>
+                </div>
+            </div>
+
+            <div id="settings-content-area" class="content-section centered-content-area">
+                <h5 class="content-title">환경 설정</h5>
+                <p style="color: var(--text-secondary); margin-bottom: 30px;">구글 시트 연결 및 사용법을 확인합니다.</p>
+
+                <div class="settings-container" style="max-width: 600px; margin: 0 auto; text-align: left;">
+                    <div class="guide-btn" id="guide-accordion-btn" onclick="toggleGuide()"><i
+                            class="material-icons">keyboard_arrow_right</i><span>양식 다운로드 및 연결법</span></div>
+                    <div id="guide-box" class="guide-content">
+                        <ol>
+                            <li><a href="https://docs.google.com/spreadsheets/d/16AVBIJvass2Zl6f4IwMpK5KcZkPOuGATWfo0FIdeOdw/copy"
+                                    target="_blank"
+                                    style="color: var(--primary-color); font-weight: 800; text-decoration: underline;">링크</a>를
+                                눌러 양식 시트를 구글 드라이브에 복사합니다.</li>
+                            <li>해당 파일을 <b style="color: var(--primary-color);">링크가 있는 모든 사용자 / 편집자</b>로 공유 설정을 변경합니다.
+                            </li>
+                            <li>해당 파일의 공유 링크를 입력 후 연결을 눌러주세요.</li>
+                        </ol>
+                    </div>
+                    <div class="url-input-container">
+                        <input type="text" id="sheet-url"
+                            placeholder="주소 입력 (예 : https://docs.google.com/spreadsheets/...)"
+                            oninput="validateSheetLink()">
+                        <div id="valid-mark" class="valid-icon"></div>
+                    </div>
+                    <div id="status-msg" class="status-msg"></div>
+
+                    <div class="settings-footer"
+                        style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+                        <div style="display: flex; align-items: center;">
+                            <button id="disconnect-btn" class="btn red darken-1 waves-effect waves-light"
+                                onclick="disconnectSheet()">연결 끊기</button>
+                        </div>
+                        <div>
+                            <button class="btn-flat" style="color: var(--text-primary);"
+                                onclick="cancelSettings()">취소</button>
+                            <button id="confirm-btn" class="btn cyan-theme waves-effect waves-light disabled"
+                                onclick="saveSettings()">저장</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer id="main-footer">
+            <p class="footer-disclaimer">
+                <span>사용자가 입력한 모든 정보는 사용자가 등록한 구글 시트 파일에 기록되며,</span>
+                <span>해당 내용은 서버에 저장되지 않습니다.</span>
+            </p>
+            <div class="footer-info-box">
+                <span class="footer-item">ver. 0.24.0</span>
+                <span class="footer-separator">|</span>
+                <span class="footer-item">Made by <a href="https://www.youtube.com/@참혈" target="_blank"
+                        class="maker-link"><i class="fab fa-youtube"></i> 참혈</a></span>
+                <span class="footer-separator mobile-hide">|</span>
+                <span class="footer-item copyright">© 2026 YGO Synapse. All rights reserved.</span>
+            </div>
+        </footer>
     </div>
-  </div>
-  <div class="modal-footer" style="display:flex; justify-content:flex-end; padding-right:24px; gap:8px;">
-    <button class="btn cyan-theme modal-close">확인</button>
-  </div>
-</div>
 
-<div id="move-result-modal" class="modal">
-    <div class="modal-content">
-        <div id="move-icon-area" class="result-icon-area"></div>
-        <h5 id="move-modal-title" style="font-weight: 800; text-align: center; margin-bottom: 20px;">카드 이동 완료!</h5>
-        <p id="move-success-text" class="result-summary"></p>
-        <div id="result-summary-table-box"><table class="result-table"><tbody id="move-summary-body"></tbody></table></div>
-        
-        <div class="toggle-result-btn" onclick="toggleResultDetail_Move()"><span>자세히</span><i id="move-toggle-icon" class="material-icons" style="font-size:1.2rem; transform: translateY(1px);">keyboard_arrow_down</i></div>
-        <div id="move-result-detail-box" class="result-detail-wrapper" style="display: none; margin-top: 5px; border-top: 1px solid var(--border-color); overflow-x: auto;">
-            <table class="result-table">
-                <thead>
-                    <tr>
-                        <th style="width: 5%;">No</th>
-                        <th style="width: 20%;">카드 이름</th>
-                        <th style="width: 15%;">카드 번호</th>
-                        <th style="width: 10%;">일러스트</th>
-                        <th style="width: 15%;">레어도</th>
-                        <th style="width: 25%;">보관 위치</th>
-                        <th style="width: 10%;">수량</th>
-                    </tr>
-                </thead>
-                <tbody id="move-result-body"></tbody>
-            </table>
+    <div id="add-result-modal" class="modal">
+        <div class="modal-content">
+            <div id="result-icon-area" class="result-icon-area"></div>
+            <h5 id="add-modal-title" style="font-weight: 800; text-align: center; margin-bottom: 20px;">카드 등록 완료!</h5>
+            <p id="result-success-text" class="result-summary"></p>
+            <p id="result-fail-text" class="result-fail-summary"></p>
+            <div id="result-summary-table-box">
+                <table class="result-table">
+                    <tbody id="result-summary-body"></tbody>
+                </table>
+            </div>
+            <div class="toggle-result-btn" onclick="toggleResultDetail_Add()"><span>자세히</span><i id="toggle-icon"
+                    class="material-icons" style="font-size:1.2rem; transform: translateY(1px);">keyboard_arrow_down</i>
+            </div>
+            <div id="result-detail-box" class="result-detail-wrapper">
+                <table class="result-table">
+                    <thead>
+                        <tr>
+                            <th style="width:10%;">No</th>
+                            <th style="width:20%;">카드 이름</th>
+                            <th style="width:15%;">카드 번호</th>
+                            <th style="width:15%;">일러스트</th>
+                            <th style="width:15%;">레어도</th>
+                            <th style="width:15%;">보관 위치</th>
+                            <th style="width:10%;">수량</th>
+                        </tr>
+                    </thead>
+                    <tbody id="result-detail-body"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; padding-right:24px; gap:8px;">
+            <button class="btn cyan-theme modal-close">확인</button>
         </div>
     </div>
-    <div class="modal-footer" style="display:flex; justify-content:flex-end; padding-right:24px; gap:8px;">
-        <button class="btn cyan-theme" onclick="finishMoveProcess()">확인</button>
-    </div>
-</div>
 
-<div id="discard-result-modal" class="modal">
-  <div class="modal-content">
-    <div id="discard-result-icon-area" class="result-icon-area"></div>
-    <h5 id="discard-modal-title" style="font-weight: 800; text-align: center; margin-bottom: 20px;">카드 제거 완료!</h5>
-    <p id="discard-success-text" class="result-summary"></p>
-    <p id="discard-fail-text" class="result-fail-summary"></p>
-    <div id="discard-summary-table-box"><table class="result-table"><tbody id="discard-summary-body"></tbody></table></div>
-    <div class="toggle-result-btn" onclick="toggleResultDetail_Discard()"><span>자세히</span><i id="discard-toggle-icon" class="material-icons" style="font-size:1.2rem; transform: translateY(1px);">keyboard_arrow_down</i></div>
-    <div id="discard-result-detail-box" class="result-detail-wrapper">
-        <table class="result-table">
-            <thead><tr><th style="width:10%;">No</th><th style="width:20%;">카드 이름</th><th style="width:15%;">카드 번호</th><th style="width:15%;">일러스트</th><th style="width:15%;">레어도</th><th style="width:15%;">보관 위치</th><th style="width:10%;">수량</th></tr></thead>
-            <tbody id="discard-result-detail-body"></tbody>
-        </table>
-    </div>
-  </div>
-  <div class="modal-footer" style="display:flex; justify-content:flex-end; padding-right:24px; gap:8px;">
-    <button class="btn cyan-theme modal-close">확인</button>
-  </div>
-</div>
+    <div id="move-result-modal" class="modal">
+        <div class="modal-content">
+            <div id="move-icon-area" class="result-icon-area"></div>
+            <h5 id="move-modal-title" style="font-weight: 800; text-align: center; margin-bottom: 20px;">카드 이동 완료!</h5>
+            <p id="move-success-text" class="result-summary"></p>
+            <div id="result-summary-table-box">
+                <table class="result-table">
+                    <tbody id="move-summary-body"></tbody>
+                </table>
+            </div>
 
-<div id="add-card-modal" class="modal">
-  <div class="modal-content">
-    <h5 style="font-weight: 800; margin-bottom: 10px;">카드 등록</h5>
-    <span class="modal-subtitle">원하는 카드를 등록할 수 있습니다.</span>
-    <div style="overflow-x: auto;">
-      <table class="add-modal-table">
-        <thead>
-            <tr>
-                <th style="width: 5%;">No</th>
-                <th style="width: 20%;">카드 이름</th>
-                <th style="width: 15%;">카드 번호</th>
-                <th style="width: 15%;">어나더</th>
-                <th style="width: 13%;">레어도</th>
-                <th style="width: 12%;">보관 위치</th>
-                <th style="width: 8%;">수량</th>
-                <th style="width: 12%;">조정</th>
-            </tr>
-        </thead>
-        <tbody id="add-card-tbody"></tbody>
-      </table>
+            <div class="toggle-result-btn" onclick="toggleResultDetail_Move()"><span>자세히</span><i id="move-toggle-icon"
+                    class="material-icons" style="font-size:1.2rem; transform: translateY(1px);">keyboard_arrow_down</i>
+            </div>
+            <div id="move-result-detail-box" class="result-detail-wrapper"
+                style="display: none; margin-top: 5px; border-top: 1px solid var(--border-color); overflow-x: auto;">
+                <table class="result-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%;">No</th>
+                            <th style="width: 20%;">카드 이름</th>
+                            <th style="width: 15%;">카드 번호</th>
+                            <th style="width: 10%;">일러스트</th>
+                            <th style="width: 15%;">레어도</th>
+                            <th style="width: 25%;">보관 위치</th>
+                            <th style="width: 10%;">수량</th>
+                        </tr>
+                    </thead>
+                    <tbody id="move-result-body"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; padding-right:24px; gap:8px;">
+            <button class="btn cyan-theme" onclick="finishMoveProcess()">확인</button>
+        </div>
     </div>
-    <div style="margin-top: 20px; text-align: center;"><button class="btn-flat waves-effect" onclick="addMoreRows()" style="color: var(--primary-color); font-weight: 700;">더 많은 카드를 등록할 건가요?</button></div>
-  </div>
-  <div class="modal-footer">
-    <button class="btn-flat modal-close" style="color: var(--text-primary);">취소</button>
-    <span class="tooltipped-wrapper tooltipped" data-position="top" data-tooltip="등록할 수 있는 카드가 없습니다.">
-        <button id="add-submit-btn" class="btn cyan-theme disabled" onclick="submitNewCards()">등록</button>
-    </span>
-  </div>
-</div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
-<script src="script.js" defer></script>
+    <div id="discard-result-modal" class="modal">
+        <div class="modal-content">
+            <div id="discard-result-icon-area" class="result-icon-area"></div>
+            <h5 id="discard-modal-title" style="font-weight: 800; text-align: center; margin-bottom: 20px;">카드 제거 완료!
+            </h5>
+            <p id="discard-success-text" class="result-summary"></p>
+            <p id="discard-fail-text" class="result-fail-summary"></p>
+            <div id="discard-summary-table-box">
+                <table class="result-table">
+                    <tbody id="discard-summary-body"></tbody>
+                </table>
+            </div>
+            <div class="toggle-result-btn" onclick="toggleResultDetail_Discard()"><span>자세히</span><i
+                    id="discard-toggle-icon" class="material-icons"
+                    style="font-size:1.2rem; transform: translateY(1px);">keyboard_arrow_down</i></div>
+            <div id="discard-result-detail-box" class="result-detail-wrapper">
+                <table class="result-table">
+                    <thead>
+                        <tr>
+                            <th style="width:10%;">No</th>
+                            <th style="width:20%;">카드 이름</th>
+                            <th style="width:15%;">카드 번호</th>
+                            <th style="width:15%;">일러스트</th>
+                            <th style="width:15%;">레어도</th>
+                            <th style="width:15%;">보관 위치</th>
+                            <th style="width:10%;">수량</th>
+                        </tr>
+                    </thead>
+                    <tbody id="discard-result-detail-body"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; padding-right:24px; gap:8px;">
+            <button class="btn cyan-theme modal-close">확인</button>
+        </div>
+    </div>
+
+    <div id="add-card-modal" class="modal">
+        <div class="modal-content">
+            <h5 style="font-weight: 800; margin-bottom: 10px;">카드 등록</h5>
+            <span class="modal-subtitle">원하는 카드를 등록할 수 있습니다.</span>
+            <div style="overflow-x: auto;">
+                <table class="add-modal-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%;">No</th>
+                            <th style="width: 20%;">카드 이름</th>
+                            <th style="width: 15%;">카드 번호</th>
+                            <th style="width: 15%;">어나더</th>
+                            <th style="width: 13%;">레어도</th>
+                            <th style="width: 12%;">보관 위치</th>
+                            <th style="width: 8%;">수량</th>
+                            <th style="width: 12%;">조정</th>
+                        </tr>
+                    </thead>
+                    <tbody id="add-card-tbody"></tbody>
+                </table>
+            </div>
+            <div style="margin-top: 20px; text-align: center;"><button class="btn-flat waves-effect"
+                    onclick="addMoreRows()" style="color: var(--primary-color); font-weight: 700;">더 많은 카드를 등록할
+                    건가요?</button></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-flat modal-close" style="color: var(--text-primary);">취소</button>
+            <span class="tooltipped-wrapper tooltipped" data-position="top" data-tooltip="등록할 수 있는 카드가 없습니다.">
+                <button id="add-submit-btn" class="btn cyan-theme disabled" onclick="submitNewCards()">등록</button>
+            </span>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script src="script.js" defer></script>
 </body>
+
 </html>
