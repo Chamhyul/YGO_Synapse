@@ -1,0 +1,10 @@
+# 모든 파일 무시
+*
+
+# 예외 설정 (동기화할 파일들)
+!index.html
+!style.css
+!script.js
+
+# .gitignore 자체 포함
+!.gitignore

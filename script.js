@@ -874,7 +874,7 @@ function addDiscardEntry() {
                     </div>
                     <div class="input-wrap w-half">
                         <div class="qty-stepper-container">
-                            <input type="number" class="discard-card-qty qty-input" min="1" placeholder="수량">
+                            <input type="number" class="discard-card-qty qty-input" min="1" readonly placeholder="수량">
                             <div class="qty-controls">
                                 <div class="qty-btn up" onclick="adjustStepQty(this, 1)"><i class="material-icons">keyboard_arrow_up</i></div>
                                 <div class="qty-btn down" onclick="adjustStepQty(this, -1)"><i class="material-icons">keyboard_arrow_down</i></div>
@@ -913,8 +913,11 @@ function handleAddRareChange(input) {
     const row = input.closest('tr');
     if (!row) return;
     const qtyInput = row.querySelector('.page-card-qty');
-    if (qtyInput && !qtyInput.value && input.value) {
-        qtyInput.value = "1";
+    if (qtyInput) {
+        qtyInput.removeAttribute('readonly');
+        if (!qtyInput.value && input.value) {
+            qtyInput.value = "1";
+        }
     }
 }
 
@@ -1129,8 +1132,20 @@ function updateDiscardLocationsDynamic(wrap) {
 
 function handleDiscardLocChange(input) {
     const row = input.closest('tr'); const qtyInput = row.querySelector('.discard-card-qty'); const maxQty = parseInt(input.dataset.maxQty) || 0;
-    if (!input.value) { qtyInput.value = ""; return; }
-    if (maxQty > 0) { qtyInput.max = maxQty; qtyInput.placeholder = `최대 ${maxQty}`; const currentQty = parseInt(qtyInput.value); if (!isNaN(currentQty) && currentQty > maxQty) { qtyInput.value = maxQty; } } else { qtyInput.value = ""; qtyInput.placeholder = "재고 없음"; }
+    if (!input.value) { qtyInput.value = ""; qtyInput.setAttribute('readonly', true); return; }
+    if (maxQty > 0) {
+        qtyInput.removeAttribute('readonly');
+        qtyInput.max = maxQty;
+        qtyInput.placeholder = `최대 ${maxQty}`;
+        const currentQty = parseInt(qtyInput.value);
+        if (!isNaN(currentQty) && currentQty > maxQty) {
+            qtyInput.value = maxQty;
+        }
+    } else {
+        qtyInput.value = "";
+        qtyInput.placeholder = "재고 없음";
+        qtyInput.setAttribute('readonly', true);
+    }
 }
 
 function getGlobalUsageMap(excludeRow) {
@@ -1190,11 +1205,11 @@ function handleAddLocChange(input) {
     const qtyInp = row.querySelector('.page-card-qty');
 
     if (input.value.trim().length > 0) {
-        qtyInp.removeAttribute('readonly');
-        // if (!qtyInp.value) qtyInp.value = "1";
+        // qtyInp.removeAttribute('readonly'); // Moved to handleAddRareChange
     } else {
-        qtyInp.setAttribute('readonly', true);
-        qtyInp.value = "";
+        // 보관 위치가 없어도 레어도가 선택되어 있으면 수량 입력 가능하도록 유지 (사용자 요청)
+        // qtyInp.setAttribute('readonly', true);
+        // qtyInp.value = "";
     }
 
     if (!isAutoCopyEnabled) return;
@@ -2377,7 +2392,7 @@ function addMoveEntry() {
                     <div class="arrow-cell">►</div>
                     <div class="input-wrap w-move-qty">
                         <div class="qty-stepper-container">
-                            <input type="number" class="move-card-qty qty-input" min="1" placeholder="수량">
+                            <input type="number" class="move-card-qty qty-input" min="1" readonly placeholder="수량">
                             <div class="qty-controls">
                                 <div class="qty-btn up" onclick="adjustStepQty(this, 1)"><i class="material-icons">keyboard_arrow_up</i></div>
                                 <div class="qty-btn down" onclick="adjustStepQty(this, -1)"><i class="material-icons">keyboard_arrow_down</i></div>
@@ -2459,25 +2474,33 @@ function setupCardNameAutocomplete(wrapper) {
     };
 
     const renderDropdown = (filtered) => {
-        if (filtered.length === 0) { closeDropdown(); return; }
         wrapper.classList.add('active');
+        localDropdown.classList.add('active');
         localDropdown.innerHTML = "";
-        filtered.forEach(name => {
+
+        if (filtered.length === 0) {
             const li = document.createElement('li');
-            li.className = 'custom-option';
-            li.innerText = name;
-            li.onmousedown = (e) => e.preventDefault();
-            li.onclick = () => {
-                input.value = name;
-                closeDropdown();
-                if (input.classList.contains('card-name-input') && input.closest('tr').querySelector('.discard-card-no')) {
-                    handleDiscardNameInput(input);
-                } else if (input.classList.contains('card-name-input')) {
-                    handleMoveNameInput(input);
-                }
-            };
+            li.className = 'custom-option item-no-match';
+            li.innerText = '카드 이름 확인';
             localDropdown.appendChild(li);
-        });
+        } else {
+            filtered.forEach(name => {
+                const li = document.createElement('li');
+                li.className = 'custom-option';
+                li.innerText = name;
+                li.onmousedown = (e) => e.preventDefault();
+                li.onclick = () => {
+                    input.value = name;
+                    closeDropdown();
+                    if (input.classList.contains('card-name-input') && input.closest('tr').querySelector('.discard-card-no')) {
+                        handleDiscardNameInput(input);
+                    } else if (input.classList.contains('card-name-input')) {
+                        handleMoveNameInput(input);
+                    }
+                };
+                localDropdown.appendChild(li);
+            });
+        }
 
         // 위치 계산 및 스타일 적용
         const rect = wrapper.getBoundingClientRect();
@@ -2491,7 +2514,13 @@ function setupCardNameAutocomplete(wrapper) {
     input.addEventListener('input', () => {
         activeDropdownInput = input;
         const val = input.value.trim();
-        if (!val) { closeDropdown(); return; }
+        if (!val) {
+            const ownedNamesSet = new Set(localCardDatabase.filter(r => (parseInt(r[3]) || 0) > 0).map(r => String(r[0])));
+            let source = allNames.filter(name => ownedNamesSet.has(name));
+            if (source.length > 0) renderDropdown(source.slice(0, 5));
+            else closeDropdown();
+            return;
+        }
         const normalized = normalizeStr(val);
         const decomposed = decomposeHangul(normalized);
 
@@ -2535,24 +2564,49 @@ function setupCardNameAutocomplete(wrapper) {
     });
     input.addEventListener('blur', () => { closeDropdown(); });
     input.addEventListener('keydown', (e) => {
-        if (e.key === 'Tab') {
-            if (globalDropdown.style.display === 'block') {
-                let selectedVal = null; const items = globalDropdown.querySelectorAll('li');
-                if (currentFocusIdx > -1 && items[currentFocusIdx]) { selectedVal = items[currentFocusIdx].innerText; } else if (items.length > 0) { selectedVal = items[0].innerText; }
-                if (selectedVal) {
-                    input.value = selectedVal;
-                    if (input.closest('tr').querySelector('.discard-card-no')) handleDiscardNameInput(input);
-                    else handleMoveNameInput(input);
-                }
-                closeDropdown();
-            } return;
+        if (!localDropdown.classList.contains('active')) return;
+
+        const items = localDropdown.querySelectorAll('li');
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            currentFocusIdx++;
+            if (currentFocusIdx >= items.length) currentFocusIdx = 0;
+            updateHighlight(items);
         }
-        if (globalDropdown.style.display === 'none') return;
-        const items = globalDropdown.querySelectorAll('li');
-        if (e.key === 'ArrowDown') { e.preventDefault(); currentFocusIdx++; if (currentFocusIdx >= items.length) currentFocusIdx = 0; updateHighlight(items); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); currentFocusIdx--; if (currentFocusIdx < 0) currentFocusIdx = items.length - 1; updateHighlight(items); }
-        else if (e.key === 'Enter') { if (currentFocusIdx > -1 && items[currentFocusIdx]) { e.preventDefault(); items[currentFocusIdx].click(); } }
-        else if (e.key === 'Escape') { closeDropdown(); }
+        else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            currentFocusIdx--;
+            if (currentFocusIdx < 0) currentFocusIdx = items.length - 1;
+            updateHighlight(items);
+        }
+        else if (e.key === 'Enter') {
+            if (e.isComposing) return;
+            e.preventDefault();
+            if (currentFocusIdx > -1 && items[currentFocusIdx]) {
+                items[currentFocusIdx].click();
+            } else {
+                input.blur();
+            }
+        }
+        else if (e.key === 'Escape') {
+            e.preventDefault();
+            closeDropdown();
+        }
+        else if (e.key === 'Tab') {
+            if (e.isComposing) return;
+            let selectedVal = null;
+            if (currentFocusIdx > -1 && items[currentFocusIdx]) {
+                selectedVal = items[currentFocusIdx].innerText;
+            } else if (items.length > 0) {
+                selectedVal = items[0].innerText;
+            }
+            if (selectedVal) {
+                input.value = selectedVal;
+                if (input.closest('tr').querySelector('.discard-card-no')) handleDiscardNameInput(input);
+                else handleMoveNameInput(input);
+            }
+            closeDropdown();
+        }
     });
     function updateHighlight(items) { items.forEach(i => i.classList.remove('selected')); if (items[currentFocusIdx]) { items[currentFocusIdx].classList.add('selected'); items[currentFocusIdx].scrollIntoView({ block: 'nearest' }); } }
 }
@@ -2579,16 +2633,24 @@ function setupCardNoAutocomplete(wrapper) {
         }
     };
     const renderDropdown = (filtered) => {
-        if (filtered.length === 0) { closeDropdown(); return; }
         wrapper.classList.add('active');
+        localDropdown.classList.add('active');
         localDropdown.innerHTML = "";
-        filtered.forEach(no => {
-            const li = document.createElement('li'); li.className = 'custom-option'; li.innerText = no; li.onmousedown = (e) => e.preventDefault(); li.onclick = () => {
-                input.value = no; closeDropdown();
-                if (input.classList.contains('discard-card-no')) validateDiscardNoInput(input);
-                else validateMoveNoInput(input);
-            }; localDropdown.appendChild(li);
-        });
+
+        if (filtered.length === 0) {
+            const li = document.createElement('li');
+            li.className = 'custom-option item-no-match';
+            li.innerText = '번호 확인';
+            localDropdown.appendChild(li);
+        } else {
+            filtered.forEach(no => {
+                const li = document.createElement('li'); li.className = 'custom-option'; li.innerText = no; li.onmousedown = (e) => e.preventDefault(); li.onclick = () => {
+                    input.value = no; closeDropdown();
+                    if (input.classList.contains('discard-card-no')) validateDiscardNoInput(input);
+                    else validateMoveNoInput(input);
+                }; localDropdown.appendChild(li);
+            });
+        }
 
         // 위치 계산 및 Body Append
         const rect = wrapper.getBoundingClientRect();
@@ -2612,7 +2674,6 @@ function setupCardNoAutocomplete(wrapper) {
             source = source.filter(no => !isCardDepleted(no, null));
         }
 
-        if (!val && !nameVal) { closeDropdown(); return; }
         const matches = source.filter(no => no.includes(val.toUpperCase())).slice(0, 5); renderDropdown(matches);
     });
 
@@ -2795,7 +2856,14 @@ function setupCustomDropdown(wrapper, changeCallback) {
         if (filtered.length === 0) {
             const li = document.createElement('li');
             li.className = 'custom-option item-no-match';
-            li.innerText = '새로운 보관 위치 추가';
+
+            let noResultText = '존재하지 않는 데이터';
+            if (wrapper.id === 'wrap-auto-loc' ||
+                input.classList.contains('page-card-loc') ||
+                input.classList.contains('move-card-to')) {
+                noResultText = '새로운 보관 위치 추가';
+            }
+            li.innerText = noResultText;
             localDropdown.appendChild(li);
         } else {
             filtered.forEach((opt) => {
@@ -2983,6 +3051,8 @@ function resetMoveRow(row, level) {
     const illustWrap = row.querySelector('[id^="wrap-illust"]'); const rareWrap = row.querySelector('[id^="wrap-rare"]'); const fromWrap = row.querySelector('[id^="wrap-from"]');
     illustWrap.classList.remove('single-option'); rareWrap.classList.remove('single-option'); fromWrap.classList.remove('single-option');
     illustWrap.classList.add('no-option'); rareWrap.classList.add('no-option'); fromWrap.classList.add('no-option');
+
+    qtyInput.setAttribute('readonly', true);
     if (level === 'no') { illustInp.value = ""; illustInp.setAttribute('readonly', true); illustWrap.dataset.options = "[]"; rareInp.value = ""; rareInp.setAttribute('readonly', true); rareWrap.dataset.options = "[]"; fromInp.value = ""; fromWrap.dataset.options = "[]"; qtyInput.value = ''; }
 }
 function updateMoveIllusts(row, matches) {
@@ -3050,8 +3120,20 @@ function updateMoveLocations(row, matches) {
 function handleMoveLocChange(input) {
     const row = input.closest('tr'); const qtyInput = row.querySelector('.move-card-qty'); const maxQty = parseInt(input.dataset.maxQty) || 0;
     const toInput = row.querySelector('.move-card-to'); if (toInput && toInput.value) { const fromVal = input.value.trim(); const toVal = toInput.value.trim(); if (fromVal && normalizeStr(fromVal) === normalizeStr(toVal)) { toInput.value = ""; } }
-    if (!input.value) { qtyInput.value = ""; return; }
-    if (maxQty > 0) { qtyInput.max = maxQty; qtyInput.placeholder = `최대 ${maxQty}`; const currentQty = parseInt(qtyInput.value); if (!isNaN(currentQty) && currentQty > maxQty) { qtyInput.value = maxQty; } } else { qtyInput.value = ""; qtyInput.placeholder = "재고 없음"; }
+    if (!input.value) { qtyInput.value = ""; qtyInput.setAttribute('readonly', true); return; }
+    if (maxQty > 0) {
+        qtyInput.removeAttribute('readonly');
+        qtyInput.max = maxQty;
+        qtyInput.placeholder = `최대 ${maxQty}`;
+        const currentQty = parseInt(qtyInput.value);
+        if (!isNaN(currentQty) && currentQty > maxQty) {
+            qtyInput.value = maxQty;
+        }
+    } else {
+        qtyInput.value = "";
+        qtyInput.placeholder = "재고 없음";
+        qtyInput.setAttribute('readonly', true);
+    }
 }
 function showMoveResultModal(moves) {
     const modal = document.getElementById('move-result-modal'); const iconArea = document.getElementById('move-icon-area'); const successText = document.getElementById('move-success-text'); const summaryBody = document.getElementById('move-summary-body'); const detailBody = document.getElementById('move-result-body');
