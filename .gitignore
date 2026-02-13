@@ -5,6 +5,8 @@
 !index.html
 !style.css
 !script.js
+!.github/
+!.github/**
 
 # .gitignore 자체 포함
 !.gitignore
