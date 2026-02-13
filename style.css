@@ -1034,7 +1034,7 @@ html.dark-mode .global-dropdown {
 }
 
 .custom-option.item-no-match {
-  color: var(--text-muted) !important;
+  color: var(--disabled-text) !important;
   cursor: default !important;
   background-color: transparent !important;
   font-weight: 400 !important;
@@ -2562,7 +2562,7 @@ input#sheet-url.state-success {
   top: 50%;
   transform: translateY(-50%);
   font-size: 1.2rem;
-  color: var(--text-muted);
+  color: var(--disabled-text);
   cursor: pointer;
   opacity: 0;
   visibility: hidden;
@@ -2572,13 +2572,12 @@ input#sheet-url.state-success {
 }
 
 .clear-btn:hover {
-  color: var(--error-red);
-  transform: translateY(-50%) scale(1.1);
+  transform: translateY(-50%);
 }
 
 /* 값이 있을 때만 버튼 노출 (JS에서 클래스 제어 예정 또는 CSS 선택자 활용) */
 .custom-select-wrapper.has-value .clear-btn {
-  opacity: 0.6;
+  opacity: 0.7;
   visibility: visible;
 }
 
