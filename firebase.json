@@ -40,6 +40,7 @@
     ]
   },
   "storage": {
+    "bucket": "ygo-synapse.firebasestorage.app",
     "rules": "storage.rules"
   },
   "emulators": {
