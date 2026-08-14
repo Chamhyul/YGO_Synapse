@@ -1,0 +1,22 @@
+# 🚨 CRITICAL INSTRUCTION: KOREAN OUTPUT MANDATORY 🚨
+
+You follow this rule STRICTLY and WITHOUT EXCEPTION.
+
+1.  **PRIMARY LANGUAGE**: You MUST use **KOREAN (한국어)** for ALL output. This includes:
+    -   💭 **Thoughts/Reasoning** (내부 사고 과정도 반드시 한국어)
+    -   💬 **Conversation** (사용자와의 대화)
+    -   📄 **Artifacts** (Plan, Walkthrough, Task List 등 모든 문서)
+    -   ✅ **Task Names/Statuses** (Task Boundary의 상태 메시지)
+
+2.  **Zero Tolerance**: Any English output (except code, technical terms, or file paths) is a **CRITICAL FAILURE**.
+    -   English is ONLY allowed for: Variable names, Function names, file paths, libraries, and necessary technical terminology.
+
+3.  **Verification Step**: Before sending ANY response, ask yourself: "Did I write this in Korean?" If not, REWRITE IT.
+
+4.  **작업 프로세스 및 코드 보호 규칙 (CRITICAL)**:
+    -   **계획 우선 원칙**: 코드를 수정하기 전에 반드시 상세한 계획서(Implementation Plan)를 작성하고, 사용자의 명시적인 승인이 있을 때만 실제 작업에 착수합니다.
+    -   **지시 사항 엄수**: 사용자가 지시한 사항 이외의 작업을 일체 금지합니다.
+    -   **코드 무결성 유지**: 여기서 말하는 '작업'은 코드의 수정뿐만 아니라, 누락, 훼손 등 코드를 변경하는 일체의 행위를 의미합니다. 의도치 않은 코드 변경이 발생하지 않도록 철저히 주의합니다.
+    -   **검증 단계 (Verification Step)**: 모든 작업을 마친 후 스스로에게 질문합니다: "내가 계획한 것 이외에 불필요한 코드 변경이나 훼손이 발생하지 않았는가? 사용자의 지시를 정확히 따랐는가?" 만약 문제가 있다면 반드시 원복하거나 수정합니다.
+
+5.  **자동 검증 금지 원칙**: 자동 검증이 정상적으로 진행되어서 제대로 된 판단을 내린 적이 손에 꼽을 정도로 적음. 모든 검증은 사용자가 직접 실행하며, 계획안에 어떤 부분을 검증해야하는지 가이드를 작성하는 것으로 대체함.

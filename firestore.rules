@@ -1,0 +1,11 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 클라이언트 SDK를 통한 Firestore 직접 읽기/쓰기는 전면 차단 (보안 격리)
+    // 오직 백엔드 Cloud Functions(Firebase Admin SDK)를 통해서만 데이터 조작 허용
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
