@@ -8,11 +8,5 @@
     "serve": "firebase serve",
     "deploy": "firebase deploy"
   },
-  "private": true,
-  "dependencies": {
-    "@babel/generator": "^7.29.1",
-    "@babel/parser": "^7.29.2",
-    "@babel/traverse": "^7.29.0",
-    "firebase-functions": "^7.2.5"
-  }
+  "private": true
 }
