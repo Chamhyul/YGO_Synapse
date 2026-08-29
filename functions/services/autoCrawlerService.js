@@ -97,13 +97,45 @@ async function runAutoCrawl(locales, force = false) {
       return log;
     }
 
-    // ── Phase 4: 1개 팩만 크롤링 ──
-    const targetPack = newPacks[0];
+    // ── Phase 4: 유효한 팩 탐색 및 1개 팩 크롤링 ──
     log.phase = "crawl";
-    log.targetPack = { pid: targetPack.pid, name: targetPack.name, locale: targetPack.locale };
-    console.log(`[AutoCrawl] 팩 크롤링 시작: "${targetPack.name}" (PID: ${targetPack.pid})`);
+    let targetPack = null;
+    let crawlResult = null;
+    const skippedZeroPacks = [];
+    let processedIndex = -1;
 
-    const crawlResult = await crawlSinglePack(targetPack);
+    for (let i = 0; i < newPacks.length; i++) {
+      const currentPack = newPacks[i];
+      console.log(`[AutoCrawl] 팩 검사 [${i + 1}/${newPacks.length}]: "${currentPack.name}" (PID: ${currentPack.pid}, locale: ${currentPack.locale})`);
+
+      const result = await crawlSinglePack(currentPack);
+
+      if (result.isZeroCardPack) {
+        skippedZeroPacks.push({ pid: currentPack.pid, name: currentPack.name, locale: currentPack.locale });
+        console.log(`[AutoCrawl] 팩 "${currentPack.name}" 건너뜀 (카드가 0장인 미수록 팩). 다음 팩을 탐색합니다.`);
+        continue;
+      }
+
+      // 유효한 팩(카드 1장 이상) 크롤링 완료
+      targetPack = currentPack;
+      crawlResult = result;
+      processedIndex = i;
+      break; // 1회 실행당 1개의 유효 팩 크롤링 원칙
+    }
+
+    log.skippedZeroPacksCount = skippedZeroPacks.length;
+    if (skippedZeroPacks.length > 0) {
+      log.skippedZeroPacks = skippedZeroPacks;
+    }
+
+    if (!targetPack) {
+      log.phase = "done";
+      log.message = `신규 팩 ${newPacks.length}개 모두 수록 카드가 0장(발매 전 미수록 팩)이어서 이번 회차 크롤링을 종료합니다.`;
+      console.log(`[AutoCrawl] ${log.message}`);
+      return log;
+    }
+
+    log.targetPack = { pid: targetPack.pid, name: targetPack.name, locale: targetPack.locale };
     log.crawlResult = crawlResult;
 
     // ── Phase 5: 다음 작업 예약 전 중지 요청 확인 ──
@@ -117,15 +149,16 @@ async function runAutoCrawl(locales, force = false) {
       return log;
     }
 
-    // 남은 팩이 있으면 다음 작업 예약 (고정 ID 대신 유니크 ID와 Epoch 사용)
-    if (newPacks.length >= 2) {
+    // 처리된 팩 뒤에 아직 검사하지 않은 신규 팩이 남아있으면 다음 작업 예약
+    const remainingUncheckedPacks = newPacks.length - 1 - processedIndex;
+    if (remainingUncheckedPacks > 0) {
       const delaySec = 300 + Math.floor(Math.random() * 300); // 5~10분 랜덤
-      log.reschedule = { delaySeconds: delaySec, remainingPacks: newPacks.length - 1 };
+      log.reschedule = { delaySeconds: delaySec, remainingPacks: remainingUncheckedPacks };
       await scheduleNextRun(locales, delaySec, epoch);
     }
 
     log.phase = "done";
-    log.message = `"${targetPack.name}" 크롤링 완료`;
+    log.message = `"${targetPack.name}" 크롤링 완료` + (skippedZeroPacks.length > 0 ? ` (0장 미수록 팩 ${skippedZeroPacks.length}개 스킵)` : "");
     return log;
 
   } catch (e) {
