@@ -62,6 +62,7 @@ exports.autoCrawlQuick = schedulerRoutes.autoCrawlQuick;
 exports.autoCrawlTask = schedulerRoutes.autoCrawlTask;
 exports.triggerAutoCrawl = schedulerRoutes.triggerAutoCrawl;
 exports.migrateCardNumbersField = schedulerRoutes.migrateCardNumbersField;
+exports.migrateCardNumbersTask = schedulerRoutes.migrateCardNumbersTask;
 
 // 7. 관리 도구 모음
 const buildIndexRoutes = require("./routes/buildIndex");
@@ -78,5 +79,4 @@ exports.manageAdminRole = noticesAdminRoutes.manageAdminRole;
 const deckRoutes = require("./routes/deck");
 exports.searchDeck = deckRoutes.searchDeck;
 exports.getDeckCards = deckRoutes.getDeckCards;
-
 
