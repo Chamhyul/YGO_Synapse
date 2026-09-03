@@ -278,7 +278,8 @@ exports.updateNickname = onRequest({ invoker: "public" }, async (req, res) => {
   const uid = await verifyUser(req, res);
   if (!uid) return;
 
-  const { nickname } = req.body;
+  if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'POST 요청을 사용하세요.' });
+  const { nickname } = req.body || {};
   if (!nickname || typeof nickname !== 'string' || nickname.trim().length === 0) {
     return res.status(400).json({ success: false, message: "닉네임을 입력해 주세요." });
   }

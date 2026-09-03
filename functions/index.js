@@ -12,13 +12,13 @@ require("./config/firebase");
 // 전역 옵션 설정
 setGlobalOptions({ region: "asia-northeast3", maxInstances: 10 });
 
-// 라우트 모듈 불러오기 및 V2 Endpoint 내보내기 (Export)
+// HTTP 라우트 등록. 실제 처리 로직은 서비스·크롤러에서 수행합니다.
 
 // 1. 카드 기능 모음
 const cardRoutes = require("./routes/card");
 exports.searchCardByNo = cardRoutes.searchCardByNo;
 exports.searchCardByName = cardRoutes.searchCardByName;
-exports.getCardFullMetaByCid = cardRoutes.getCardFullMetaByCid;
+exports.getCardMetadata = cardRoutes.getCardMetadata;
 exports.getCardsMetaBatch = cardRoutes.getCardsMetaBatch;
 exports.crawlCardMetaByName = cardRoutes.crawlCardMetaByName;
 exports.getRamMemoryStats = cardRoutes.getRamMemoryStats;
@@ -31,9 +31,9 @@ exports.syncCardManifestToStorage = cardRoutes.syncCardManifestToStorage;
 
 // 2. 팩 기능 모음
 const packRoutes = require("./routes/pack");
-exports.searchPackNew = packRoutes.searchPackNew;
+exports.searchPack = packRoutes.searchPack;
 exports.getPackCids = packRoutes.getPackCids;
-exports.crawlPackBatchNew = packRoutes.crawlPackBatchNew;
+exports.crawlPackCardsBatch = packRoutes.crawlPackCardsBatch;
 
 // 3. 사용자 관련 모음
 const userRoutes = require("./routes/user");
@@ -55,23 +55,25 @@ exports.checkMembershipDiscord = integrationRoutes.checkMembershipDiscord;
 exports.checkMembershipCsv = integrationRoutes.checkMembershipCsv;
 exports.uploadMembershipCsv = integrationRoutes.uploadMembershipCsv;
 
-// 6. 자동 크롤링 모음
-const schedulerRoutes = require("./routes/scheduler");
-exports.autoCrawlFull = schedulerRoutes.autoCrawlFull;
-exports.autoCrawlQuick = schedulerRoutes.autoCrawlQuick;
-exports.autoCrawlTask = schedulerRoutes.autoCrawlTask;
-exports.triggerAutoCrawl = schedulerRoutes.triggerAutoCrawl;
-exports.migrateCardNumbersField = schedulerRoutes.migrateCardNumbersField;
-exports.migrateCardNumbersTask = schedulerRoutes.migrateCardNumbersTask;
+// 관리자용 HTTP 라우트
+const crawlerAdmin = require("./routes/admin/autoCrawler");
+const cardNumbersAdmin = require("./routes/admin/cardNumbers");
+const cardIndexesAdmin = require("./routes/admin/cardIndexes");
+exports.triggerAutoCrawl = crawlerAdmin.triggerAutoCrawl;
+exports.migrateCardNumbersField = cardNumbersAdmin.migrateCardNumbersField;
+exports.rebuildAllCardIndexes = cardIndexesAdmin.rebuildAllCardIndexes;
 
-// 7. 관리 도구 모음
-const buildIndexRoutes = require("./routes/buildIndex");
-exports.buildIndex = buildIndexRoutes.buildIndex;
-
-
+// 예약 실행 및 작업 큐 진입점
+const crawlerSchedules = require("./schedules/autoCrawler");
+exports.autoCrawlFull = crawlerSchedules.autoCrawlFull;
+exports.autoCrawlQuick = crawlerSchedules.autoCrawlQuick;
+exports.processCardIndexTask = require("./tasks/cardIndexes").processCardIndexTask;
+exports.processCardIndexUpdates = require("./schedules/cardIndexes").processCardIndexUpdates;
+exports.autoCrawlTask = require("./tasks/autoCrawler").autoCrawlTask;
+exports.migrateCardNumbersTask = require("./tasks/cardNumbers").migrateCardNumbersTask;
 
 // 공지 및 시스템 관리자 권한 API
-const noticesAdminRoutes = require("./routes/noticesAdmin");
+const noticesAdminRoutes = require("./routes/admin/notices");
 exports.manageNotice = noticesAdminRoutes.manageNotice;
 exports.manageAdminRole = noticesAdminRoutes.manageAdminRole;
 
@@ -80,3 +82,9 @@ const deckRoutes = require("./routes/deck");
 exports.searchDeck = deckRoutes.searchDeck;
 exports.getDeckCards = deckRoutes.getDeckCards;
 
+
+// 클라이언트 전환 기간에만 유지합니다. 기존 탭과 이전 클라이언트의 주소 호환용입니다.
+exports.searchPackNew = packRoutes.searchPack;
+exports.crawlPackBatchNew = packRoutes.crawlPackCardsBatch;
+exports.getCardFullMetaByCid = cardRoutes.getCardMetadata;
+exports.buildIndex = cardIndexesAdmin.rebuildAllCardIndexes;

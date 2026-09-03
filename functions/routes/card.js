@@ -1,11 +1,13 @@
+const { refreshCardManifest } = require("../services/cardIndexService");
+const cardService = require("../services/cardService");
 const { onRequest } = require("firebase-functions/v2/https");
 const { admin } = require("../config/firebase");
 const { mapToRowArray } = require("../utils/common");
 const { setCors, verifyUser, verifyAppCheck } = require("../utils/auth");
-const { crawlByCardNo, crawlByCardName } = require("../scraper");
-const { getCardFromCacheByNo, getCardFromCacheByName, getCardFullMetaByCid, getCardsMetaBatch, getRamMemoryStats, saveCardToFirestore, buildSearchResponse, buildSearchResponseFromIndexByNo, buildSearchResponseFromIndexByName, resolveCardNumber, normalizeNameForDocId } = require("../services/cardService");
+const { crawlByCardNo, crawlByCardName } = require("../scrapers/cardScraper");
+const { getCardFromCacheByNo, getCardFromCacheByName, saveCardToFirestore, buildSearchResponse, buildSearchResponseFromIndexByNo, buildSearchResponseFromIndexByName, resolveCardNumber, normalizeNameForDocId } = require("../services/cardService");
 const { updateInventoryWithRetry, processAddCards, processMoveCards, processDiscardCards } = require("../utils/inventoryStorage");
-const { getIdxByName, getIdxByNumber, getIdxCid, rebuildCardManifestFromCache } = require("../utils/indexStorage");
+const { getIdxByName, getIdxByNumber, getIdxCid } = require("../utils/indexStorage");
 
 async function handleSearchExecution(req, res, options) {
   const {
@@ -37,7 +39,7 @@ async function handleSearchExecution(req, res, options) {
           response = buildSearchResponse(cached.cid, cached.info, true);
         }
         if (!res.headersSent) {
-          res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
+          res.setHeader("Cache-Control", "public, max-age=60, s-maxage=60");
           return res.json(response);
         }
         return;
@@ -63,7 +65,6 @@ async function handleSearchExecution(req, res, options) {
     }
 
     const saveResult = await saveCardToFirestore(result);
-    rebuildCardManifestFromCache().catch(err => console.error("rebuildCardManifest async error:", err));
 
     const response = buildSearchResponse(result.cid, result.mergedInfo, false);
     if (saveResult && saveResult.rarityChanged) {
@@ -125,7 +126,6 @@ async function runBackgroundCrawlAndSave(query) {
 
     if (successResult) {
       await saveCardToFirestore(successResult);
-      rebuildCardManifestFromCache().catch(err => console.error("rebuildCardManifest async error:", err));
       console.log(`[Crawl Background] Successfully crawled & saved: ${query}`);
     } else {
       console.log(`[Crawl Background] Crawl failed or not found for: ${query}`);
@@ -302,8 +302,8 @@ exports.syncCardManifestToStorage = onRequest({ invoker: "public", memory: "1GiB
   if (!(await verifyAppCheck(req, res))) return;
 
   try {
-    const result = await rebuildCardManifestFromCache();
-    return res.json({ success: true, ...result, message: "Storage 매니페스트 동기화 완료" });
+    const result = await refreshCardManifest();
+    return res.status(result.busy ? 409 : 200).json(result);
   } catch (e) {
     return res.status(500).json({ success: false, message: e.toString() });
   }
@@ -311,7 +311,7 @@ exports.syncCardManifestToStorage = onRequest({ invoker: "public", memory: "1GiB
 
 
 
-exports.getCardFullMetaByCid = onRequest({ invoker: "public", memory: "256MiB", timeoutSeconds: 60 }, async (req, res) => {
+exports.getCardMetadata = onRequest({ invoker: "public", memory: "256MiB", timeoutSeconds: 60 }, async (req, res) => {
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
   if (!(await verifyAppCheck(req, res))) return;
@@ -331,13 +331,13 @@ exports.getCardFullMetaByCid = onRequest({ invoker: "public", memory: "256MiB", 
   }
 
   try {
-    const result = await getCardFullMetaByCid(cid, name, cardNo, langOnly);
+    const result = await cardService.getCardMetadata(cid, name, cardNo, langOnly);
     if (result && result.success) {
       res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300");
     }
     return res.json(result);
   } catch (e) {
-    console.error("getCardFullMetaByCid error:", e);
+    console.error("getCardMetadata error:", e);
     return res.status(500).json({ success: false, message: e.toString() });
   }
 });
@@ -350,7 +350,7 @@ exports.getCardsMetaBatch = onRequest({ invoker: "public", memory: "256MiB", tim
   const cids = req.body?.cids || (req.query.cids ? String(req.query.cids).split(',') : []);
 
   try {
-    const result = await getCardsMetaBatch(cids);
+    const result = await cardService.getCardsMetaBatch(cids);
     res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300");
     return res.json(result);
   } catch (e) {
@@ -385,6 +385,6 @@ exports.getRamMemoryStats = onRequest({ invoker: "public" }, async (req, res) =>
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
   if (!(await verifyAppCheck(req, res))) return;
-  const stats = await getRamMemoryStats();
+  const stats = await cardService.getRamMemoryStats();
   return res.json(stats);
 });

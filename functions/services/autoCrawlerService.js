@@ -1,3 +1,4 @@
+const { requestCardIndexWork } = require('./cardIndexDispatchService');
 /**
  * autoCrawlerService.js
  * 자동 크롤링 메인 로직 - 점진적 팩/카드 동기화
@@ -8,12 +9,12 @@
  * 3. 한 번에 1개 팩만 크롤링 (CID 추출 → 카드 상세 → Firestore 저장)
  * 4. 미처리 팩이 2개 이상이면 Cloud Tasks로 5~10분 후 재실행 예약
  */
+const { ALL_LOCALES, MAIN_LOCALES } = require("../config/crawler");
 const { db } = require("../config/firebase");
 const { getFunctions } = require("firebase-admin/functions");
-const { getAllPacks, getPackCids, crawlPack, LOCALE_TO_INDEX } = require("../scraper");
-const { saveCardToFirestore, buildIndexesForCards } = require("./cardService");
+const { getAllPacks, getPackCids, crawlCardInPack, LOCALE_TO_INDEX } = require("../scrapers/cardScraper");
+const { saveCardToFirestore } = require("./cardService");
 const { downloadPacksMetadata, upsertPackToStorage } = require("../utils/packsStorage");
-const { rebuildCardManifestFromCache } = require("../utils/indexStorage");
 const { normalizeText } = require("../utils/common");
 
 /**
@@ -177,13 +178,18 @@ async function runAutoCrawl(locales, force = false) {
     // 성공/실패 여부와 상관없이 Lock 해제 (단, skip인 경우에는 해제하지 않음)
     if (log.phase !== "skipped") {
       try {
-        await statusDocRef.set({
-          status: "idle",
-          stopRequest: false,
-          lastFinished: Date.now(),
-        }, { merge: true });
-      } catch (err) {
-        console.error("[AutoCrawl] Lock 해제 중 오류:", err);
+        // 신규 팩이 없어도 이전에 남은 변경을 처리하며 완료 응답 전에 파일을 저장합니다.
+        await requestCardIndexWork();
+      } finally {
+        try {
+          await statusDocRef.set({
+            status: "idle",
+            stopRequest: false,
+            lastFinished: Date.now(),
+          }, { merge: true });
+        } catch (err) {
+          console.error("[AutoCrawl] Lock 해제 중 오류:", err);
+        }
       }
     }
   }
@@ -215,77 +221,54 @@ async function crawlSinglePack(pack) {
 
   // 카드 상세 크롤링 (Firestore에 없는 것만)
   let crawled = 0, skipped = 0, failed = 0;
-  const bulkCardsList = [];
 
   // Firestore 일괄 조회 (cids.length > 0 이 위에서 보장되므로 안전함)
   const docRefs = cids.map(cid => db.collection("cards").doc(cid));
   const existingDocs = await db.getAll(...docRefs);
   const existingMap = new Map(existingDocs.map(doc => [doc.id, doc]));
 
-  try {
-    for (const cid of cids) {
-      // Firestore 존재 여부 확인 (3단계 검증: CID -> 언어 -> 팩 이름 수록 검증)
-      const existing = existingMap.get(cid);
-      if (existing && existing.exists) {
-        const data = existing.data();
-        const localeIdx = LOCALE_TO_INDEX[locale];
-        const cInfo = data.info ? data.info[localeIdx] : null;
+  for (const cid of cids) {
+    // Firestore 존재 여부 확인 (3단계 검증: CID -> 언어 -> 팩 이름 수록 검증)
+    const existing = existingMap.get(cid);
+    if (existing && existing.exists) {
+      const data = existing.data();
+      const localeIdx = LOCALE_TO_INDEX[locale];
+      const cInfo = data.info ? data.info[localeIdx] : null;
 
-        // 1단계(CID) 및 2단계(언어 정보) 존재 확인
-        if (cInfo && cInfo[0]) {
-          // 3단계: raritiesByNo 내 현재 팩 이름 매칭 확인
-          const raritiesByNo = cInfo[2] || {};
-          const targetPackNameNorm = normalizeText(name);
+      // 1단계(CID) 및 2단계(언어 정보) 존재 확인
+      if (cInfo && cInfo[0]) {
+        // 3단계: raritiesByNo 내 현재 팩 이름 매칭 확인
+        const raritiesByNo = cInfo[2] || {};
+        const targetPackNameNorm = normalizeText(name);
 
-          const isPackAlreadyRecorded = Object.values(raritiesByNo).some(arr => {
-            if (!Array.isArray(arr) || !arr[0]) return false;
-            const normPack = normalizeText(arr[0]);
-            return normPack === targetPackNameNorm;
-          });
+        const isPackAlreadyRecorded = Object.values(raritiesByNo).some(arr => {
+          if (!Array.isArray(arr) || !arr[0]) return false;
+          const normPack = normalizeText(arr[0]);
+          return normPack === targetPackNameNorm;
+        });
 
-          if (isPackAlreadyRecorded) {
-            skipped++;
-            continue; // 이미 이 팩에서의 정보가 기록된 완벽 중복 -> 스킵
-          }
-          console.log(`[AutoCrawl] 카드(${cid})는 존재하나 팩("${name}") 정보가 없어 재록 갱신 크롤링을 수행합니다.`);
-        } else {
-          console.log(`[AutoCrawl] 문서(${cid})는 존재하나 언어(${locale}) 정보가 없어 크롤링을 수행합니다.`);
+        if (isPackAlreadyRecorded) {
+          skipped++;
+          continue; // 이미 이 팩에서의 정보가 기록된 완벽 중복 -> 스킵
         }
-      }
-
-      // 상세 페이지 크롤링
-      const cardData = await crawlPack(cid, locale, name);
-      if (!cardData.isError) {
-        const saveRes = await saveCardToFirestore(cardData, { skipIndexBuild: true });
-        if (saveRes) {
-          bulkCardsList.push({
-            cid: cardData.cid,
-            mergedInfo: cardData.mergedInfo,
-            names: saveRes.names,
-            numbers: saveRes.numbers,
-            validLocales: saveRes.validLocales
-          });
-        }
-        crawled++;
+        console.log(`[AutoCrawl] 카드(${cid})는 존재하나 팩("${name}") 정보가 없어 재록 갱신 크롤링을 수행합니다.`);
       } else {
-        failed++;
-        console.warn(`[AutoCrawl] 카드 크롤링 실패 (CID: ${cid}):`, cardData.message);
+        console.log(`[AutoCrawl] 문서(${cid})는 존재하나 언어(${locale}) 정보가 없어 크롤링을 수행합니다.`);
       }
+    }
 
-      // 요청 간 딜레이 (차단 방지: 500ms)
-      await new Promise(resolve => setTimeout(resolve, 500));
+    // 상세 페이지 크롤링
+    const cardData = await crawlCardInPack(cid, locale, name);
+    if (!cardData.isError) {
+      await saveCardToFirestore(cardData, { deferIndexFlush: true });
+      crawled++;
+    } else {
+      failed++;
+      console.warn(`[AutoCrawl] 카드 크롤링 실패 (CID: ${cid}):`, cardData.message);
     }
-  } finally {
-    // 예외가 발생해 루프가 중단되더라도 그 시점까지 수집된 카드의 인덱스는 1회 일괄 업데이트 보장
-    if (bulkCardsList.length > 0) {
-      console.log(`[AutoCrawl] ${bulkCardsList.length}장의 카드에 대한 인덱스 일괄 빌드 시작 (예외 복구 보장)...`);
-      try {
-        await buildIndexesForCards(bulkCardsList);
-        await rebuildCardManifestFromCache();
-      } catch (e) {
-        console.error("[AutoCrawl] Bulk index build error:", e);
-      }
-    }
+
+    // 요청 간 딜레이 (차단 방지: 500ms)
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
 
   console.log(`[AutoCrawl] 팩 "${name}" 처리 완료 - 크롤링: ${crawled}, 스킵: ${skipped}, failed: ${failed}`);
@@ -331,3 +314,54 @@ async function scheduleNextRun(locales, delaySec, epoch) {
 }
 
 module.exports = { runAutoCrawl };
+
+async function resumeAutoCrawl(data) {
+  const { locales = MAIN_LOCALES, epoch } = data;
+
+  // ─── 세션 검증 (Epoch Check) ───
+  // 새로운 스케줄러나 수동 크롤링이 시작되면 system/crawler의 currentEpoch가 갱신됨
+  // 전달받은 epoch가 현재 최신 세션과 다르면 구식 작업으로 보고 즉시 종료
+  const statusDoc = await db.collection("system").doc("crawler").get();
+  const currentEpoch = statusDoc.exists ? statusDoc.data().currentEpoch : null;
+
+  if (!epoch || epoch !== currentEpoch) {
+    console.log(`[TaskQueue] 구식 세션 감지 (전달 Epoch: ${epoch}, 최신 Epoch: ${currentEpoch}). 작업을 취소합니다.`);
+    return;
+  }
+
+  console.log(`[TaskQueue] 자동 크롤링 재실행 (언어: ${locales.join(", ")}, Epoch: ${epoch})`);
+  const result = await runAutoCrawl(locales);
+  console.log("[TaskQueue] 크롤링 결과:", JSON.stringify(result));
+}
+module.exports.resumeAutoCrawl = resumeAutoCrawl;
+
+async function controlAutoCrawl(options) {
+  const { action, locale, full, force } = options;
+
+  // 1. 중지 명령 처리
+  if (action === "stop") {
+    await db.collection("system").doc("crawler").set({
+      stopRequest: true,
+      stoppedAt: Date.now(),
+    }, { merge: true });
+    return { success: true, message: "크롤링 중지 요청이 수신되었습니다. 현재 처리 중인 팩까지만 완료 후 중단됩니다." };
+  }
+
+  // 2. 실행 언어 결정
+  let locales;
+  if (locale) {
+    locales = locale.split(",").map(l => l.trim()).filter(Boolean);
+  } else if (full === "true") {
+    locales = ALL_LOCALES;
+  } else {
+    locales = MAIN_LOCALES;
+  }
+
+  // 3. 실행
+  const isForce = force === "true";
+  console.log(`[Manual] 수동 자동 크롤링 시작 (언어: ${locales.join(", ")}, 강제실행: ${isForce})`);
+  const result = await runAutoCrawl(locales, isForce);
+
+  return { success: true, ...result };
+}
+module.exports.controlAutoCrawl = controlAutoCrawl;

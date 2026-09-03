@@ -4,7 +4,7 @@
  */
 const cheerio = require("cheerio");
 const axios = require("axios");
-const { normalizeText } = require("./utils/common");
+const { normalizeText } = require("../utils/common");
 
 /**
  * 배열 항목을 chunkSize 단위로 나누어 병렬 수행하는 유틸리티
@@ -193,6 +193,8 @@ function parseCardDetailHtml(htmlText, locale) {
     $clone.find(".text_title").remove();
     $clone.find("br").replaceWith("\n");
     cardText = $clone.text()
+      // HTML 엔티티에서 텍스트로 풀린 br 표기도 실제 개행으로 통일합니다.
+      .replace(/<br\s*\/?\s*>/gi, "\n")
       .replace(/[\u200B-\u200D\uFEFF]/g, "")
       .split("\n")
       .map(line => line.trim().replace(/[ \t]+/g, " "))
@@ -207,6 +209,7 @@ function parseCardDetailHtml(htmlText, locale) {
     $clone.find(".text_title").remove();
     $clone.find("br").replaceWith("\n");
     penText = $clone.text()
+      .replace(/<br\s*\/?\s*>/gi, "\n")
       .replace(/[\u200B-\u200D\uFEFF]/g, "")
       .split("\n")
       .map(line => line.trim().replace(/[ \t]+/g, " "))
@@ -465,7 +468,7 @@ async function _crawlDetail(detailLink, foundLocale, validLocales, type, origina
   };
 }
 
-module.exports = { crawlByCardNo, crawlByCardName, parseCardDetailHtml, searchPack, crawlPack, getPackCids, getAllPacks, LOCALE_TO_INDEX };
+module.exports = { crawlByCardNo, crawlByCardName, parseCardDetailHtml, searchPack, crawlCardInPack, getPackCids, getAllPacks, LOCALE_TO_INDEX };
 
 /**
  * 팩 ID로부터 소속 카드 CID 리스트 추출
@@ -619,7 +622,7 @@ async function searchPack(packName) {
 /**
  * 팩 내 개별 카드 상세 정보 크롤링 (배치 처리를 위해 단건 기능 제공)
  */
-async function crawlPack(cid, locale = 'ko', packName = null) {
+async function crawlCardInPack(cid, locale = 'ko', packName = null) {
   const url = `https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid=${cid}&request_locale=${locale}`;
   try {
     const res = await axios.get(url, {
@@ -643,7 +646,7 @@ async function crawlPack(cid, locale = 'ko', packName = null) {
 
     return { ...parsedData, cid, cardNo: matchedFirstNo, mergedInfo: parsedData.mergedInfoSlot };
   } catch (e) {
-    console.error(`crawlPack error (cid: ${cid}):`, e);
+    console.error(`crawlCardInPack error (cid: ${cid}):`, e);
     return { isError: true, cid, message: e.toString() };
   }
 }

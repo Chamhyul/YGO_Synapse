@@ -13,8 +13,8 @@ const {
 } = require("../config/firebase");
 const { google } = require("googleapis");
 const { setCors, verifyAppCheck, verifyUser } = require("../utils/auth");
-const sheets = require("../sheets");
-const { getDiscordUserWithCode, checkGuildMemberRole } = require("../utils/discord");
+const sheets = require("../integrations/googleSheets");
+const { getDiscordUserWithCode, checkGuildMemberRole } = require("../integrations/discord");
 
 exports.checkSheet = onRequest({ invoker: "public" }, async (req, res) => {
   setCors(res, req);

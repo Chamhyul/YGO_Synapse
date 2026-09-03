@@ -1,7 +1,9 @@
+const { requestCardIndexWork } = require('./cardIndexDispatchService');
 const { db, admin, getBucket, FieldValue } = require("../config/firebase");
-const { getIdxByName, getIdxByNumber, getIdxCid, updateIdxWithRetry, rebuildCardManifestFromCache } = require("../utils/indexStorage");
+const { getIdxByName, getIdxByNumber, getIdxCid } = require("../utils/indexStorage");
 const { updateRarityMemoryCache, normalizeText } = require("../utils/common");
-const { crawlByCardName } = require("../scraper");
+const { saveCardAndQueueIndex } = require("./cardWriteService");
+const { crawlByCardName } = require("../scrapers/cardScraper");
 
 // [전역 RAM 인메모리 캐시 맵] - 개별 카드 TTL (10분) 만료 캐시
 const _fullMetaMemoryMap = new Map();
@@ -18,7 +20,7 @@ function normalizeNameForDocId(name) {
 
 /**
  * 인덱스 기반 카드 번호 검색
- * idx_byNumber 컬렉션에서 문서 ID(카드 번호)로 직접 조회
+ * Storage 번호 인덱스에서 조회
  */
 async function getCardFromCacheByNo(cardNo) {
   const upper = cardNo.toUpperCase();
@@ -47,7 +49,7 @@ async function getCardFromCacheByNo(cardNo) {
 
 /**
  * 인덱스 기반 카드 이름 검색
- * idx_byName 컬렉션에서 문서 ID(카드 이름)로 직접 조회
+ * Storage 이름 인덱스에서 조회
  */
 async function getCardFromCacheByName(cardName) {
   const normName = normalizeText(cardName);
@@ -195,9 +197,9 @@ async function updateRarityMapping(newRarities) {
 }
 
 /**
- * 크롤링 결과를 Firestore에 저장 + 인덱스 자동 생성
+ * 크롤링 원본과 인덱스 반영 대기 기록을 함께 저장
  */
-async function saveCardToFirestore(result, options = { skipIndexBuild: false }) {
+async function saveCardToFirestore(result, { deferIndexFlush = false } = {}) {
   if (!result || !result.cid || result.isError) return;
 
   // 크롤링 데이터 내 JP -> KR 번호 자동 보정 로직
@@ -305,20 +307,11 @@ async function saveCardToFirestore(result, options = { skipIndexBuild: false }) 
     payload.numbers = FieldValue.arrayUnion(...formattedNos);
   }
 
-  await db.collection("cards").doc(cid).set(payload, { merge: true }).catch((e) => console.error("Firestore save error:", e));
+  await saveCardAndQueueIndex(cid, payload);
 
-  // DB 수정 및 크롤링 완료 시 백엔드 RAM 메모리 0.00초 즉시 실시간 갱신 (Zero Stale Data)
-  _fullMetaMemoryMap.set(String(cid), payload);
-
-  // ── 인덱스 컬렉션 자동 생성 ──
-  if (!options.skipIndexBuild) {
-    try {
-      const validLocales = result.validLocales || [];
-      await buildIndexesForCard(cid, result.mergedInfo, names, result.numbers, validLocales);
-    } catch (e) {
-      console.error("Index build error:", e);
-    }
-  }
+  // 부분 언어 데이터로 상세 캐시를 덮어쓰지 않습니다. 다음 조회에서 병합된 원본을 읽습니다.
+  _fullMetaMemoryMap.delete(String(cid));
+  if (!deferIndexFlush) await requestCardIndexWork();
 
   // 레어도 매핑 동적 업데이트
   let rarityChanged = false;
@@ -338,109 +331,6 @@ async function saveCardToFirestore(result, options = { skipIndexBuild: false }) 
   return { rarityChanged, updatedLangs, names, numbers: result.numbers, validLocales: result.validLocales || [] };
 }
 
-/**
- * 여러 카드에 대한 인덱스 문서 벌크 일괄 생성 (Storage I/O 병목 최적화)
- *
- * @param {Array<{cid: string, mergedInfo: Array, names: Array<string>, numbers: Array<string>, validLocales: Array<string>}>} cardsArray
- * @returns {Promise<void>}
- */
-async function buildIndexesForCards(cardsArray) {
-  if (!cardsArray || cardsArray.length === 0) return;
-
-  const cidUpdates = [];
-  const nameUpdates = {};
-  const numberUpdates = {};
-
-  for (const card of cardsArray) {
-    const { cid, mergedInfo, names, numbers, validLocales = [] } = card;
-    if (!mergedInfo) continue;
-
-    if (names && names.length > 0) {
-      cidUpdates.push({ cid, names });
-    }
-
-    for (let langIdx = 0; langIdx < 10; langIdx++) {
-      const langInfo = mergedInfo[langIdx];
-      if (!langInfo) continue;
-
-      const cardName = langInfo[0];
-      const illustrationCount = langInfo[1] || 0;
-      const raritiesByNo = langInfo[2] || {};
-
-      if (!cardName) continue;
-
-      const nameDocId = normalizeNameForDocId(cardName);
-      if (!nameUpdates[nameDocId]) {
-        nameUpdates[nameDocId] = { cid, illustrationCount, locales: validLocales };
-      }
-      for (const no in raritiesByNo) {
-        const upperNo = no.toUpperCase();
-        const rarArr = raritiesByNo[no];
-        nameUpdates[nameDocId][upperNo] = rarArr.length > 1 ? rarArr.slice(1) : [];
-      }
-
-      for (const no in raritiesByNo) {
-        const upperNo = no.toUpperCase();
-        const rarArr = raritiesByNo[no];
-        const rarities = rarArr.length > 1 ? rarArr.slice(1) : [];
-        numberUpdates[upperNo] = {
-          cid,
-          name: cardName,
-          illustrationCount,
-          rarity: rarities,
-          locales: validLocales
-        };
-      }
-    }
-  }
-
-  if (cidUpdates.length > 0) {
-    await updateIdxWithRetry("cid", (idxCid) => {
-      for (const update of cidUpdates) {
-        const { cid, names } = update;
-        if (!idxCid[cid]) {
-          idxCid[cid] = { names: [...names] };
-        } else {
-          const existing = idxCid[cid].names || [];
-          names.forEach(n => { if (!existing.includes(n)) existing.push(n); });
-          idxCid[cid].names = existing;
-        }
-      }
-    }).catch(err => console.error("updateIdxWithRetry(cid) error:", err));
-  }
-
-  if (Object.keys(nameUpdates).length > 0) {
-    await updateIdxWithRetry("byName", (idxByName) => {
-      for (const docId in nameUpdates) {
-        if (!idxByName[docId]) {
-          idxByName[docId] = nameUpdates[docId];
-        } else {
-          Object.assign(idxByName[docId], nameUpdates[docId]);
-        }
-      }
-    }).catch(err => console.error("updateIdxWithRetry(byName) error:", err));
-  }
-
-  if (Object.keys(numberUpdates).length > 0) {
-    await updateIdxWithRetry("byNumber", (idxByNumber) => {
-      for (const upperNo in numberUpdates) {
-        idxByNumber[upperNo] = numberUpdates[upperNo];
-      }
-    }).catch(err => console.error("updateIdxWithRetry(byNumber) error:", err));
-  }
-}
-
-/**
- * 단일 카드에 대한 인덱스 문서 일괄 생성
- * - idx_byNumber: 카드 번호 → {cid, name, illustrationCount, rarity}
- * - idx_byName: 카드 이름 → {cid, illustrationCount, [번호]: [레어도들]}
- * - idx_cid: CID → {names: [모든 이름]}
- */
-async function buildIndexesForCard(cid, mergedInfo, names, numbers, validLocales = []) {
-  await buildIndexesForCards([{ cid, mergedInfo, names, numbers, validLocales }]);
-}
-
-// 공통 응답 포맷 생성 (프론트엔드 UI 엔진 호환용)
 function buildSearchResponse(cid, info, isCached) {
   if (!info) return { success: false, name: "정보 없음", numbers: [], status: 'error' };
 
@@ -786,7 +676,7 @@ async function getCardsMetaBatch(cids = []) {
   return { success: true, results };
 }
 
-async function getCardFullMetaByCid(cid, name, cardNo = "", langOnly = false) {
+async function getCardMetadata(cid, name, cardNo = "", langOnly = false) {
   const normCid = cid ? String(cid).trim() : "";
   const normName = name ? String(name).trim() : "";
   const normCardNo = cardNo ? String(cardNo).trim().toUpperCase() : "";
@@ -853,7 +743,7 @@ async function getCardFullMetaByCid(cid, name, cardNo = "", langOnly = false) {
         return formatMetaResponse(cardCid, normName, fullDataObj, langOnly);
       }
     } catch (err) {
-      console.warn("getCardFullMetaByCid firestore lookup error:", err);
+      console.warn("getCardMetadata firestore lookup error:", err);
     }
   }
 
@@ -863,7 +753,6 @@ async function getCardFullMetaByCid(cid, name, cardNo = "", langOnly = false) {
       const crawlRes = await crawlByCardName(name);
       if (crawlRes && !crawlRes.isError) {
         await saveCardToFirestore(crawlRes);
-        rebuildCardManifestFromCache().catch(err => console.error("rebuildCardManifestFromCache async error:", err));
 
         // 백엔드 RAM 메모리 맵에 즉시 상주
         const fullMetaObj = {
@@ -878,7 +767,7 @@ async function getCardFullMetaByCid(cid, name, cardNo = "", langOnly = false) {
         return formatMetaResponse(crawlRes.cid, name, fullMetaObj, langOnly);
       }
     } catch (crawlErr) {
-      console.error("getCardFullMetaByCid crawl error:", crawlErr);
+      console.error("getCardMetadata crawl error:", crawlErr);
     }
   }
 
@@ -907,7 +796,7 @@ function flushMemoryCache() {
 module.exports = {
   getCardFromCacheByNo,
   getCardFromCacheByName,
-  getCardFullMetaByCid,
+  getCardMetadata,
   getCardsMetaBatch,
   getRamMemoryStats,
   saveCardToFirestore,
@@ -915,8 +804,6 @@ module.exports = {
   buildSearchResponse,
   buildSearchResponseFromIndexByNo,
   buildSearchResponseFromIndexByName,
-  buildIndexesForCard,
-  buildIndexesForCards,
   normalizeNameForDocId,
   resolveCardNumber
 };

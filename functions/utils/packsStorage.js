@@ -124,7 +124,7 @@ async function uploadPackDetail(packId, data) {
 
 /**
  * 단일 팩의 메타데이터를 packs.json에 병합하고, 상세 파일도 동시에 갱신합니다.
- * searchPackNew, getPackCids, crawlSinglePack에서 공통으로 사용합니다.
+ * searchPack, getPackCids, crawlSinglePack에서 공통으로 사용합니다.
  *
  * @param {string} packId - "{PID}_{locale}" 형식의 복합키
  * @param {{ name: string, totalCards: number, cids?: string[], updatedAt?: number }} packData

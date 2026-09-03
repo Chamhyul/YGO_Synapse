@@ -1,90 +1,43 @@
-/**
- * YGO Synapse Client
- */
-
+/** YGO Synapse Client */
+// 운영·로컬 모두 같은 함수 이름 목록으로 주소를 생성합니다.
+const HTTP_FUNCTION_NAMES = [
+    "getInitialData",
+    "checkSheet",
+    "addCards",
+    "moveCards",
+    "discardCards",
+    "searchPack",
+    "getPackCids",
+    "crawlPackCardsBatch",
+    "searchCardByNo",
+    "searchCardByName",
+    "getCardMetadata",
+    "getCardsMetaBatch",
+    "crawlCardMetaByName",
+    "getRamMemoryStats",
+    "getUserData",
+    "updateUserSettings",
+    "updateNickname",
+    "checkMembershipDiscord",
+    "checkMembershipCsv",
+    "uploadMembershipCsv",
+    "searchDeck",
+    "searchCard",
+    "suggestCardNames",
+    "getDeckCards",
+    "migrateFromSheet",
+    "migrateFromData",
+    "clearUserData",
+    "migrateCardNumbersField",
+    "manageNotice",
+    "manageAdminRole"
+];
+const FUNCTION_BASE_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? 'http://127.0.0.1:5001/ygo-synapse/asia-northeast3'
+    : 'https://asia-northeast3-ygo-synapse.cloudfunctions.net';
 const FIREBASE_CONFIG = {
-    ENDPOINTS: {
-        getInitialData: "https://getinitialdata-e4pt3uwcya-du.a.run.app",
-        checkSheet: "https://checksheet-e4pt3uwcya-du.a.run.app",
-        addCards: "https://addcards-e4pt3uwcya-du.a.run.app",
-        moveCards: "https://movecards-e4pt3uwcya-du.a.run.app",
-        discardCards: "https://discardcards-e4pt3uwcya-du.a.run.app",
-        searchPackNew: "https://searchpacknew-e4pt3uwcya-du.a.run.app",
-        getPackCids: "https://getpackcids-e4pt3uwcya-du.a.run.app",
-        crawlPackBatchNew: "https://crawlpackbatchnew-e4pt3uwcya-du.a.run.app",
-        getCardNameFromDb: "https://searchcardbyno-e4pt3uwcya-du.a.run.app",
-        getCardDetailsByName: "https://searchcardbyname-e4pt3uwcya-du.a.run.app",
-        getCardFullMetaByCid: "https://getcardfullmetabycid-e4pt3uwcya-du.a.run.app",
-        getCardsMetaBatch: "https://getcardsmetabatch-e4pt3uwcya-du.a.run.app",
-        crawlCardMetaByName: "https://crawlcardmetabyname-e4pt3uwcya-du.a.run.app",
-        keepAlivePing: "https://keepaliveping-e4pt3uwcya-du.a.run.app",
-        getRamMemoryStats: "https://getrammemorystats-e4pt3uwcya-du.a.run.app",
-        getUserData: "https://asia-northeast3-ygo-synapse.cloudfunctions.net/getUserData",
-        updateUserSettings: "https://asia-northeast3-ygo-synapse.cloudfunctions.net/updateUserSettings",
-        checkMembership: "https://asia-northeast3-ygo-synapse.cloudfunctions.net/checkMembership",
-        checkMembershipDiscord: "https://asia-northeast3-ygo-synapse.cloudfunctions.net/checkMembershipDiscord",
-        checkMembershipCsv: "https://asia-northeast3-ygo-synapse.cloudfunctions.net/checkMembershipCsv",
-        uploadMembershipCsv: "https://asia-northeast3-ygo-synapse.cloudfunctions.net/uploadMembershipCsv",
-        searchDeck: "https://searchdeck-e4pt3uwcya-du.a.run.app",
-        searchCard: "https://searchcard-e4pt3uwcya-du.a.run.app",
-        suggestCardNames: "https://suggestcardnames-e4pt3uwcya-du.a.run.app",
-        getDeckCards: "https://getdeckcards-e4pt3uwcya-du.a.run.app",
-        migrateFromSheet: "https://asia-northeast3-ygo-synapse.cloudfunctions.net/migrateFromSheet",
-        migrateFromData: "https://asia-northeast3-ygo-synapse.cloudfunctions.net/migrateFromData",
-        clearUserData: "https://asia-northeast3-ygo-synapse.cloudfunctions.net/clearUserData",
-        cleanNumbersCollection: "https://cleannumberscollection-e4pt3uwcya-du.a.run.app",
-        migrateCardNumbersField: "https://asia-northeast3-ygo-synapse.cloudfunctions.net/migrateCardNumbersField"
-    }
+    ENDPOINTS: Object.fromEntries(HTTP_FUNCTION_NAMES.map(name => [name, `${FUNCTION_BASE_URL}/${name}`]))
 };
-
-// 로컬 에뮬레이터 자동 전환 로직
-if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-    console.warn("로컬 에뮬레이터 모드로 동작 중입니다.");
-
-    // 2. HTTP 기반 API Endpoint 에뮬레이터 주소로 덮어쓰기
-    const PROJECT_ID = "ygo-synapse";
-    const REGION = "asia-northeast3";
-    const baseUrl = `http://127.0.0.1:5001/${PROJECT_ID}/${REGION}`;
-
-    const localEndpoints = {
-        getInitialData: `${baseUrl}/getInitialData`,
-        checkSheet: `${baseUrl}/checkSheet`,
-        addCards: `${baseUrl}/addCards`,
-        moveCards: `${baseUrl}/moveCards`,
-        discardCards: `${baseUrl}/discardCards`,
-        searchPackNew: `${baseUrl}/searchPackNew`,
-        getPackCids: `${baseUrl}/getPackCids`,
-        getCardNameFromDb: `${baseUrl}/searchCardByNo`,
-        getCardDetailsByName: `${baseUrl}/searchCardByName`,
-        getCardFullMetaByCid: `${baseUrl}/getCardFullMetaByCid`,
-        getCardsMetaBatch: `${baseUrl}/getCardsMetaBatch`,
-        crawlCardMetaByName: `${baseUrl}/crawlCardMetaByName`,
-        getRamMemoryStats: `${baseUrl}/getRamMemoryStats`,
-        getUserData: `${baseUrl}/getUserData`,
-        updateUserSettings: `${baseUrl}/updateUserSettings`,
-        crawlPackBatchNew: `${baseUrl}/crawlPackBatchNew`,
-        searchDeck: `${baseUrl}/searchDeck`,
-        searchCard: `${baseUrl}/searchCard`,
-        suggestCardNames: `${baseUrl}/suggestCardNames`,
-        getDeckCards: `${baseUrl}/getDeckCards`,
-        migrateFromSheet: `${baseUrl}/migrateFromSheet`,
-        migrateFromData: `${baseUrl}/migrateFromData`,
-        updateNickname: `${baseUrl}/updateNickname`,
-        clearUserData: `${baseUrl}/clearUserData`,
-        checkMembershipDiscord: `${baseUrl}/checkMembershipDiscord`,
-        checkMembershipCsv: `${baseUrl}/checkMembershipCsv`,
-        uploadMembershipCsv: `${baseUrl}/uploadMembershipCsv`,
-        migrateCardNumbersField: `${baseUrl}/migrateCardNumbersField`
-        // 아래 API들은 실제 서버 연동(실계정 인증 등)이 필요하여 제외함
-        // checkMembership (원본 프로덕션 주소 유지)
-    };
-
-
-
-    for (const key in localEndpoints) {
-        FIREBASE_CONFIG.ENDPOINTS[key] = localEndpoints[key];
-    }
-}
 // Safari 최적화: callApi에서 await 없이 토큰을 동기적으로 사용하기 위한 캐시
 // AppCheck onTokenChanged가 즉시 호출될 수 있으므로 TDZ 방지를 위해 선언을 본 블록 앞에 위치
 let _cachedAuthToken = null;
@@ -630,7 +583,7 @@ class ClientCache {
         this._nameToAnother = {};
 
         // [On-Demand 전환] 카드 데이터 순회 및 팩 데이터 보강(card 참조) 로직 제거
-        // 팩 카드 정보는 crawlPackBatchNew API를 통해 On-Demand 조회
+        // 팩 카드 정보는 crawlPackCardsBatch API를 통해 On-Demand 조회
 
         // 레어도 메타데이터 전역 변수 업데이트 (UI 렌더링용) - 유지
         if (CardDataStore.masterJSON.rarity && CardDataStore.masterJSON.rarity.length > 0) {
@@ -1128,7 +1081,7 @@ async function fetchCardMetaWithCache(cid, cardName = '', cardNo = '') {
         // 메모리에 스탯(rawSlot 10번 이상) 데이터가 이미 존재하는 경우에만 langOnly=true (일부 조회)
         const hasStatsInCache = cached && cached.info && (cached.info[10] !== undefined || cached.info["10"] !== undefined);
         if (hasStatsInCache) {
-            const langRes = await callApi('getCardFullMetaByCid', { cid: cidStr, name: cardName || '', cardNo: cardNo || '', langOnly: true });
+            const langRes = await callApi('getCardMetadata', { cid: cidStr, name: cardName || '', cardNo: cardNo || '', langOnly: true });
             if (langRes && !langRes.isError && langRes.cid) {
                 return mergeCardMetaToCache(langRes.cid, langRes, true);
             }
@@ -1137,7 +1090,7 @@ async function fetchCardMetaWithCache(cid, cardName = '', cardNo = '') {
     }
 
     // 평상시 (캐시가 없거나 스탯이 없는 경우) ➔ 전체 조회 진행 (langOnly: false)
-    const metaData = await callApi('getCardFullMetaByCid', { cid: cidStr, name: cardName || '', cardNo: cardNo || '' });
+    const metaData = await callApi('getCardMetadata', { cid: cidStr, name: cardName || '', cardNo: cardNo || '' });
     if (metaData && !metaData.isError && metaData.cid) {
         return mergeCardMetaToCache(metaData.cid, metaData, true);
     }
@@ -3907,7 +3860,7 @@ async function fetchCardByName(input, force = false) {
         let res = null;
 
         if (mode === 'add') {
-            res = await callApi('getCardDetailsByName', { name: nameVal });
+            res = await callApi('searchCardByName', { name: nameVal });
         } else {
             const ownedNames = cardCacheInstance.getOwnedNamesSet();
             if (!ownedNames.has(nameVal)) {
@@ -4316,7 +4269,7 @@ async function fetchCardByNumber(input, force = false) {
             if (detail && detail.linkData) {
                 lockNameInputAndSetLink(nameInput, name, container, detail.linkData);
             } else {
-                callApi('getCardDetailsByName', { name }).then(res => {
+                callApi('searchCardByName', { name }).then(res => {
                     if (res && res.success && res.linkData) {
                         if (nameInput.value === name) {
                             lockNameInputAndSetLink(nameInput, name, container, res.linkData);
@@ -4424,7 +4377,7 @@ async function fetchCardByNumber(input, force = false) {
     updateSubCellsFromCache("", container);
 
     try {
-        const res = await callApi('getCardNameFromDb', { cardNo });
+        const res = await callApi('searchCardByNo', { cardNo });
         if (input.value.trim() !== cardNo) return;
 
         if (res.isError) {
@@ -6042,8 +5995,7 @@ function updateRarityInputs() {
 async function callApi(action, params = {}, postData = null) {
     const endpoint = FIREBASE_CONFIG.ENDPOINTS[action];
     if (!endpoint) {
-        console.error("[API] Unknown action:", action);
-        return;
+        throw new Error(`등록되지 않은 서버 기능입니다: ${action}`);
     }
 
     const url = new URL(endpoint);
@@ -6120,6 +6072,30 @@ async function callApi(action, params = {}, postData = null) {
 
 
 
+// 검색 시 최신 공통 목록을 확인합니다. 같은 탭에서는 1분에 한 번만 조회합니다.
+let _lastPublicRefreshAt = 0;
+let _publicRefreshPromise = null;
+async function refreshPublicDataQuietly() {
+    if (!UserStore.isInitialSyncDone || document.hidden) return;
+    if (_publicRefreshPromise) return _publicRefreshPromise;
+    if (Date.now() - _lastPublicRefreshAt < 60000) return;
+    _publicRefreshPromise = (async () => {
+        const res = await callApi('getInitialData', {
+            rarityUpdatedAt: localStorage.getItem('rarityUpdatedAt') || '0',
+            packUpdatedAt: localStorage.getItem('packUpdatedAt') || '0',
+            cardListUpdatedAt: localStorage.getItem('cardListUpdatedAt') || '0'
+        });
+        await applyPublicData(res);
+        _lastPublicRefreshAt = Date.now();
+    })();
+    try { await _publicRefreshPromise; }
+    catch (error) { console.warn('[Sync] 검색 목록 갱신 실패:', error); }
+    finally { _publicRefreshPromise = null; }
+}
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) void refreshPublicDataQuietly();
+});
+
 async function refreshInitialData(forceSync = false) {
     showLoading(true, "공통 데이터 동기화 중...");
     try {
@@ -6138,9 +6114,9 @@ async function refreshInitialData(forceSync = false) {
         const localPackUpdate = parseInt(localStorage.getItem('packUpdatedAt') || '0');
         const localCardListUpdate = parseInt(localStorage.getItem('cardListUpdatedAt') || '0');
 
-        // [스마트 온디맨드 웜업] getInitialData와 동시에 getCardFullMetaByCid 컨테이너를 선제 깨우기
+        // [스마트 온디맨드 웜업] getInitialData와 동시에 getCardMetadata 컨테이너를 선제 깨우기
         // → 사용자가 UI를 보는 사이 백엔드 RAM 캐시(_fullMetaMemoryMap)가 백그라운드에서 완성됨
-        callApi('getCardFullMetaByCid', { warmup: 'true' }).catch(() => {});
+        callApi('getCardMetadata', { warmup: 'true' }).catch(() => {});
 
         const res = await callApi('getInitialData', {
             rarityUpdatedAt: localRarityUpdate,
@@ -6151,6 +6127,7 @@ async function refreshInitialData(forceSync = false) {
         });
 
         await applyPublicData(res);
+        _lastPublicRefreshAt = Date.now();
         UserStore.isInitialSyncDone = true; // 동기화 완료 플래그 설정
         checkAndHideInitialLoading(); // 통합 로딩 종료 체크
 
@@ -6169,6 +6146,7 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
     if (!inputEl) return;
     const name = inputEl.value.trim();
     if (!name) return;
+    await refreshPublicDataQuietly();
 
     const queryNorm = normalizeStr(name);
 
@@ -6211,13 +6189,13 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
             }
             if (!resolvedName) {
                 try {
-                    const res = await callApi('getCardFullMetaByCid', { cardNo: prioritizeNumber });
+                    const res = await callApi('getCardMetadata', { cardNo: prioritizeNumber });
                     if (res && res.success && res.name) {
                         resolvedName = res.name;
                         if (res.cid) fetchedCid = res.cid;
                     }
                 } catch (e) {
-                    console.warn("[startSearch] getCardFullMetaByCid cardNo error:", e);
+                    console.warn("[startSearch] getCardMetadata cardNo error:", e);
                 }
             }
             if (resolvedName) {
@@ -6612,6 +6590,11 @@ function extractLangData(cardMeta) {
     return null;
 }
 
+// 과거 저장 데이터의 줄바꿈 표기를 보정하되 HTML로 해석하지 않습니다.
+function normalizeCardTextLineBreaks(value) {
+    return String(value || "").replace(/<br\s*\/?\s*>/gi, "\n");
+}
+
 function extractCidFromMeta(cardMeta) {
     if (!cardMeta) return null;
     if (cardMeta.cid && cardMeta.cid !== "null" && cardMeta.cid !== "undefined") return cardMeta.cid;
@@ -6907,7 +6890,7 @@ async function renderTargetByCid(cid, code = null, isInstant = false) {
             }
         }
     } catch (e) {
-        console.warn("[renderTargetByCid] getCardFullMetaByCid error:", e.message);
+        console.warn("[renderTargetByCid] getCardMetadata error:", e.message);
     }
 
     if (!cardName) cardName = code || `CID: ${cid}`;
@@ -7000,7 +6983,10 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
             atkVal = info[15] !== undefined ? info[15] : info["15"];
             defVal = info[16] !== undefined ? info[16] : info["16"];
             scaleVal = info[17] !== undefined ? info[17] : info["17"];
-            if (langArr) { cardTextVal = langArr[3] || ""; penTextVal = langArr[4] || ""; }
+            if (langArr) {
+                cardTextVal = normalizeCardTextLineBreaks(langArr[3]);
+                penTextVal = normalizeCardTextLineBreaks(langArr[4]);
+            }
         }
 
         const fragment = document.createDocumentFragment();
@@ -7171,7 +7157,7 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
             renderFourSections(targetMeta);
         }
     } catch (e) {
-        console.warn("[TargetBox] getCardFullMetaByCid 연동 실패, 기본 캐시 유지:", e.message);
+        console.warn("[TargetBox] getCardMetadata 연동 실패, 기본 캐시 유지:", e.message);
     }
 
     const realCid = extractCidFromMeta(targetMeta) || targetCid;
@@ -7605,7 +7591,7 @@ function rebuildPackDatabase() {
     rebuildPackDatabase();
 
     // [On-Demand 전환] 팩별 카드 사전 캐시 구축 로직 제거
-    // 팩 카드 정보는 crawlPackBatchNew API를 통해 On-Demand 조회
+    // 팩 카드 정보는 crawlPackCardsBatch API를 통해 On-Demand 조회
 
     refreshLocalLookups();
     updateRarityInputs();
@@ -10698,7 +10684,7 @@ async function handlePackSearch(isInstant = false, targetName = null, targetLoca
                 };
             }
         } else {
-            res = await callApi('searchPackNew', { packName: query });
+            res = await callApi('searchPack', { packName: query });
         }
 
         PackDeckStore.isSearching = false; // 검색 완료
@@ -10941,7 +10927,7 @@ async function generatePackRowsNew(totalCards, packName, packId) {
         showLoading(true, `카드 검색 중<br>(${count}/${totalCards})<br><a id="cancel-gen-link" class="link-style-btn">제작 중단</a>`);
     }
 
-    // 카드 데이터는 crawlPackBatchNew API 응답으로 채워짐
+    // 카드 데이터는 crawlPackCardsBatch API 응답으로 채워짐
     for (let i = 0; i < totalCards; i++) {
         const card = manageAddEntry(null, null, 'pack');
         if (card) {
@@ -11011,7 +10997,7 @@ async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam 
         }
 
         try {
-            const res = await callApi('crawlPackBatchNew', { packId, locale, offset, packName });
+            const res = await callApi('crawlPackCardsBatch', { packId, locale, offset, packName });
             if (!_packCrawlNewRunning) break;
 
             if (res.isQuotaError) {
@@ -11060,8 +11046,6 @@ async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam 
                 PackDeckStore.isPackCrawlDone = true;
                 CardDataStore.crawledPacksCache[key].isDone = true; // 완료 마킹
                 showLoading(false);
-                // [최적화] 팩 전체 크롤링 최종 완료 시에만 딱 1회 백엔드 통합 인덱스 재빌드 트리거 (비동기 처리)
-                callApi('buildIndex').catch(e => console.warn('[Index Build] 최종 인덱스 갱신 예외 무시:', e));
                 break;
             }
 
@@ -11843,7 +11827,7 @@ async function updateNickname(newNickname) {
             toggleNicknameEdit(false);
             loadUserData();
         } else {
-            showToast(res.message || '닉네임 변경에 실패했습니다.', 'toast-alert');
+            showToast(res?.message || '닉네임 변경에 실패했습니다.', 'toast-alert');
         }
     } catch (e) {
         console.error("[Settings] Nickname update error:", e);
@@ -12666,9 +12650,7 @@ function markNoticeAsRead(date) {
  * 사용법: NoticeSet.list(), NoticeSet.add(), NoticeSet.update(), NoticeSet.delete()
  */
 window.NoticeSet = {
-    url: (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-        ? "http://127.0.0.1:5001/ygo-synapse/asia-northeast3/manageNotice"
-        : "https://asia-northeast3-ygo-synapse.cloudfunctions.net/manageNotice",
+    url: FIREBASE_CONFIG.ENDPOINTS.manageNotice,
 
     storageUrl: (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
         ? "http://127.0.0.1:9199/v0/b/ygo-synapse.firebasestorage.app/o/public%2Fnotices.json?alt=media"
@@ -12743,9 +12725,7 @@ window.NoticeSet = {
  *   - AdminManager.setOwner(targetUid)           : 총책임자 승격 (owner 전용)
  */
 window.AdminManager = {
-    url: (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-        ? "http://127.0.0.1:5001/ygo-synapse/asia-northeast3/manageAdminRole"
-        : "https://asia-northeast3-ygo-synapse.cloudfunctions.net/manageAdminRole",
+    url: FIREBASE_CONFIG.ENDPOINTS.manageAdminRole,
 
     async request(body) {
         if (typeof firebase === 'undefined' || !firebase.auth) {

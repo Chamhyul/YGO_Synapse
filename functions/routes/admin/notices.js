@@ -6,8 +6,8 @@
  */
 
 const { onRequest } = require("firebase-functions/v2/https");
-const { db, admin } = require("../config/firebase");
-const { setCors, verifyUser } = require("../utils/auth");
+const { db, admin } = require("../../config/firebase");
+const { setCors, verifyUser } = require("../../utils/auth");
 const cheerio = require("cheerio");
 
 const STORAGE_PATH = "public/notices.json";

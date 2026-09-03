@@ -1,4 +1,4 @@
-const sheets = require("../sheets");
+const sheets = require("../integrations/googleSheets");
 
 /**
  * [HELPER] 구글 시트에서 MyCard 데이터 파싱
