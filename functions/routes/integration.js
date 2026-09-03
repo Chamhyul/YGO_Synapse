@@ -2,16 +2,12 @@ const { onRequest } = require("firebase-functions/v2/https");
 const { 
   db,
   admin,
-  GOOGLE_CLIENT_ID, 
-  GOOGLE_CLIENT_SECRET, 
-  GOOGLE_REFRESH_TOKEN,
   DISCORD_BOT_TOKEN,
   DISCORD_CLIENT_SECRET,
   DISCORD_CLIENT_ID,
   DISCORD_GUILD_ID,
   DISCORD_ROLE_ID
 } = require("../config/firebase");
-const { google } = require("googleapis");
 const { setCors, verifyAppCheck, verifyUser } = require("../utils/auth");
 const sheets = require("../integrations/googleSheets");
 const { getDiscordUserWithCode, checkGuildMemberRole } = require("../integrations/discord");

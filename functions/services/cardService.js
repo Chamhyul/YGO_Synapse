@@ -1,3 +1,15 @@
+/**
+ * 카드 info / mergedInfo의 위치별 의미 (Firestore에서는 숫자 문자열 키의 Map으로 저장):
+ * 0~9: ko, ja, ae, cn, en, de, fr, it, es, pt 순서의 언어별 정보.
+ *   각 언어 배열: [카드명, 일러스트 수, 번호별 레어도 정보, 일반 효과, 펜듈럼 효과].
+ *   번호별 레어도 정보: { 카드번호: [팩 이름, 레어도1, 레어도2, ...] }.
+ * 10: 카드 종류 (0 몬스터, 1 마법, 2 함정).
+ * 11: 세부 분류 배열 (ETCs 목록의 인덱스; 마법/함정 분류는 15부터).
+ * 12: 레벨 / 랭크 / 링크 수치.
+ * 13: 속성 (ATTRIBUTEs 목록의 인덱스), 14: 종족 (TYPEs 목록의 인덱스).
+ * 15: 공격력, 16: 수비력 ('?'는 -1), 17: 펜듈럼 스케일.
+ * 미수집 항목은 null 또는 키 부재로 표현하며, 배열 순서는 클라이언트와 공유합니다.
+ */
 const { requestCardIndexWork } = require('./cardIndexDispatchService');
 const { db, admin, getBucket, FieldValue } = require("../config/firebase");
 const { getIdxByName, getIdxByNumber, getIdxCid } = require("../utils/indexStorage");
@@ -102,73 +114,60 @@ async function updateRarityMapping(newRarities) {
 
   const bucket = getBucket();
   const file = bucket.file("public/rarityMapping.json");
-  let langs = { "0": [], "1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": [] };
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    let generation = 0;
+    let metadata;
+    try {
+      [metadata] = await file.getMetadata();
+    } catch (error) {
+      // 파일 부재만 최초 생성으로 취급합니다. 권한·네트워크 오류는 전파합니다.
+      if (Number(error.code) !== 404) throw error;
+    }
 
-  try {
-    const [content] = await file.download();
-    const existingData = JSON.parse(content.toString("utf-8"));
-    if (existingData && existingData.langs) {
+    let langs = Object.fromEntries(Array.from({ length: 11 }, (_, i) => [String(i), []]));
+    if (metadata) {
+      generation = metadata.generation;
+      let content;
+      try {
+        // 읽는 내용과 저장 조건에 사용하는 파일 버전을 일치시킵니다.
+        [content] = await bucket.file(file.name, { generation }).download();
+      } catch (error) {
+        // 메타정보 조회 직후 다른 요청이 교체한 경우 최신 버전부터 다시 읽습니다.
+        if (Number(error.code) === 404 && attempt < MAX_RETRIES) continue;
+        throw error;
+      }
+      const existingData = JSON.parse(content.toString("utf-8"));
+      if (!existingData || !existingData.langs || Array.isArray(existingData.langs) ||
+          typeof existingData.langs !== 'object' || !Array.isArray(existingData.langs["10"])) {
+        throw new Error('레어도 파일 형식이 잘못되었습니다. 기존 파일을 보존합니다.');
+      }
       for (let i = 0; i <= 10; i++) {
-        langs[String(i)] = existingData.langs[String(i)] || [];
+        const values = existingData.langs[String(i)];
+        if (values !== undefined && (!Array.isArray(values) || values.some(value => typeof value !== 'string'))) {
+          throw new Error(`레어도 언어 ${i}의 형식이 잘못되었습니다. 기존 파일을 보존합니다.`);
+        }
+        langs[String(i)] = values || [];
       }
     }
-  } catch (e) {
-    console.warn("[Storage] rarityMapping.json not found or failed to read, starting fresh:", e.message);
-  }
 
-  const localeToIndex = { 'ko': 0, 'ja': 1, 'ae': 2, 'cn': 3, 'en': 4, 'de': 5, 'fr': 6, 'it': 7, 'es': 8, 'pt': 9 };
-  let changed = false;
+    const localeToIndex = { 'ko': 0, 'ja': 1, 'ae': 2, 'cn': 3, 'en': 4, 'de': 5, 'fr': 6, 'it': 7, 'es': 8, 'pt': 9 };
+    let changed = false;
 
-  for (const r of newRarities) {
-    const locIdx = localeToIndex[r.locale];
-    if (locIdx === undefined) continue;
-    const display = r.display || "Unknown";
-    const key = r.key || "Unknown";
+    for (const r of newRarities) {
+      const locIdx = localeToIndex[r.locale];
+      if (locIdx === undefined) continue;
+      const display = r.display || "Unknown";
+      const key = r.key || "Unknown";
 
-    const candidates = [];
-    const displayArr = langs["10"] || [];
-    for (let i = 0; i < displayArr.length; i++) {
-      if (displayArr[i] === display) candidates.push(i);
-    }
-
-    if (candidates.length === 0) {
-      // 신규 행 생성
-      for (let k = 0; k <= 10; k++) {
-        langs[String(k)].push("");
-      }
-      const newIdx = langs["10"].length - 1;
-      langs[String(locIdx)][newIdx] = key;
-      langs["10"][newIdx] = display;
-      changed = true;
-    } else if (candidates.length === 1) {
-      const id = candidates[0];
-      if (!langs[String(locIdx)][id]) {
-        langs[String(locIdx)][id] = key;
-        changed = true;
-      }
-    } else {
-      // 복수 후보: 괄호 매칭
-      const targetParen = getParen(key);
-      let bestMatch = -1;
-      for (const id of candidates) {
-        let matched = false;
-        for (let l = 0; l < 10; l++) {
-          const exV = langs[String(l)][id];
-          if (!exV) continue;
-          const exParen = getParen(exV);
-          if (targetParen === null && exParen === null) { matched = true; break; }
-          if (targetParen !== null && exParen === targetParen) { matched = true; break; }
-        }
-        if (matched) { bestMatch = id; break; }
+      const candidates = [];
+      const displayArr = langs["10"] || [];
+      for (let i = 0; i < displayArr.length; i++) {
+        if (displayArr[i] === display) candidates.push(i);
       }
 
-      if (bestMatch !== -1) {
-        if (!langs[String(locIdx)][bestMatch]) {
-          langs[String(locIdx)][bestMatch] = key;
-          changed = true;
-        }
-      } else {
-        // 매칭 실패 시 신규 행 생성
+      if (candidates.length === 0) {
+        // 신규 행 생성
         for (let k = 0; k <= 10; k++) {
           langs[String(k)].push("");
         }
@@ -176,24 +175,66 @@ async function updateRarityMapping(newRarities) {
         langs[String(locIdx)][newIdx] = key;
         langs["10"][newIdx] = display;
         changed = true;
+      } else if (candidates.length === 1) {
+        const id = candidates[0];
+        if (!langs[String(locIdx)][id]) {
+          langs[String(locIdx)][id] = key;
+          changed = true;
+        }
+      } else {
+        // 복수 후보: 괄호 매칭
+        const targetParen = getParen(key);
+        let bestMatch = -1;
+        for (const id of candidates) {
+          let matched = false;
+          for (let l = 0; l < 10; l++) {
+            const exV = langs[String(l)][id];
+            if (!exV) continue;
+            const exParen = getParen(exV);
+            if (targetParen === null && exParen === null) { matched = true; break; }
+            if (targetParen !== null && exParen === targetParen) { matched = true; break; }
+          }
+          if (matched) { bestMatch = id; break; }
+        }
+
+        if (bestMatch !== -1) {
+          if (!langs[String(locIdx)][bestMatch]) {
+            langs[String(locIdx)][bestMatch] = key;
+            changed = true;
+          }
+        } else {
+          // 매칭 실패 시 신규 행 생성
+          for (let k = 0; k <= 10; k++) {
+            langs[String(k)].push("");
+          }
+          const newIdx = langs["10"].length - 1;
+          langs[String(locIdx)][newIdx] = key;
+          langs["10"][newIdx] = display;
+          changed = true;
+        }
       }
     }
-  }
 
-  if (changed) {
-    const payload = { langs, updatedAt: Date.now() };
-    const bucket = admin.storage().bucket();
-    const file = bucket.file("public/rarityMapping.json");
-    await file.save(JSON.stringify(payload, null, 2), {
-      contentType: "application/json",
-      public: true,
-      metadata: { cacheControl: "public, max-age=3600" }
-    });
-    // 메모리 캐시도 동기화
-    updateRarityMemoryCache(payload);
-  }
+    if (changed) {
+      const payload = { langs, updatedAt: Date.now() };
+      try {
+        await file.save(JSON.stringify(payload, null, 2), {
+          resumable: false,
+          contentType: "application/json",
+          public: true,
+          metadata: { cacheControl: "public, max-age=3600" },
+          preconditionOpts: { ifGenerationMatch: generation }
+        });
+      } catch (error) {
+        // 충돌 시 같은 내용을 덮어쓰지 않고 최신 파일에 변경분을 다시 병합합니다.
+        if (Number(error.code) === 412 && attempt < MAX_RETRIES) continue;
+        throw error;
+      }
+      updateRarityMemoryCache(payload);
+    }
 
-  return { changed, langs };
+    return { changed, langs };
+  }
 }
 
 /**
@@ -324,7 +365,7 @@ async function saveCardToFirestore(result, { deferIndexFlush = false } = {}) {
         updatedLangs = updateRes.langs;
       }
     } catch (e) {
-      console.error("Rarity mapping update error:", e);
+      console.error("[RarityMapping] 카드 원본은 저장되었으나 레어도 매핑 갱신에 실패했습니다:", e);
     }
   }
 
