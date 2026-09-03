@@ -9,6 +9,21 @@ const REQUEST_HEADERS = {
   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 };
 
+const DECK_DATABASE_HOST = "www.db.yugioh-card.com";
+
+function isAllowedDeckDetailUrl(value) {
+  try {
+    const url = new URL(String(value));
+    return url.protocol === "https:"
+      && url.hostname === DECK_DATABASE_HOST
+      && !url.port
+      && !url.username
+      && !url.password;
+  } catch {
+    return false;
+  }
+}
+
 exports.searchDeck = onRequest({ invoker: "public", memory: "512MiB", timeoutSeconds: 30 }, async (req, res) => {
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
@@ -62,11 +77,17 @@ exports.getDeckCards = onRequest({ invoker: "public", memory: "512MiB", timeoutS
 
   const detailUrl = req.query.url;
   if (!detailUrl) return res.status(400).json({ isError: true, message: "상세 URL 미입력" });
+  if (!isAllowedDeckDetailUrl(detailUrl)) {
+    return res.status(400).json({ isError: true, message: "허용되지 않은 덱 상세 URL입니다." });
+  }
 
   try {
     const response = await axios.get(detailUrl, {
       headers: REQUEST_HEADERS,
       timeout: 15000,
+      // 허용 호스트가 아닌 곳으로의 리디렉션 우회를 차단합니다.
+      maxRedirects: 0,
+      validateStatus: status => status >= 200 && status < 300,
     });
 
     const $ = cheerio.load(response.data);
