@@ -9,8 +9,8 @@ process.env.STORAGE_BUCKET = 'demo-ygo-indexes.appspot.com';
 const { db, admin, getBucket } = require('../config/firebase');
 const { saveCardAndQueueIndex } = require('../services/cardWriteService');
 const service = require('../services/cardIndexService');
-const { readIndexFile } = require('../utils/indexStorage');
-const card = (name, number) => ({ info: { 0: [name, 1, { [number]: ['팩', 'N'] }] } });
+const { findCard } = require('../services/cardQueryService');
+const card = (name, number) => ({ names: [name], numbers: [number], info: { 0: [name, 1, { [number]: ['팩', 'N'] }] } });
 (async()=>{
   await saveCardAndQueueIndex('1',card('기존','OLD'));
   assert.equal((await db.collection('cards').doc('1').get()).exists,true);
@@ -18,14 +18,14 @@ const card = (name, number) => ({ info: { 0: [name, 1, { [number]: ['팩', 'N'] 
   await service.rebuildAllCardIndexes();
   await service.processPendingCardIndexes();
   assert.equal((await db.collection('pendingCardIndexUpdates').get()).empty,true);
-  assert.equal((await readIndexFile('byNumber')).data.OLD.cid,'1');
+  assert.equal((await findCard({ number: 'OLD' })).cid, '1');
   await saveCardAndQueueIndex('1',card('최신','NEW'));
   await service.processPendingCardIndexes();
-  const current=await readIndexFile('byNumber');
-  assert.equal(current.data.OLD,undefined);assert.equal(current.data.NEW.cid,'1');
+  assert.equal(await findCard({ number: 'OLD' }), null);
+  assert.equal((await findCard({ number: 'NEW' })).cid, '1');
   // Storage 에뮬레이터의 업로드 API는 ifGenerationMatch를 구현하지 않습니다.
   // 충돌 시 중단·기록 보존 및 SDK 전달 옵션은 단위 테스트에서 별도 검증합니다.
   const [manifest]=await getBucket().file('public/cardNames.json').download();
   assert.deepEqual(JSON.parse(manifest).names,['최신']);
-  console.log('Firestore·Storage 실제 SDK 통합 검증 완료: 원자적 저장, 전체 복구, 증분 갱신, 대기 기록 삭제');
+  console.log('Firestore·Storage 실제 SDK 통합 검증 완료: 원자적 저장, 전체 복구, 목록 갱신, 대기 기록 삭제');
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{await admin.app().delete();});

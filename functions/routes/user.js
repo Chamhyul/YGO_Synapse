@@ -3,7 +3,10 @@ const { db, admin, getBucket, FieldValue } = require("../config/firebase");
 const { mapToRowArray, getRarityMappingFromStorage } = require("../utils/common");
 const { setCors, verifyUser, verifyAppCheck } = require("../utils/auth");
 const { getPacksMetadataInfo, downloadPacksMetadata } = require("../utils/packsStorage");
-const { downloadInventory, uploadInventory, deleteInventory } = require("../utils/inventoryStorage");
+const { downloadInventory, updateInventoryWithRetry, deleteInventory } = require("../utils/inventoryStorage");
+
+const { getLegacyCidMap } = require('../services/cardQueryService');
+const { ensureInventoryV2, inventoryMigrationStatus } = require('../services/inventoryMigrationService');
 
 exports.clearUserData = onRequest({ invoker: "public" }, async (req, res) => {
   setCors(res, req);
@@ -47,10 +50,12 @@ exports.getInitialData = onRequest({ invoker: "public", memory: "512MiB" }, asyn
     const file = bucket.file("public/cardNames.json");
     let cardListInfo = { url: null, updatedAt: 0 };
     let serverCardListUpdatedAt = 0;
+    let cardListGeneration = null;
     
     try {
       const [metadata] = await file.getMetadata();
       serverCardListUpdatedAt = new Date(metadata.updated).getTime();
+      cardListGeneration = metadata.generation;
       if (process.env.FUNCTIONS_EMULATOR === "true") {
         cardListInfo.url = `http://127.0.0.1:9199/download/storage/v1/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
       } else {
@@ -64,20 +69,10 @@ exports.getInitialData = onRequest({ invoker: "public", memory: "512MiB" }, asyn
     let cardNames = null;
     if (!clientCardListUpdatedAt || clientCardListUpdatedAt < serverCardListUpdatedAt) {
       try {
-        const [manifestBuf] = await file.download();
+        const [manifestBuf] = await bucket.file(file.name, { generation: cardListGeneration }).download();
         cardNames = JSON.parse(manifestBuf.toString("utf-8"));
-
-        // public/indexes/idx_cid.json 읽어와서 cids 속성으로 병합
-        try {
-          const cidFile = bucket.file("public/indexes/idx_cid.json");
-          const [cidExists] = await cidFile.exists().catch(() => [false]);
-          if (cidExists) {
-            const [cidBuf] = await cidFile.download();
-            cardNames.cids = JSON.parse(cidBuf.toString("utf-8"));
-          }
-        } catch (cidErr) {
-          console.warn("[Sync] idx_cid.json download/parse failed for Single-Flight bundle:", cidErr.message);
-        }
+        const clientSchema = Number(req.query.inventorySchema || req.body?.inventorySchema || 1);
+        if (clientSchema < 2) cardNames.cids = await getLegacyCidMap();
       } catch (err) {
         console.warn("[Sync] cardNames.json download/parse failed for Single-Flight bundle:", err.message);
       }
@@ -147,11 +142,14 @@ exports.getUserData = onRequest({ invoker: "public", memory: "512MiB" }, async (
     
     // [Storage 전환] 인벤토리를 Storage에서 다운로드 + 설정, 기본 가입정보는 Firestore 유지
     const [inventoryResult, userSnap] = await Promise.all([
-      downloadInventory(uid),
+      ensureInventoryV2(uid).then(data => ({ data })).catch(async error => {
+        console.warn('[InventoryV2] 저장 실패, 기존 재고 반환:', error.message);
+        return { ...await downloadInventory(uid), migrationFailed: true };
+      }),
       db.collection("users").doc(uid).get()
     ]);
     
-    const inventory = inventoryResult.data;
+    let inventory = inventoryResult.data;
     let userData = userSnap.exists ? userSnap.data() : {};
     let userSettings = userData.settings || {};
 
@@ -183,7 +181,11 @@ exports.getUserData = onRequest({ invoker: "public", memory: "512MiB" }, async (
 
     if (needsFix) {
       console.warn(`[Self-healing] Sanitizing inventory for UID: ${uid}`);
-      await uploadInventory(uid, inventory);
+      inventory = await updateInventoryWithRetry(uid, current => {
+        if (Array.isArray(current.locations)) current.locations = {};
+        if (Array.isArray(current.rarities)) current.rarities = {};
+        for (const key in current.rarities) if (current.rarities[key] <= 0) delete current.rarities[key];
+      });
     }
 
     const amount = inventory.amount || 0;
@@ -206,7 +208,7 @@ exports.getUserData = onRequest({ invoker: "public", memory: "512MiB" }, async (
             const illustration = item.illustration || item.another || "";
             const loc = item.loc || "미보관";
             
-            allCards.push([cardName, cardNo, rarity, item.qty, loc, illustration]);
+            allCards.push([cardName, cardNo, rarity, item.qty, loc, illustration, cardData.cid || null]);
             if (cardName !== "Unknown") namesSet.add(String(cardName));
           }
         });
@@ -222,6 +224,10 @@ exports.getUserData = onRequest({ invoker: "public", memory: "512MiB" }, async (
       rarities: raritiesMap,
       names: Array.from(namesSet).sort(),
       allCards,
+      inventoryVersion: inventory.version || 1,
+      inventoryMigration: inventoryResult.migrationFailed
+        ? { ...inventoryMigrationStatus(inventory), status: 'retryableError', retryAt: Date.now() + 30000 }
+        : inventoryMigrationStatus(inventory),
       settings: userSettings,
       nickname,
       createdAt,

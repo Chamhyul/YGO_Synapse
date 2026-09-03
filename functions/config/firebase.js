@@ -1,5 +1,5 @@
 const admin = require("firebase-admin");
-const { FieldValue } = require("firebase-admin/firestore");
+const { FieldValue, FieldPath } = require("firebase-admin/firestore");
 const { defineSecret } = require("firebase-functions/params");
 
 if (!admin.apps.length) {
@@ -31,6 +31,7 @@ module.exports = {
   db,
   getBucket,
   FieldValue,
+  FieldPath,
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
   GOOGLE_REFRESH_TOKEN,

@@ -1,13 +1,14 @@
-const { refreshCardManifest } = require("../services/cardIndexService");
 const cardService = require("../services/cardService");
 const { onRequest } = require("firebase-functions/v2/https");
 const { admin } = require("../config/firebase");
 const { mapToRowArray } = require("../utils/common");
 const { setCors, verifyUser, verifyAppCheck } = require("../utils/auth");
 const { crawlByCardNo, crawlByCardName } = require("../scrapers/cardScraper");
-const { getCardFromCacheByNo, getCardFromCacheByName, saveCardToFirestore, buildSearchResponse, buildSearchResponseFromIndexByNo, buildSearchResponseFromIndexByName, resolveCardNumber, normalizeNameForDocId } = require("../services/cardService");
+const { getCardFromCacheByNo, getCardFromCacheByName, saveCardToFirestore, buildSearchResponse, resolveCardNumber } = require("../services/cardService");
 const { updateInventoryWithRetry, processAddCards, processMoveCards, processDiscardCards } = require("../utils/inventoryStorage");
-const { getIdxByName, getIdxByNumber, getIdxCid } = require("../utils/indexStorage");
+const { findCard, findCards, mapLimited } = require('../services/cardQueryService');
+const { resolveGroupCids, inventoryMigrationStatus } = require('../services/inventoryMigrationService');
+const { getCardManifest } = require('../utils/indexStorage');
 
 async function handleSearchExecution(req, res, options) {
   const {
@@ -15,7 +16,6 @@ async function handleSearchExecution(req, res, options) {
     paramMissingMsg,
     errTypeMsg,
     cacheLookupFn,
-    indexResponseFn,
     crawlFn,
     tag
   } = options;
@@ -32,12 +32,7 @@ async function handleSearchExecution(req, res, options) {
     try {
       const cached = await cacheLookupFn(queryVal);
       if (cached) {
-        let response;
-        if (cached.fromIndex) {
-          response = await indexResponseFn(queryVal, cached.indexData);
-        } else {
-          response = buildSearchResponse(cached.cid, cached.info, true);
-        }
+        const response = buildSearchResponse(cached.cid, cached.info, true, { [paramKey]: queryVal });
         if (!res.headersSent) {
           res.setHeader("Cache-Control", "public, max-age=60, s-maxage=60");
           return res.json(response);
@@ -45,7 +40,7 @@ async function handleSearchExecution(req, res, options) {
         return;
       }
     } catch (cacheErr) {
-      console.warn(`[${tag}] Cache lookup warning:`, cacheErr.message || cacheErr);
+      throw cacheErr;
     }
 
     let result;
@@ -66,7 +61,8 @@ async function handleSearchExecution(req, res, options) {
 
     const saveResult = await saveCardToFirestore(result);
 
-    const response = buildSearchResponse(result.cid, result.mergedInfo, false);
+    const stored = await findCard({ cid: result.cid });
+    const response = buildSearchResponse(result.cid, stored?.info || result.mergedInfo, false, { [paramKey]: queryVal });
     if (saveResult && saveResult.rarityChanged) {
       response.rarityMappingRaw = mapToRowArray(saveResult.updatedLangs);
     }
@@ -86,7 +82,6 @@ exports.searchCardByNo = onRequest({ invoker: "public", memory: "1GiB", timeoutS
     paramMissingMsg: "번호 미입력",
     errTypeMsg: "번호 확인",
     cacheLookupFn: getCardFromCacheByNo,
-    indexResponseFn: (queryVal, indexData) => buildSearchResponseFromIndexByNo(queryVal, indexData),
     crawlFn: crawlByCardNo,
     tag: "searchCardByNo"
   });
@@ -98,11 +93,6 @@ exports.searchCardByName = onRequest({ invoker: "public", memory: "1GiB", timeou
     paramMissingMsg: "이름 미입력",
     errTypeMsg: "이름 확인",
     cacheLookupFn: getCardFromCacheByName,
-    indexResponseFn: (queryVal, indexData) => {
-      const response = buildSearchResponseFromIndexByName(indexData);
-      response.name = queryVal;
-      return response;
-    },
     crawlFn: crawlByCardName,
     tag: "searchCardByName"
   });
@@ -144,18 +134,8 @@ exports.searchCard = onRequest({ invoker: "public", memory: "1GiB" }, async (req
   if (!query) return res.json({ success: true, names: [] });
 
   try {
-    // [Storage 전환] 인메모리 캐시에서 조회
-    const docId = normalizeNameForDocId(query);
-    const idxByName = await getIdxByName();
-    const nameEntry = idxByName[docId];
-
-    if (nameEntry) {
-      const cid = nameEntry.cid;
-      const idxCid = await getIdxCid();
-      const cidEntry = idxCid[cid];
-      const names = cidEntry ? (cidEntry.names || []) : [];
-      return res.json({ success: true, names });
-    }
+    const card = await findCard({ name: query });
+    if (card) return res.json({ success: true, cid: card.cid, names: card.data.names || [] });
 
     res.json({ success: true, names: [], isPendingCrawl: true });
 
@@ -164,6 +144,25 @@ exports.searchCard = onRequest({ invoker: "public", memory: "1GiB" }, async (req
   } catch (e) {
     console.error("searchCard error:", e);
     return res.status(500).json({ isError: true, name: "서버 오류" });
+  }
+});
+
+exports.resolveCardNames = onRequest({ invoker: 'public', timeoutSeconds: 60 }, async (req, res) => {
+  setCors(res, req);
+  if (req.method === 'OPTIONS') return res.status(204).send('');
+  if (!(await verifyAppCheck(req, res))) return;
+  const names = req.body?.names;
+  if (!Array.isArray(names) || names.length > 40 || names.some(n => typeof n !== 'string' || n.length > 300)) {
+    return res.status(400).json({ success: false, message: '이름은 최대 40개까지 조회할 수 있습니다.' });
+  }
+  try {
+    const results = Object.fromEntries(await mapLimited([...new Set(names)], async name => {
+      const cards = await findCards('names', name);
+      return [name, cards.map(card => card.cid)];
+    }));
+    return res.json({ success: true, results });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: '카드 연결 정보를 조회하지 못했습니다.' });
   }
 });
 
@@ -198,10 +197,11 @@ exports.addCards = onRequest({ invoker: "public", memory: "512MiB" }, async (req
       const eIllust = entry[5] || "";
 
       if(eQty <= 0) continue;
-      if (!cardGroups[eNo]) cardGroups[eNo] = { name: eName, items: [] };
+      if (!cardGroups[eNo]) cardGroups[eNo] = { name: eName, requestedCid: entry[6], items: [] };
       cardGroups[eNo].items.push({ rarity: eRarity, loc: eLoc, qty: eQty, illustration: eIllust });
     }
 
+    await resolveGroupCids(cardGroups);
     let updatedItems = [];
     const finalData = await updateInventoryWithRetry(uid, (inventory) => {
       updatedItems = processAddCards(inventory, cardGroups);
@@ -210,6 +210,8 @@ exports.addCards = onRequest({ invoker: "public", memory: "512MiB" }, async (req
     return res.json({
       success: true,
       updatedItems,
+      inventoryVersion: finalData.version,
+      inventoryMigration: inventoryMigrationStatus(finalData),
       amount: finalData.amount,
       locations: finalData.locations,
       rarities: finalData.rarities
@@ -234,6 +236,8 @@ exports.moveCards = onRequest({ invoker: "public", memory: "512MiB" }, async (re
     return res.json({
       success: true,
       updatedItems,
+      inventoryVersion: finalData.version,
+      inventoryMigration: inventoryMigrationStatus(finalData),
       amount: finalData.amount,
       locations: finalData.locations,
       rarities: finalData.rarities
@@ -258,6 +262,8 @@ exports.discardCards = onRequest({ invoker: "public", memory: "512MiB" }, async 
     return res.json({
       success: true,
       updatedItems,
+      inventoryVersion: finalData.version,
+      inventoryMigration: inventoryMigrationStatus(finalData),
       amount: finalData.amount,
       locations: finalData.locations,
       rarities: finalData.rarities
@@ -278,8 +284,7 @@ exports.suggestCardNames = onRequest({ invoker: "public" }, async (req, res) => 
 
   try {
     // [Storage 전환] 인메모리 캐시에서 접두사 필터링
-    const idxByName = await getIdxByName();
-    const allNames = Object.keys(idxByName).filter(name => !name.startsWith("##"));
+    const allNames = (await getCardManifest()).names;
     const results = allNames
       .filter(name => name.startsWith(query))
       .sort()
@@ -293,22 +298,9 @@ exports.suggestCardNames = onRequest({ invoker: "public" }, async (req, res) => 
 
 /**
  * [공통] 전체 카드 이름과 카드 번호 목록을 Storage에 JSON 파일로 동기화 (재빌드)
- * [Storage 전환] Firestore 전체 스캔 대신 캐시된 인덱스에서 직접 키 추출
+ * 카드 원본에서 목록을 재생성합니다. 기존 경로는 관리자 전용 별칭입니다.
  */
-exports.syncCardManifestToStorage = onRequest({ invoker: "public", memory: "1GiB", timeoutSeconds: 300 }, async (req, res) => {
-  setCors(res, req);
-  if (req.method === "OPTIONS") return res.status(204).send("");
-
-  if (!(await verifyAppCheck(req, res))) return;
-
-  try {
-    const result = await refreshCardManifest();
-    return res.status(result.busy ? 409 : 200).json(result);
-  } catch (e) {
-    return res.status(500).json({ success: false, message: e.toString() });
-  }
-});
-
+exports.syncCardManifestToStorage = require('./admin/cardIndexes').rebuildAllCardIndexes;
 
 
 exports.getCardMetadata = onRequest({ invoker: "public", memory: "256MiB", timeoutSeconds: 60 }, async (req, res) => {

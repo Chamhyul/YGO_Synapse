@@ -23,6 +23,7 @@ const HTTP_FUNCTION_NAMES = [
     "uploadMembershipCsv",
     "searchDeck",
     "searchCard",
+    "resolveCardNames",
     "suggestCardNames",
     "getDeckCards",
     "migrateFromSheet",
@@ -346,7 +347,7 @@ const MasterDB = {
             return new Promise((resolve) => {
                 const transaction = db.transaction(this.STORE_NAME, 'readonly');
                 const store = transaction.objectStore(this.STORE_NAME);
-                const keys = ['cardNames', 'cardNumbers', 'cidIndex', 'packData', 'rarity'];
+                const keys = ['cardNames', 'cardNumbers', 'cardListSupplement', 'packData', 'rarity'];
                 const result = {};
                 let count = 0;
                 keys.forEach(k => {
@@ -365,6 +366,38 @@ const MasterDB = {
         } catch (e) { return {}; }
     },
 
+    // 최신 보충 목록을 읽고 매니페스트와 함께 원자적으로 저장합니다.
+    async updateCardLists(additions, manifest = null) {
+        const db = await this.open();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(this.STORE_NAME, 'readwrite');
+            const store = tx.objectStore(this.STORE_NAME);
+            const data = {};
+            const keys = ['cardNames', 'cardNumbers', 'cardListSupplement'];
+            let count = 0;
+            let result;
+            for (const key of keys) {
+                const request = store.get(key);
+                request.onsuccess = () => {
+                    data[key] = request.result;
+                    if (++count !== keys.length) return;
+                    const names = CardListCache.clean(manifest ? manifest.names : data.cardNames);
+                    const numbers = CardListCache.clean(manifest ? manifest.numbers : data.cardNumbers, true);
+                    const supplement = CardListCache.mergeSupplement(data.cardListSupplement, additions, { names, numbers });
+                    if (manifest) {
+                        store.put(names, 'cardNames');
+                        store.put(numbers, 'cardNumbers');
+                        store.delete('cidIndex');
+                    }
+                    store.put(supplement, 'cardListSupplement');
+                    result = { names, numbers, supplement };
+                };
+            }
+            tx.oncomplete = () => resolve(result);
+            tx.onerror = tx.onabort = () => reject(tx.error || new Error('카드 목록 저장 실패'));
+        });
+    },
+
     async saveMasterDataBatch(payload) {
         if (!payload || typeof payload !== 'object') return;
         try {
@@ -380,8 +413,79 @@ const MasterDB = {
                 transaction.oncomplete = () => resolve();
                 transaction.onerror = () => reject(transaction.error);
             });
-        } catch (e) { }
+        } catch (e) { throw e; }
     }
+};
+
+// 서버 목록과 검색으로 확인한 로컬 보충 목록은 별도로 보관합니다.
+const CardListCache = {
+    manifest: { names: [], numbers: [] },
+    supplement: { names: [], numbers: [] },
+    pendingWrite: Promise.resolve(),
+    clean(values, number = false) {
+        return [...new Set((Array.isArray(values) ? values : []).filter(value => typeof value === 'string')
+            .map(value => number ? value.trim().toUpperCase() : value.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim().normalize('NFC'))
+            .filter(value => value && !value.startsWith('##')))];
+    },
+    mergeSupplement(previous, additions, manifest) {
+        const result = {};
+        for (const key of ['names', 'numbers']) {
+            const known = new Set(manifest[key]);
+            result[key] = this.clean([...(previous?.[key] || []), ...(additions?.[key] || [])], key === 'numbers')
+                .filter(value => !known.has(value));
+        }
+        return result;
+    },
+    init(data) {
+        this.manifest = { names: this.clean(data.cardNames), numbers: this.clean(data.cardNumbers, true) };
+        this.supplement = this.mergeSupplement(data.cardListSupplement, this.supplement, this.manifest);
+        this.publish();
+    },
+    publish() {
+        CardDataStore.allCardNames = [...new Set([...this.manifest.names, ...this.supplement.names])];
+        CardDataStore.allCardNumbers = [...new Set([...this.manifest.numbers, ...this.supplement.numbers])];
+        updateNormalizedNames();
+        cardCacheInstance.setAllKnownNames(CardDataStore.allCardNames);
+    },
+    persist(manifest = null) {
+        // 로컬 저장 순서를 유지하고 실패한 이전 쓰기가 후속 쓰기를 막지 않게 합니다.
+        const write = this.pendingWrite.catch(() => {}).then(async () => {
+            const saved = await MasterDB.updateCardLists(this.supplement, manifest);
+            this.manifest = { names: saved.names, numbers: saved.numbers };
+            // 저장을 기다리는 동안 도착한 검색 결과도 유지합니다.
+            this.supplement = this.mergeSupplement(saved.supplement, this.supplement, this.manifest);
+            this.publish();
+        });
+        this.pendingWrite = write;
+        return write;
+    },
+    rememberResponse(action, response) {
+        if (!response?.success || response.isError || response.isPendingCrawl) return;
+        const supported = ['searchCardByName', 'searchCardByNo', 'searchCard', 'getCardMetadata',
+            'crawlCardMetaByName', 'crawlPackCardsBatch'];
+        if (!supported.includes(action)) return;
+        const cards = action === 'crawlPackCardsBatch' ? (response.results || []) : [response];
+        const names = [], numbers = [];
+        for (const card of cards) {
+            if (!card || card.isError || card.isPendingCrawl) continue;
+            const info = card.info || card.mergedInfo;
+            if (!info && card.name) names.push(card.name);
+            if (Array.isArray(card.names)) names.push(...card.names);
+            if (Array.isArray(card.numbers)) numbers.push(...card.numbers);
+            if (card.cardNo) numbers.push(card.cardNo);
+            for (let index = 0; index < 10; index++) {
+                const slot = info?.[index];
+                if (!Array.isArray(slot) || typeof slot[0] !== 'string' || !slot[0]) continue;
+                names.push(slot[0]);
+                if (slot[2] && typeof slot[2] === 'object') numbers.push(...Object.keys(slot[2]));
+            }
+        }
+        const next = this.mergeSupplement(this.supplement, { names, numbers }, this.manifest);
+        if (JSON.stringify(next) === JSON.stringify(this.supplement)) return;
+        this.supplement = next;
+        this.publish();
+        this.persist().catch(error => console.warn('[CardListCache] 로컬 보충 목록 저장 실패:', error));
+    },
 };
 
 /**
@@ -415,94 +519,39 @@ class ClientCache {
     }
 
     // O(1) 검색을 위한 전역 마스터 인덱스 (Static)
-    static _nameToCid = {};
-    static _rawCidIndex = null; // 원본 CID 인덱스 매핑 객체
-    static _cidToNames = {}; // { cid: Set(names) }
-    static _nameToNos = {};  // { name: Set(nos) }
-    static _noToName = {};   // { cardNo: name }
-    static _noToPack = {};   // { cardNo: packName }
-    static _packToNos = {};  // { packName: Set(nos) }
-    static _noToRarities = {}; // { cardNo: Set(rarities) }
-    static _nameToAnother = {}; // { name: illustrationCount }
+    // 서버 전체 CID 파일 대신 확인한 카드와 보유 재고의 연결만 사용합니다.
+    static _knownNameToCid = Object.create(null);
+    static _knownNumberToCid = Object.create(null);
+    static _cidToNames = Object.create(null);
+    static _nameToNos = {};
+    static _noToName = {};
+    static _noToPack = {};
+    static _packToNos = {};
+    static _noToRarities = {};
+    static _nameToAnother = {};
 
-    /**
-     * CID 인덱스 JSON 수신 및 역방향 매핑 구축
-     */
-    static loadCidIndex(cidData) {
-        if (!cidData) return;
-        this._rawCidIndex = cidData;
-        const nameMap = {};
-
-        for (const cid in cidData) {
-            const item = cidData[cid];
-            if (!item) continue;
-
-            const names = (item && Array.isArray(item.names))
-                ? item.names
-                : (Array.isArray(item) ? item : []);
-
-            names.forEach(n => {
-                if (n && typeof n === 'string') {
-                    nameMap[n] = cid;
-                    const norm = normalizeStr(n);
-                    if (norm) nameMap[norm] = cid;
-                }
-            });
-        }
-
-        this._nameToCid = Object.assign(this._nameToCid || {}, nameMap);
-    }
-
-
-
-    /**
-     * 런타임 신규 CID 발견 시 실시간 증분 업데이트 (Incremental Update)
-     */
-    static registerCid(cid, names = []) {
-        if (!cid || cid === "null" || cid === "undefined") return;
+    static registerCid(cid, names = [], numbers = []) {
+        if (!cid || ['LOCAL_CID', 'MISSING_CID', 'null', 'undefined'].includes(String(cid))) return;
         cid = String(cid);
-
-        if (!this._nameToCid) this._nameToCid = {};
-        if (!this._rawCidIndex) this._rawCidIndex = {};
-
-        // idx_cid.json 표준 객체 구조 ({ names: [...] }) 보장
-        if (!this._rawCidIndex[cid]) {
-            this._rawCidIndex[cid] = { names: [] };
-        } else if (Array.isArray(this._rawCidIndex[cid])) {
-            this._rawCidIndex[cid] = { names: [...this._rawCidIndex[cid]] };
-        } else if (!this._rawCidIndex[cid].names || !Array.isArray(this._rawCidIndex[cid].names)) {
-            this._rawCidIndex[cid].names = [];
+        const put = (map, key) => {
+            if (!key) return;
+            if (!Object.hasOwn(map, key)) map[key] = cid;
+            else if (map[key] !== cid) map[key] = null;
+        };
+        if (!this._cidToNames[cid]) this._cidToNames[cid] = new Set();
+        for (const name of names) if (name && typeof name === 'string') {
+            this._cidToNames[cid].add(name);
+            put(this._knownNameToCid, name);
+            put(this._knownNameToCid, normalizeStr(name));
         }
-
-        const nameArr = Array.isArray(names) ? names : (names ? [names] : []);
-        let updated = false;
-
-        nameArr.forEach(n => {
-            if (n && typeof n === 'string') {
-                this._nameToCid[n] = cid;
-                const norm = normalizeStr(n);
-                if (norm) this._nameToCid[norm] = cid;
-
-                if (!this._rawCidIndex[cid].names.includes(n)) {
-                    this._rawCidIndex[cid].names.push(n);
-                    updated = true;
-                }
-            }
-        });
-
-        if (updated) {
-            MasterDB.set('cidIndex', this._rawCidIndex).catch(e => console.warn('[CidIndex] Save error:', e));
-        }
+        for (const number of numbers) if (number) put(this._knownNumberToCid, String(number).trim().toUpperCase());
     }
 
-    /**
-     * CID로 대표 카드명 반환
-     */
     static getCardNameByCid(cid, region = 'ko') {
-        if (!cid || !this._rawCidIndex || !this._rawCidIndex[cid]) return null;
-        const item = this._rawCidIndex[cid];
-        const names = (item && Array.isArray(item.names)) ? item.names : (Array.isArray(item) ? item : []);
-        return names.length > 0 ? names[0] : null;
+        const meta = cidMetaMemoryCache.get(String(cid));
+        const index = ['ko', 'ja', 'ae', 'cn', 'en', 'de', 'fr', 'it', 'es', 'pt'].indexOf(region);
+        return meta?.info?.[index]?.[0] || [...(this._cidToNames[String(cid)] || [])][0]
+            || cardCacheInstance._ownedByCid?.get(String(cid))?.[0]?.[0] || null;
     }
 
     /**
@@ -514,18 +563,8 @@ class ClientCache {
     static async init() {
         const data = await MasterDB.loadAllMasterData();
 
-        if (data.cardNames) {
-            CardDataStore.allCardNames = data.cardNames;
-            updateNormalizedNames();
-        }
+        CardListCache.init(data);
 
-        if (data.cardNumbers) {
-            CardDataStore.allCardNumbers = data.cardNumbers;
-        }
-
-        if (data.cidIndex) {
-            this.loadCidIndex(data.cidIndex);
-        }
 
         if (data.packData) {
             CardDataStore.masterJSON.pack = data.packData;
@@ -573,8 +612,8 @@ class ClientCache {
     static rebuildMasterIndexes() {
         // [On-Demand 전환] 카드 인덱스 구축 제거
         // 인덱스 초기화 (세션 캐시용으로만 유지)
-        if (!this._nameToCid) this._nameToCid = {};
-        this._cidToNames = {};
+        if (!this._knownNameToCid) this._knownNameToCid = {};
+        this._cidToNames ||= Object.create(null);
         this._nameToNos = {};
         this._noToName = {};
         this._noToPack = {};
@@ -615,7 +654,7 @@ class ClientCache {
         const name = this._noToName[upperNo];
         if (!name) return null;
 
-        const cid = this._nameToCid[name];
+        const cid = this._knownNameToCid[name];
         const raritiesSet = this._noToRarities[upperNo];
 
         return {
@@ -660,7 +699,7 @@ class ClientCache {
      * [Phase 2] 인벤토리 설정 및 인덱스 갱신
      */
     setInventory(data) {
-        this._inventory = data || [];
+        this._inventory = (data || []).map(row => [...row.slice(0, 6), row[6] || null]);
         this.refreshIndexes();
     }
 
@@ -693,8 +732,9 @@ class ClientCache {
             } else {
                 if (idx > -1) {
                     this._inventory[idx][3] = item.qty;
+                    if (Object.hasOwn(item, 'cid')) this._inventory[idx][6] = item.cid || null;
                 } else {
-                    this._inventory.push([item.name, item.cardNo, item.rarity, item.qty, item.loc, item.illustration]);
+                    this._inventory.push([item.name, item.cardNo, item.rarity, item.qty, item.loc, item.illustration, item.cid || null]);
                 }
             }
         });
@@ -705,6 +745,20 @@ class ClientCache {
      * [Phase 2] 인덱스 및 전역 룩업 변수 자동 동기화
      */
     refreshIndexes() {
+        this._inventoryNameToCid = Object.create(null);
+        this._inventoryNoToCid = Object.create(null);
+        this._ownedByCid = new Map();
+        const assign = (map, key, cid) => {
+            if (!Object.hasOwn(map, key)) map[key] = cid;
+            else if (map[key] !== cid) map[key] = null;
+        };
+        for (const row of this._inventory) if (row[6]) {
+            const cid = String(row[6]);
+            assign(this._inventoryNameToCid, normalizeStr(String(row[0])), cid);
+            assign(this._inventoryNoToCid, String(row[1]).trim().toUpperCase(), cid);
+            if (!this._ownedByCid.has(cid)) this._ownedByCid.set(cid, []);
+            this._ownedByCid.get(cid).push(row);
+        }
         const names = new Set(this._allKnownNames); // 전체 이름에서 시작
         const nos = new Set();
         const locations = new Set();
@@ -1021,9 +1075,11 @@ function mergeCardMetaToCache(cid, metaData, isFull = false) {
         };
     } else {
         existing.success = true;
+        if (!isFull && Date.now() - (existing.cachedAt || 0) > 60000) existing.isFull = false;
     }
 
     if (metaData) {
+        if (isFull) existing.info = {};
         if (metaData.name && typeof metaData.name === 'string') {
             existing.name = metaData.name;
         }
@@ -1033,6 +1089,9 @@ function mergeCardMetaToCache(cid, metaData, isFull = false) {
         // 백엔드의 단일 통합 맵 규격(info)을 단 1줄로 깔끔하고 안전하게 누적 병합
         if (metaData.info && typeof metaData.info === 'object') {
             Object.assign(existing.info, metaData.info);
+        }
+        if (metaData.rawSlot && typeof metaData.rawSlot === 'object') {
+            Object.assign(existing.info, metaData.rawSlot);
         }
 
         // 대표 카드 이름(name) 보완
@@ -1048,6 +1107,12 @@ function mergeCardMetaToCache(cid, metaData, isFull = false) {
         }
     }
 
+    existing.cachedAt = Date.now();
+    const names = Object.entries(existing.info || {}).filter(([key, value]) =>
+        Number(key) >= 0 && Number(key) < 10 && Array.isArray(value) && value[0]).map(([, value]) => value[0]);
+    const numbers = Object.entries(existing.info || {}).filter(([key, value]) =>
+        Number(key) >= 0 && Number(key) < 10 && Array.isArray(value)).flatMap(([, value]) => Object.keys(value[2] || {}));
+    ClientCache.registerCid(cidStr, names, numbers);
     cidMetaMemoryCache.set(cidStr, existing);
     return existing;
 }
@@ -1074,6 +1139,10 @@ async function fetchCardMetaWithCache(cid, cardName = '', cardNo = '') {
 
     if (cidStr && cidMetaMemoryCache.has(cidStr)) {
         const cached = cidMetaMemoryCache.get(cidStr);
+        if (cached && Date.now() - (cached.cachedAt || 0) > 60000) {
+            cidMetaMemoryCache.delete(cidStr);
+            return fetchCardMetaWithCache(cid, cardName, cardNo);
+        }
         if (cached && cached.isFull) {
             return cached;
         }
@@ -1083,7 +1152,7 @@ async function fetchCardMetaWithCache(cid, cardName = '', cardNo = '') {
         if (hasStatsInCache) {
             const langRes = await callApi('getCardMetadata', { cid: cidStr, name: cardName || '', cardNo: cardNo || '', langOnly: true });
             if (langRes && !langRes.isError && langRes.cid) {
-                return mergeCardMetaToCache(langRes.cid, langRes, true);
+                return mergeCardMetaToCache(langRes.cid, { ...langRes, info: { ...cached.info, ...langRes.info } }, true);
             }
             return cached;
         }
@@ -1107,17 +1176,20 @@ async function fetchCardsMetaBatch(cids = []) {
     const needed = cidStrs.filter(cid => {
         if (!cidMetaMemoryCache.has(cid)) return true;
         const cached = cidMetaMemoryCache.get(cid);
+        if (Date.now() - (cached?.cachedAt || 0) > 60000) return true;
         const raw = cached ? (cached.rawSlot || cached.info) : null;
         return !raw || (Array.isArray(raw) ? raw.length <= 10 : Object.keys(raw).length === 0);
     });
 
     if (needed.length > 0) {
         try {
-            const res = await callApi('getCardsMetaBatch', { cids: needed });
+            for (let offset = 0; offset < needed.length; offset += 100) {
+            const res = await callApi('getCardsMetaBatch', {}, { cids: needed.slice(offset, offset + 100) });
             if (res && res.success && res.results) {
                 Object.keys(res.results).forEach(cid => {
                     mergeCardMetaToCache(cid, { rawSlot: res.results[cid] }, false);
                 });
+            }
             }
         } catch (e) {
             console.warn("fetchCardsMetaBatch error:", e);
@@ -3871,7 +3943,7 @@ async function fetchCardByName(input, force = false) {
                 if (validNos.length === 0) {
                     res = { isError: true, isDepleted: true };
                 } else {
-                    const cid = ClientCache._nameToCid[nameVal] || "LOCAL_CID";
+                    const cid = findCidByNameOrNo(nameVal) || null;
                     const inventory = cardCacheInstance.getInventory().filter(r => r[0] === nameVal);
                     const raritiesByNo = {};
                     inventory.forEach(r => {
@@ -4097,7 +4169,7 @@ function lockNameInputAndSetLink(nameInput, name, container, linkData = null) {
         finalLocale = linkData.locale || UIStore.currentRegion;
         finalLocales = linkData.locales || [];
     } else {
-        const cid = ClientCache._nameToCid[name];
+        const cid = findCidByNameOrNo(name);
         if (cid) {
             finalLinkId = cid;
         }
@@ -5098,7 +5170,12 @@ async function submitPageEntries() {
             detailLog.push({ no, name: nameText, cardNo, illustration: illustrationRaw, rarity: item.rawRarityVal || "미선택", loc: loc || "미선택", qty: qty || 0, status: 'fail', failReason });
             el.dataset.status = 'fail';
         } else {
-            validRows.push([nameText, cardNo, procRaw, qty, loc, illustrationRaw]);
+            let cid = findCidByNameOrNo(nameText, cardNo);
+            try {
+                const data = JSON.parse(el.dataset.cardData || '{}');
+                cid = data.linkData?.id || cid;
+            } catch (error) { /* 구형 입력 행은 서버에서 CID를 보완합니다. */ }
+            validRows.push([nameText, cardNo, procRaw, qty, loc, illustrationRaw, cid]);
             detailLog.push({ no, name: nameText, cardNo, illustration: illustrationRaw, rarity: procRaw, loc, qty, status: 'success' });
             successCount++; successQty += qty;
             el.dataset.status = 'success';
@@ -5751,6 +5828,8 @@ function toggleRegionDropdown(event) {
 }
 
 let lastSearchState = null;
+let searchSequence = 0;
+const resolvedSearchNames = new Map();
 
 /**
  * 검색 상태를 URL Hash 규격으로 갱신
@@ -5858,18 +5937,16 @@ function getInventoryRowsByCidOrName(targetCid, targetCardName, prioritizeNumber
         if (ClientCache._cidToNames && ClientCache._cidToNames[targetCid]) {
             ClientCache._cidToNames[targetCid].forEach(n => relatedNames.add(n));
         }
-        if (ClientCache._nameToCid) {
-            for (const k in ClientCache._nameToCid) {
-                if (String(ClientCache._nameToCid[k]) === String(targetCid)) {
-                    relatedNames.add(k);
-                }
-            }
-        }
+
     }
 
     const normRelatedSet = new Set([...relatedNames].map(n => normalizeStr(n)));
 
-    let rows = cardCacheInstance.getInventory().filter(row => {
+    const candidates = targetCid
+        ? [...(cardCacheInstance._ownedByCid?.get(String(targetCid)) || []), ...cardCacheInstance.getInventory().filter(row => !row[6])]
+        : cardCacheInstance.getInventory();
+    let rows = candidates.filter(row => {
+        if (targetCid && row[6]) return true;
         const rowNorm = normalizeStr(String(row[0]));
         if (normRelatedSet.has(rowNorm)) return true;
         if (prioritizeNumber && normalizeStr(String(row[1])) === normalizeStr(prioritizeNumber)) return true;
@@ -5910,9 +5987,7 @@ function refreshCurrentSearchResult() {
                 const targetCid = lastSearchState.targetCid;
 
                 let updatedTargetRows = getInventoryRowsByCidOrName(targetCid, targetCardName, prioritizeNumber);
-                if (updatedTargetRows.length === 0 && lastSearchState.targetRows) {
-                    updatedTargetRows = lastSearchState.targetRows;
-                }
+
 
                 renderTargetSearchResult(
                     targetCardName,
@@ -5992,7 +6067,44 @@ function updateRarityInputs() {
     });
 }
 
+// 검색 응답은 입력 행과 무관하게 60초 동안 재사용합니다.
+const cardResponseCache = new Map();
+const cardRequestPromises = new Map();
+let cardCacheRevision = 0;
 async function callApi(action, params = {}, postData = null) {
+    const cacheable = !postData && ['searchCardByName', 'searchCardByNo', 'getCardMetadata', 'searchCard'].includes(action)
+        && !params.warmup;
+    const key = `${action}:${JSON.stringify(Object.fromEntries(Object.entries(params).sort()))}`;
+    if (cacheable) {
+        const cached = cardResponseCache.get(key);
+        if (cached && cached.expires > Date.now()) return structuredClone(cached.data);
+        if (cardRequestPromises.has(key)) return structuredClone(await cardRequestPromises.get(key));
+    }
+    const revision = cardCacheRevision;
+    const promise = requestApi(action, params, postData).then(res => {
+        CardListCache.rememberResponse(action, res);
+        if (res?.success && postData && res.inventoryMigration) scheduleInventoryMigration(res);
+        if (res?.success && ['crawlCardMetaByName', 'crawlPackCardsBatch', 'searchPack'].includes(action)) {
+            cardCacheRevision++;
+            cardResponseCache.clear();
+            cardRequestPromises.clear();
+            cidMetaMemoryCache.clear();
+        }
+        if (cacheable && res?.success && !res.isPendingCrawl && revision === cardCacheRevision) {
+            cardResponseCache.set(key, { data: structuredClone(res), expires: Date.now() + 60000 });
+            if (cardResponseCache.size > 500) cardResponseCache.delete(cardResponseCache.keys().next().value);
+            const cid = res.cid || res.linkData?.id;
+            if (cid && res.info && params.langOnly !== true) mergeCardMetaToCache(cid, res, true);
+        }
+        return res;
+    }).finally(() => {
+        if (cardRequestPromises.get(key) === promise) cardRequestPromises.delete(key);
+    });
+    if (cacheable) cardRequestPromises.set(key, promise);
+    return structuredClone(await promise);
+}
+
+async function requestApi(action, params = {}, postData = null) {
     const endpoint = FIREBASE_CONFIG.ENDPOINTS[action];
     if (!endpoint) {
         throw new Error(`등록되지 않은 서버 기능입니다: ${action}`);
@@ -6081,6 +6193,7 @@ async function refreshPublicDataQuietly() {
     if (Date.now() - _lastPublicRefreshAt < 60000) return;
     _publicRefreshPromise = (async () => {
         const res = await callApi('getInitialData', {
+            inventorySchema: 2,
             rarityUpdatedAt: localStorage.getItem('rarityUpdatedAt') || '0',
             packUpdatedAt: localStorage.getItem('packUpdatedAt') || '0',
             cardListUpdatedAt: localStorage.getItem('cardListUpdatedAt') || '0'
@@ -6115,10 +6228,11 @@ async function refreshInitialData(forceSync = false) {
         const localCardListUpdate = parseInt(localStorage.getItem('cardListUpdatedAt') || '0');
 
         // [스마트 온디맨드 웜업] getInitialData와 동시에 getCardMetadata 컨테이너를 선제 깨우기
-        // → 사용자가 UI를 보는 사이 백엔드 RAM 캐시(_fullMetaMemoryMap)가 백그라운드에서 완성됨
+        // → API 컨테이너 초기화 요청이며 전체 카드 데이터를 미리 읽지는 않습니다.
         callApi('getCardMetadata', { warmup: 'true' }).catch(() => {});
 
         const res = await callApi('getInitialData', {
+            inventorySchema: 2,
             rarityUpdatedAt: localRarityUpdate,
             packUpdatedAt: localPackUpdate,
             cardListUpdatedAt: localCardListUpdate
@@ -6139,6 +6253,7 @@ async function refreshInitialData(forceSync = false) {
 }
 
 async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarget = null) {
+    const sequence = ++searchSequence;
     // [AD] 검색 시 결과 하단 광고 갱신
     if (typeof refreshAdUnit === 'function') refreshAdUnit('search-result-ad');
 
@@ -6214,7 +6329,7 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
         let targetRows = getInventoryRowsByCidOrName(targetCid, targetCardName, prioritizeNumber);
 
         // animateVerticalExpand의 old 접기 애니메이션(0.4s)과 API 호출을 병렬 실행 — Safari 딜레이 해소
-        const metaPromise = fetchCardMetaWithCache(targetCid, targetCardName);
+        const metaPromise = fetchCardMetaWithCache(targetCid, targetCardName, prioritizeNumber);
 
         const renderTargetFunc = async (mountContainer) => {
             await renderTargetSearchResult(targetCardName, targetRows, prioritizeNumber, mountContainer, targetCid, metaPromise);
@@ -6234,6 +6349,7 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
 
         let nameRows = [];
         let numberRows = [];
+        let candidateNames = [];
 
         // 이름 검색 수행 (searchType !== 'number')
         if (searchType !== 'number') {
@@ -6265,6 +6381,7 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
                     targetNames.add(name);
                 }
             }
+            candidateNames = [...targetNames];
             nameRows = typeof cardCacheInstance !== 'undefined' ? cardCacheInstance.getInventory().filter(row => targetNames.has(String(row[0]))) : [];
         }
 
@@ -6274,8 +6391,53 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
             numberRows = typeof cardCacheInstance !== 'undefined' ? cardCacheInstance.getInventory().filter(row => String(row[1]).toLowerCase().includes(queryLower)) : [];
         }
 
+        const matchingCids = new Set(candidateNames.map(n => findCidByNameOrNo(n)).filter(Boolean).map(String));
+        const originalNames = new Set(candidateNames);
+        const collectRows = () => cardCacheInstance.getInventory().filter(row =>
+            originalNames.has(String(row[0])) || (row[6] && matchingCids.has(String(row[6]))));
+        nameRows = collectRows();
+        let expansionStarted = false;
         const renderBroadFunc = (mountContainer) => {
+            const area = mountContainer || document.getElementById('result-area');
             renderBroadSearchResults(nameRows, numberRows, searchType, mountContainer);
+            if (expansionStarted || !candidateNames.length) return;
+            expansionStarted = true;
+            let offset = 0;
+            const expand = async () => {
+                if (sequence !== searchSequence) return;
+                const chunk = candidateNames.slice(offset, offset + 40);
+                const missing = chunk.filter(n => {
+                    const cached = resolvedSearchNames.get(n);
+                    return !cached || cached.expires <= Date.now();
+                });
+                try {
+                    if (missing.length) {
+                        const res = await callApi('resolveCardNames', {}, { names: missing });
+                        if (!res.success) throw new Error('검색 연결 정보 조회 실패');
+                        for (const [name, cids] of Object.entries(res.results || {})) {
+                            resolvedSearchNames.set(name, { cids, expires: Date.now() + 60000 });
+                            for (const cid of cids) ClientCache.registerCid(cid, [name]);
+                        }
+                        if (resolvedSearchNames.size > 2000) resolvedSearchNames.delete(resolvedSearchNames.keys().next().value);
+                    }
+                    if (sequence !== searchSequence) return;
+                    for (const name of chunk) for (const cid of resolvedSearchNames.get(name)?.cids || []) matchingCids.add(String(cid));
+                    offset += chunk.length;
+                    nameRows = collectRows();
+                    renderBroadSearchResults(nameRows, numberRows, searchType, mountContainer);
+                } catch (error) {
+                    if (sequence !== searchSequence) return;
+                    console.warn('[Search] 다국어 검색 확장 재시도:', error.message);
+                }
+                if (offset < candidateNames.length && sequence === searchSequence) {
+                    const button = document.createElement('button');
+                    button.className = 'btn-flat';
+                    button.textContent = '다른 언어의 보유카드 더 찾기';
+                    button.onclick = () => { button.remove(); void expand(); };
+                    area.appendChild(button);
+                }
+            };
+            void expand();
         };
 
         if (UIStore.mode === 'search') {
@@ -6601,12 +6763,7 @@ function extractCidFromMeta(cardMeta) {
     if (cardMeta.rawSlot && Array.isArray(cardMeta.rawSlot) && cardMeta.rawSlot[1]) {
         return cardMeta.rawSlot[1];
     }
-    if (cardMeta.info) {
-        const langArr = extractLangData(cardMeta);
-        if (langArr && Array.isArray(langArr) && langArr[1]) {
-            return langArr[1];
-        }
-    }
+
     return null;
 }
 
@@ -6825,40 +6982,18 @@ function renderBroadSearchResults(nameRows, numberRows, searchType, mountContain
 }
 
 function findCidByNameOrNo(cardName, cardNo = null) {
-    if (typeof ClientCache !== 'undefined' && ClientCache._nameToCid) {
-        if (cardName && ClientCache._nameToCid[cardName]) {
-            return ClientCache._nameToCid[cardName];
-        }
-        if (cardName) {
-            const normName = normalizeStr(cardName);
-            if (normName && ClientCache._nameToCid[normName]) {
-                return ClientCache._nameToCid[normName];
-            }
-        }
+    const number = String(cardNo || '').trim().toUpperCase();
+    const name = normalizeStr(String(cardName || ''));
+    if (number) {
+        if (Object.hasOwn(cardCacheInstance._inventoryNoToCid || {}, number)) return cardCacheInstance._inventoryNoToCid[number];
+        if (Object.hasOwn(ClientCache._knownNumberToCid, number)) return ClientCache._knownNumberToCid[number];
     }
-    if (typeof cardCacheInstance !== 'undefined') {
-        if (cardCacheInstance._mergedMeta && cardName && cardCacheInstance._mergedMeta[cardName]) {
-            return cardCacheInstance._mergedMeta[cardName][1];
-        }
-        if (typeof cardCacheInstance.getInventory === 'function' && cardNo) {
-            const inv = cardCacheInstance.getInventory();
-            const normNo = normalizeStr(cardNo);
-            const row = inv.find(r => normalizeStr(String(r[1])) === normNo);
-            if (row && row[0]) {
-                const nameOfNo = String(row[0]);
-                if (ClientCache && ClientCache._nameToCid && ClientCache._nameToCid[nameOfNo]) {
-                    return ClientCache._nameToCid[nameOfNo];
-                }
-                if (cardCacheInstance._mergedMeta && cardCacheInstance._mergedMeta[nameOfNo]) {
-                    return cardCacheInstance._mergedMeta[nameOfNo][1];
-                }
-            }
-        }
-    }
-    return null;
+    if (Object.hasOwn(cardCacheInstance._inventoryNameToCid || {}, name)) return cardCacheInstance._inventoryNameToCid[name];
+    return ClientCache._knownNameToCid[cardName] || ClientCache._knownNameToCid[name] || null;
 }
 
 async function renderTargetByCid(cid, code = null, isInstant = false) {
+    const sequence = ++searchSequence;
     if (!cid) return;
     switchToMode('search', isInstant);
 
@@ -6893,6 +7028,7 @@ async function renderTargetByCid(cid, code = null, isInstant = false) {
         console.warn("[renderTargetByCid] getCardMetadata error:", e.message);
     }
 
+    if (sequence !== searchSequence) return;
     if (!cardName) cardName = code || `CID: ${cid}`;
     relatedNames.add(cardName);
 
@@ -6906,6 +7042,7 @@ async function renderTargetByCid(cid, code = null, isInstant = false) {
     const preFetchedMeta = targetMeta ? Promise.resolve(targetMeta) : null;
 
     const renderFunc = async (mountContainer) => {
+        if (sequence !== searchSequence) return;
         await renderTargetSearchResult(cardName, targetRows, code, mountContainer, cid, preFetchedMeta);
     };
 
@@ -6917,7 +7054,9 @@ async function renderTargetByCid(cid, code = null, isInstant = false) {
 }
 
 async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNumber = null, mountContainer = null, forcedCid = null, preFetchedMetaPromise = null) {
+    const targetSequence = ++searchSequence;
     let targetCid = forcedCid || findCidByNameOrNo(targetCardName, prioritizeNumber);
+    if (targetCid) targetRows = getInventoryRowsByCidOrName(targetCid, targetCardName, prioritizeNumber);
 
     const previousCardName = (typeof lastSearchState !== 'undefined' && lastSearchState) ? lastSearchState.targetCardName : null;
     const previousCid = (typeof lastSearchState !== 'undefined' && lastSearchState) ? lastSearchState.targetCid : null;
@@ -6932,6 +7071,7 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
                        (previousCardName && targetCardName && previousCardName === targetCardName);
 
     if (existingTempBox && existingBottomSec && !mountContainer && isSameCard) {
+        lastSearchState = { ...lastSearchState, targetRows, targetCid };
         existingBottomSec.innerHTML = '';
         if (targetRows.length === 0) {
             existingBottomSec.innerHTML = `<p class="center" style="padding: 20px 0; color: var(--text-secondary);">등록되지 않은 카드입니다.</p>`;
@@ -7131,9 +7271,7 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
         tempBox.appendChild(fragment);
     };
 
-    if (!targetCid && typeof ClientCache !== 'undefined' && ClientCache._nameToCid && ClientCache._nameToCid[targetCardName]) {
-        targetCid = ClientCache._nameToCid[targetCardName];
-    }
+    if (!targetCid) targetCid = findCidByNameOrNo(targetCardName, prioritizeNumber);
 
     // 2순위: 로컬 캐시 메타데이터 확보
     let targetMeta = null;
@@ -7150,7 +7288,8 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
 
     // 3순위: API 완료 대기 (preFetchedMetaPromise는 이미 RAM에서 거의 즉시 resolve)
     try {
-        const res = await (preFetchedMetaPromise || fetchCardMetaWithCache(targetCid, targetCardName));
+        const res = await (preFetchedMetaPromise || fetchCardMetaWithCache(targetCid, targetCardName, prioritizeNumber));
+        if (targetSequence !== searchSequence) return;
         if (res && (res.info || res.rawSlot)) {
             targetMeta = res;
             // [방안 B - 2차 렌더링] 완전한 API 데이터로 갱신
@@ -7160,10 +7299,13 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
         console.warn("[TargetBox] getCardMetadata 연동 실패, 기본 캐시 유지:", e.message);
     }
 
+    if (targetSequence !== searchSequence) return;
     const realCid = extractCidFromMeta(targetMeta) || targetCid;
     if (realCid && realCid !== "null" && realCid !== "undefined") {
         targetCid = realCid;
         ClientCache.registerCid(targetCid, [targetCardName], [prioritizeNumber]);
+        targetRows = getInventoryRowsByCidOrName(targetCid, targetCardName, prioritizeNumber);
+        if (bottomSec.parentNode === targetArea) renderTableToContainer(targetRows, bottomSec);
     }
 
     if (!mountContainer) {
@@ -7431,8 +7573,48 @@ async function syncYoutubeMembership() {
 /**
  * 서버 인벤토리 데이터 적용
  */
+let inventoryMigrationTimer = null;
+let inventoryMigrationFailures = 0;
+function scheduleInventoryMigration(res) {
+    clearTimeout(inventoryMigrationTimer);
+    const state = res.inventoryMigration;
+    UserStore.inventoryVersion = res.inventoryVersion;
+    UserStore.inventoryMigration = state;
+    if (!state || state.status === 'complete' || !UserStore.user) {
+        inventoryMigrationFailures = 0;
+        return;
+    }
+    const uid = UserStore.user.uid;
+    const delay = Math.max(1500, Number(state.retryAt || 0) - Date.now(),
+        state.status === 'retryableError' ? Math.min(300000, 30000 * 2 ** inventoryMigrationFailures) : 0);
+    inventoryMigrationTimer = setTimeout(async () => {
+        if (UserStore.user?.uid !== uid) return;
+        if (document.hidden) { scheduleInventoryMigration(res); return; }
+        try {
+            const next = await callApi('getUserData');
+            if (UserStore.user?.uid !== uid) return;
+            if (!next?.success) throw new Error(next?.message || '인벤토리 이관 상태 조회 실패');
+            // 오래된 전체 응답으로 사용자가 방금 수정한 수량을 덮어쓰지 않습니다.
+            const cids = new Map((next.allCards || []).map(row => [JSON.stringify([row[0], row[1]]), row[6] || null]));
+            for (const row of cardCacheInstance.getInventory()) {
+                const key = JSON.stringify([row[0], row[1]]);
+                if (cids.has(key)) row[6] = cids.get(key);
+            }
+            cardCacheInstance.refreshIndexes();
+            refreshCurrentSearchResult();
+            inventoryMigrationFailures = next.inventoryMigration?.status === 'retryableError' ? inventoryMigrationFailures + 1 : 0;
+            scheduleInventoryMigration(next);
+        } catch (error) {
+            if (UserStore.user?.uid !== uid) return;
+            inventoryMigrationFailures++;
+            scheduleInventoryMigration({ ...res, inventoryMigration: { ...state, status: 'retryableError', retryAt: Date.now() + 30000 } });
+        }
+    }, delay);
+}
+
 function applyUserData(res) {
     if (!res) return;
+    scheduleInventoryMigration(res);
 
     // 서버로부터 받은 설정 적용 (테마, 상세 모드 등)
     if (res.settings) {
@@ -7480,30 +7662,17 @@ async function applyPublicData(res) {
 
     const saveBatch = {};
 
-    // [Single-Flight 최적화] 카드 목록 매니페스트 본문(names, numbers, cids)이 동봉되어 온 경우
+    // 자동완성 이름·번호 목록은 기존 형식으로 동기화합니다.
     const cardManifestData = res.cardNames || res.cardListData;
     if (cardManifestData && typeof cardManifestData === 'object') {
         try {
             const data = cardManifestData;
-            let cidsData = data.cids || null;
             if (Array.isArray(data.names)) {
-                const names = data.names;
-                const numbers = data.numbers || [];
-                cardCacheInstance.setAllKnownNames(names);
-                CardDataStore.allCardNames = names;
-                updateNormalizedNames();
-                CardDataStore.allCardNumbers = numbers;
+                await CardListCache.persist({ names: data.names, numbers: data.numbers || [] });
+                if (res.cardListUpdatedAt) localStorage.setItem('cardListUpdatedAt', res.cardListUpdatedAt);
+            }
 
-                saveBatch.cardNames = names;
-                saveBatch.cardNumbers = numbers;
-            }
-            if (cidsData) {
-                ClientCache.loadCidIndex(cidsData);
-                saveBatch.cidIndex = cidsData;
-            }
-            if (res.cardListUpdatedAt) {
-                localStorage.setItem('cardListUpdatedAt', res.cardListUpdatedAt);
-            }
+
         } catch (manifestErr) {
             console.warn("[Single-Flight] Apply cardNames error:", manifestErr);
         }
@@ -16588,4 +16757,3 @@ window.switchFaqTab = function(tabName) {
         document.querySelectorAll('.faq-tab-content-faq').forEach(el => el.style.display = 'none');
     }
 };
-

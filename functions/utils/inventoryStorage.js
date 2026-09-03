@@ -19,7 +19,7 @@ const INVENTORY_DIR = "users";
  */
 function createEmptyInventory() {
   return {
-    version: 1,
+    version: 2,
     updatedAt: new Date().toISOString(),
     amount: 0,
     locations: {},
@@ -35,93 +35,54 @@ function createEmptyInventory() {
  */
 async function downloadInventory(uid) {
   const bucket = admin.storage().bucket();
-  const file = bucket.file(`${INVENTORY_DIR}/${uid}/inventory.json`);
-  try {
-    const [metadata] = await file.getMetadata();
-    const [content] = await file.download();
-    return {
-      data: JSON.parse(content.toString("utf-8")),
-      generation: metadata.generation
-    };
-  } catch (e) {
-    if (e.code === 404 || (e.message && e.message.includes("No such object"))) {
-      return { data: createEmptyInventory(), generation: "0" };
+  const path = `${INVENTORY_DIR}/${uid}/inventory.json`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let metadata;
+    try { [metadata] = await bucket.file(path).getMetadata(); }
+    catch (error) {
+      if (Number(error.code) === 404) return { data: createEmptyInventory(), generation: '0' };
+      throw error;
     }
-    console.error(`[InventoryStorage] downloadInventory(${uid}) 실패:`, e.message);
-    throw e;
+    try {
+      const [content] = await bucket.file(path, { generation: metadata.generation }).download();
+      const data = JSON.parse(content.toString('utf8'));
+      if (!data || typeof data !== 'object' || Array.isArray(data) ||
+          (data.cards && (typeof data.cards !== 'object' || Array.isArray(data.cards)))) {
+        throw new Error('인벤토리 형식이 올바르지 않습니다. 원본을 보존합니다.');
+      }
+      if (Number(data.version || 1) > 2) throw new Error('지원하지 않는 인벤토리 버전입니다.');
+      return { data, generation: String(metadata.generation) };
+    } catch (error) {
+      if (Number(error.code) === 404 && attempt < 2) continue;
+      throw error;
+    }
   }
 }
 
-/**
- * 유저 인벤토리를 Storage에 업로드합니다.
- * @param {string} uid - 유저 UID
- * @param {Object} data - 인벤토리 데이터
- * @returns {Promise<void>}
- */
-async function uploadInventory(uid, data) {
-  const bucket = admin.storage().bucket();
-  const file = bucket.file(`${INVENTORY_DIR}/${uid}/inventory.json`);
-  data.updatedAt = new Date().toISOString();
-  await file.save(JSON.stringify(data), {
-    contentType: "application/json",
-  });
-}
-
-/**
- * Generation 기반 낙관적 잠금으로 인벤토리를 안전하게 업데이트합니다.
- * 동시 수정 충돌 시 자동 재시도합니다.
- *
- * @param {string} uid - 유저 UID
- * @param {Function} updateFn - (inventoryData) => void 형태의 인메모리 수정 함수
- * @param {number} [maxRetries=3] - 최대 재시도 횟수
- * @returns {Promise<Object>} 업데이트된 인벤토리 데이터
- */
+// 이관과 일반 수정 모두 최신 generation의 본문에 변경을 적용합니다.
 async function updateInventoryWithRetry(uid, updateFn, maxRetries = 3) {
-  const bucket = admin.storage().bucket();
-  const filePath = `${INVENTORY_DIR}/${uid}/inventory.json`;
-
+  const file = admin.storage().bucket().file(`${INVENTORY_DIR}/${uid}/inventory.json`);
+  const { prepareInventoryV2, inventoryMigrationStatus } = require('../services/inventoryMigrationService');
+  const resolutions = new Map();
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const file = bucket.file(filePath);
-    let data, generation;
-
-    try {
-      const [metadata] = await file.getMetadata();
-      generation = metadata.generation;
-      const [content] = await file.download();
-      data = JSON.parse(content.toString("utf-8"));
-    } catch (e) {
-      if (e.code === 404 || (e.message && e.message.includes("No such object"))) {
-        data = createEmptyInventory();
-        generation = "0";
-      } else {
-        throw e;
-      }
-    }
-
-    // 인메모리 수정 실행
-    updateFn(data);
+    const { data, generation } = await downloadInventory(uid);
+    const before = JSON.stringify(data);
+    await prepareInventoryV2(data, resolutions);
+    await updateFn(data);
+    const status = inventoryMigrationStatus(data);
+    data.version = status.pendingCount ? 1 : 2;
+    if (before === JSON.stringify(data)) return data;
     data.updatedAt = new Date().toISOString();
-
-    // 조건부 업로드
     try {
-      const preconditionOpts = generation === "0"
-        ? { ifGenerationMatch: 0 }  // 파일이 존재하지 않아야 함
-        : { ifGenerationMatch: parseInt(generation) };
-
       await file.save(JSON.stringify(data), {
-        contentType: "application/json",
-        preconditionOpts,
+        resumable: false,
+        contentType: 'application/json',
+        preconditionOpts: { ifGenerationMatch: generation === '0' ? 0 : generation },
       });
-      return data; // 성공
-    } catch (err) {
-      if (err.code === 412 || (err.message && err.message.includes("conditionNotMet"))) {
-        if (attempt < maxRetries - 1) {
-          console.warn(`[InventoryStorage] 동시성 충돌 감지 (시도 ${attempt + 1}/${maxRetries}), 재시도...`);
-          continue;
-        }
-        throw new Error(`[InventoryStorage] 동시 쓰기 충돌 재시도 ${maxRetries}회 초과. 잠시 후 다시 시도해 주세요.`);
-      }
-      throw err;
+      return data;
+    } catch (error) {
+      if (Number(error.code) === 412 && attempt < maxRetries - 1) continue;
+      throw error;
     }
   }
 }
@@ -175,11 +136,15 @@ function processAddCards(inventory, cardGroups) {
   for (const cardNo in cardGroups) {
     const group = cardGroups[cardNo];
     if (!inventory.cards[cardNo]) {
-      inventory.cards[cardNo] = { name: group.name, items: [] };
+      inventory.cards[cardNo] = { name: group.name, cid: group.cid || null, cidCheckedAt: Date.now(), items: [] };
     }
     const cardEntry = inventory.cards[cardNo];
     const cardName = group.name || cardEntry.name || "Unknown";
     cardEntry.name = cardName;
+    if (Object.hasOwn(group, 'cid')) {
+      cardEntry.cid = group.cid;
+      cardEntry.cidCheckedAt = Date.now();
+    }
 
     group.items.forEach(incoming => {
       let matchIndex = -1;
@@ -195,7 +160,7 @@ function processAddCards(inventory, cardGroups) {
       if (matchIndex > -1) {
         cardEntry.items[matchIndex].qty += incoming.qty;
       } else {
-        cardEntry.items.push(incoming);
+        cardEntry.items.push({ ...incoming });
       }
 
       inventory.amount += incoming.qty;
@@ -209,6 +174,7 @@ function processAddCards(inventory, cardGroups) {
       updatedItems.push({
         cardNo,
         name: cardName,
+        cid: cardEntry.cid || null,
         rarity: incoming.rarity,
         qty: matchIndex > -1 ? cardEntry.items[matchIndex].qty : incoming.qty,
         loc: incoming.loc,
@@ -263,7 +229,7 @@ function processMoveCards(inventory, moves) {
       let newSourceQty = items[sourceIdx].qty - moveQ;
       if (newSourceQty < 0) newSourceQty = 0;
       items[sourceIdx].qty = newSourceQty;
-      updatedItems.push({ cardNo, name: cardName, rarity: mRare, illustration: mIllust, loc: mCurLoc, qty: newSourceQty, isDeleted: newSourceQty === 0 });
+      updatedItems.push({ cardNo, name: cardName, cid: cardEntry.cid || null, rarity: mRare, illustration: mIllust, loc: mCurLoc, qty: newSourceQty, isDeleted: newSourceQty === 0 });
 
       let targetIdx = -1;
       for (let i = 0; i < items.length; i++) {
@@ -279,7 +245,7 @@ function processMoveCards(inventory, moves) {
       } else {
         items.push({ rarity: mRare, loc: mTarLoc, illustration: mIllust, qty: moveQ });
       }
-      updatedItems.push({ cardNo, name: cardName, rarity: mRare, illustration: mIllust, loc: mTarLoc, qty: targetIdx > -1 ? items[targetIdx].qty : moveQ, isDeleted: false });
+      updatedItems.push({ cardNo, name: cardName, cid: cardEntry.cid || null, rarity: mRare, illustration: mIllust, loc: mTarLoc, qty: targetIdx > -1 ? items[targetIdx].qty : moveQ, isDeleted: false });
     });
 
     items = items.filter(it => it.qty > 0);
@@ -344,7 +310,7 @@ function processDiscardCards(inventory, discards) {
       inventory.rarities[rarityKey] = (inventory.rarities[rarityKey] || 0) - discardQ;
       if (inventory.rarities[rarityKey] < 0) inventory.rarities[rarityKey] = 0;
 
-      updatedItems.push({ cardNo, name: cardName, rarity: dRare, illustration: dIllust, loc: dLoc, qty: newQty, isDeleted: newQty === 0 });
+      updatedItems.push({ cardNo, name: cardName, cid: cardEntry.cid || null, rarity: dRare, illustration: dIllust, loc: dLoc, qty: newQty, isDeleted: newQty === 0 });
     });
 
     items = items.filter(it => it.qty > 0);
@@ -364,7 +330,6 @@ function processDiscardCards(inventory, discards) {
 module.exports = {
   createEmptyInventory,
   downloadInventory,
-  uploadInventory,
   updateInventoryWithRetry,
   deleteInventory,
   updateUserLocationsSummary,

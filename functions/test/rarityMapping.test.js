@@ -38,7 +38,7 @@ function fixture(options = {}) {
   const mocks = {
     './cardIndexDispatchService': {},
     '../config/firebase': { getBucket: () => bucket },
-    '../utils/indexStorage': {},
+    './cardQueryService': {},
     '../utils/common': { updateRarityMemoryCache: data => caches.push(data) },
     './cardWriteService': {},
     '../scrapers/cardScraper': {}

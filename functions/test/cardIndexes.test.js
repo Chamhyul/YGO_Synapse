@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { emptyIndexes, applyCardChanges } = require('../services/cardIndexBuilder');
+const { createCardManifest, addCardToManifest } = require('../services/cardIndexBuilder');
 const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 
 function loadModule(file, mocks) {
@@ -14,12 +14,11 @@ function loadModule(file, mocks) {
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), sandbox, { filename });
   return module.exports;
 }
-const card = (name, number) => ({ info: { 0: [name, 1, { [number]: ['팩', 'N'] }] } });
+const card = (name, number) => ({ names: [name], numbers: [number], info: { 0: [name, 1, { [number]: ['팩', 'N'] }] } });
 
 function fixture() {
   const data = new Map([["system/cardIndexState", { ready: true }]]);
-  const indexes = emptyIndexes();
-  const versions = { byName: 1, byNumber: 1, cid: 1 };
+  let generation = 1;
   let manifest = null, failType = null, hook = null;
   const ref = key => ({ path: key, id: key.split('/').pop(), get: async () => snapshot(key),
     set: async (value, options) => data.set(key, options?.merge ? { ...data.get(key), ...clone(value) } : clone(value)) });
@@ -32,6 +31,7 @@ function fixture() {
       let limit = Infinity, after = '', order = '';
       const query = { doc: id => ref(`${name}/${id}`),
         orderBy: field => { order = field; return query; },
+        select: () => query,
         limit: size => { limit = size; return query; },
         startAfter: cursor => { after = typeof cursor === 'string' ? cursor : cursor.id; return query; },
         get: async () => {
@@ -52,94 +52,85 @@ function fixture() {
     },
   };
   const storage = {
-    readIndexFile: async type => ({ data: clone(indexes[type]), generation: versions[type] }),
-    readIndexGeneration: async type => versions[type],
-    readManifestGeneration: async () => 1,
-    writeIndexFile: async (type, value, generation) => {
-      if (hook) await hook(type);
-      if (failType === type) throw Error('저장 실패');
-      if (generation !== versions[type]) throw Error('버전 충돌');
-      indexes[type] = clone(value); versions[type]++;
+    readManifestGeneration: async () => generation,
+    writeCardManifest: async (names, numbers, expected) => {
+      if (hook) await hook();
+      if (failType) throw Error('목록 저장 실패');
+      if (expected !== generation) throw Error('버전 충돌');
+      manifest = clone({ names, numbers });
+      generation++;
     },
-    writeCardManifest: async (names, numbers) => {
-      if (failType === 'manifest') throw Error('목록 저장 실패');
-      manifest = { names: Object.keys(names), numbers: Object.keys(numbers) };
-    }, invalidateCache() {},
   };
   const service = loadModule('services/cardIndexService.js', {
-    '../config/firebase': { db, admin: { firestore: { FieldPath: { documentId: () => '__name__' } } } },
+    '../config/firebase': { db, FieldPath: { documentId: () => '__name__' } },
     './cardWriteService': { PENDING_COLLECTION: 'pendingCardIndexUpdates' },
     './cardIndexDispatchService': { requestCardIndexWork: async () => ({ scheduled: true }) },
-    './cardIndexBuilder': { emptyIndexes, applyCardChanges },
+    './cardIndexBuilder': { createCardManifest, addCardToManifest },
     '../utils/indexStorage': storage,
   });
   const queue = (id, version, value) => { data.set(`cards/${id}`, value); data.set(`pendingCardIndexUpdates/${id}`, { version, queuedAt: Date.now() }); };
-  return { service, data, indexes, versions, queue, get manifest() { return manifest; },
+  return { service, data, queue, get manifest() { return manifest; },
     set fail(value) { failType = value; }, set hook(value) { hook = value; } };
 }
 
-test('증분 갱신은 옛 이름·번호를 제거하고 다른 카드를 보존한다', () => {
-  const indexes = emptyIndexes();
-  applyCardChanges(indexes, [{ cid:'1',data:card('이전','OLD') }, {cid:'2',data:card('유지','KEEP')}]);
-  applyCardChanges(indexes, [{ cid:'1',data:card('변경','NEW') }]);
-  assert.equal(indexes.byName['이전'],undefined);
-  assert.equal(indexes.byNumber.OLD,undefined);
-  assert.equal(indexes.byNumber.KEEP.cid,'2');
-  assert.equal(indexes.byNumber.NEW.cid,'1');
-  const once=clone(indexes);
-  applyCardChanges(indexes,[{cid:'1',data:card('변경','NEW')}]);
-  assert.deepEqual(clone(indexes),once);
-  applyCardChanges(indexes,[{cid:'1',data:null}]);
-  assert.equal(indexes.cid['1'],undefined);
+test('목록 생성은 원본 배열을 합치고 공유 이름과 슬래시를 보존한다', () => {
+  const manifest = createCardManifest();
+  addCardToManifest(manifest, card('공유/이름', ' A '));
+  addCardToManifest(manifest, card('공유/이름', 'B'));
+  assert.deepEqual([...manifest.names], ['공유/이름']);
+  assert.deepEqual([...manifest.numbers], ['A', 'B']);
 });
 
-test('정상 처리 후에만 대기 기록을 삭제한다', async () => {
-  const f=fixture(); f.queue('1','v1',card('카드','NO'));
-  const result=await f.service.processPendingCardIndexes();
-  assert.equal(result.processed,1); assert.equal(f.data.has('pendingCardIndexUpdates/1'),false);
-  assert.equal(f.indexes.byNumber.NO.cid,'1'); assert.deepEqual(f.manifest.names,['카드']);
+test('대기 기록이 없는 기존 카드도 최초 목록 생성에 포함한다', async () => {
+  const f = fixture();
+  f.data.set('cards/old', card('기존', 'OLD'));
+  f.queue('1', 'v1', card('추가', 'NEW'));
+  const result = await f.service.processPendingCardIndexes();
+  assert.equal(result.totalCards, 2);
+  assert.deepEqual(f.manifest.numbers, ['NEW', 'OLD']);
+  assert.equal(f.data.has('pendingCardIndexUpdates/1'), false);
 });
 
-for (const step of ['byName','byNumber','cid','manifest']) {
-  test(`${step} 저장 실패 후 대기 기록 보존 및 재시도`,async()=>{
-    const f=fixture(); f.queue('1','v1',card('카드','NO')); f.fail=step;
-    await assert.rejects(f.service.processPendingCardIndexes());
-    assert.equal(f.data.get('pendingCardIndexUpdates/1').version,'v1');
-    f.fail=null; await f.service.processPendingCardIndexes();
-    assert.equal(f.data.has('pendingCardIndexUpdates/1'),false);
-    assert.equal(f.indexes.byNumber.NO.cid,'1');
-  });
-}
+test('목록 저장 실패 시 대기 기록을 남긴다', async () => {
+  const f = fixture(); f.queue('1', 'v1', card('카드', 'NO')); f.fail = true;
+  await assert.rejects(f.service.processPendingCardIndexes(), /목록 저장 실패/);
+  assert.equal(f.data.get('pendingCardIndexUpdates/1').version, 'v1');
+});
 
-test('처리 도중 들어온 최신 변경은 이전 작업이 삭제하지 않는다',async()=>{
-  const f=fixture();f.queue('1','v1',card('이전','OLD'));
-  f.hook=async type=>{if(type==='byName'){f.hook=null;f.queue('1','v2',card('최신','NEW'));}};
+test('생성 도중 발생한 변경은 완료 처리하지 않는다', async () => {
+  const f = fixture(); f.queue('1', 'v1', card('이전', 'OLD'));
+  f.hook = async () => { f.hook = null; f.queue('1', 'v2', card('최신', 'NEW')); };
   await f.service.processPendingCardIndexes();
-  assert.equal(f.data.get('pendingCardIndexUpdates/1').version,'v2');
+  assert.equal(f.data.get('pendingCardIndexUpdates/1').version, 'v2');
   await f.service.processPendingCardIndexes();
-  assert.equal(f.indexes.byNumber.OLD,undefined);assert.equal(f.indexes.byNumber.NEW.cid,'1');
+  assert.deepEqual(f.manifest.numbers, ['NEW']);
 });
 
-test('활성 잠금 중에는 다른 작업이 파일을 쓰지 않는다',async()=>{
-  const f=fixture();f.queue('1','v1',card('카드','NO'));
-  f.data.set('system/cardIndexWriter',{owner:'other',expiresAt:Date.now()+60000});
-  const result=await f.service.processPendingCardIndexes();assert.equal(result.busy,true);
-  assert.equal(f.versions.byName,1);assert.equal(f.data.has('pendingCardIndexUpdates/1'),true);
+test('잠금이 있으면 목록을 저장하지 않는다', async () => {
+  const f = fixture(); f.queue('1', 'v1', card('카드', 'NO'));
+  f.data.set('system/cardIndexWriter', { owner: 'other', expiresAt: Date.now() + 60000 });
+  assert.equal((await f.service.processPendingCardIndexes()).busy, true);
+  assert.equal(f.manifest, null);
 });
 
-test('파일 버전 충돌을 강제 덮어쓰지 않는다',async()=>{
-  const f=fixture();f.queue('1','v1',card('카드','NO'));
-  f.hook=async type=>{f.hook=null;f.versions[type]++;};
-  await assert.rejects(f.service.processPendingCardIndexes(),/버전 충돌/);
-  assert.equal(f.data.has('pendingCardIndexUpdates/1'),true);
+test('수동 재생성은 삭제된 카드의 이름과 번호를 제거한다', async () => {
+  const f = fixture(); f.queue('1', 'v1', card('카드', 'NO'));
+  await f.service.processPendingCardIndexes();
+  f.data.delete('cards/1');
+  await f.service.rebuildAllCardIndexes();
+  assert.deepEqual(f.manifest, { names: [], numbers: [] });
 });
 
-test('전체 복구는 동일한 생성 규칙을 사용하고 대기 기록을 유지한다',async()=>{
-  const f=fixture();f.queue('1','v1',card('카드','NO'));
-  f.indexes.byName['잔재']={cid:'ghost'};
-  const result=await f.service.rebuildAllCardIndexes();assert.equal(result.totalCards,1);
-  assert.equal(f.indexes.byName['잔재'],undefined);assert.equal(f.data.has('pendingCardIndexUpdates/1'),true);
-  const full=clone(f.indexes);await f.service.processPendingCardIndexes();assert.deepEqual(clone(f.indexes),full);
+test('목록 저장은 generation 조건을 전달하고 충돌을 전파한다', async () => {
+  let condition;
+  const storage = loadModule('utils/indexStorage.js', { '../config/firebase': {
+    getBucket: () => ({ file: () => ({ save: async (body, options) => {
+      condition = options.preconditionOpts.ifGenerationMatch;
+      throw Object.assign(Error('충돌'), { code: 412 });
+    } }) })
+  } });
+  await assert.rejects(storage.writeCardManifest([], [], '456'), /충돌/);
+  assert.equal(condition, '456');
 });
 
 test('원본과 대기 기록은 하나의 배치로 저장하며 실패를 전달한다',async()=>{
@@ -168,21 +159,9 @@ test('운영·로컬 주소 목록이 서버 등록과 일치하고 레거시 �
     for(const match of source.matchAll(/callApi\(['"]([^'"]+)['"]/g))assert.ok(sandbox.endpoints[match[1]],match[1]);
     for(const name of ['keepAlivePing','checkMembership','cleanNumbersCollection','buildIndex'])assert.equal(sandbox.endpoints[name],undefined);
   }
-  const helper=source.slice(source.indexOf('async function callApi('),source.indexOf('// 검색 시 최신 공통 목록'));
+  const helper=source.slice(source.indexOf('const cardResponseCache ='),source.indexOf('// 검색 시 최신 공통 목록'));
   const sandbox={location:{hostname:'localhost'}};vm.createContext(sandbox);vm.runInContext(config+helper,sandbox);
-  await assert.rejects(sandbox.callApi('missing'),/등록되지 않은/);
-});
-
-test('Storage 저장은 SDK에 버전 조건을 전달하고 실패를 그대로 전파한다',async()=>{
-  const calls=[];
-  const storage=loadModule('utils/indexStorage.js',{'../config/firebase':{getBucket:()=>({file:name=>({save:async(body,opts)=>{
-    calls.push({name,opts});throw Object.assign(Error('충돌'),{code:412});
-  }})})}});
-  await assert.rejects(storage.writeIndexFile('byName',{},'123'),/충돌/);
-  await assert.rejects(storage.writeCardManifest({}, {}, '456'),/충돌/);
-  assert.equal(calls[0].opts.preconditionOpts.ifGenerationMatch,'123');
-  assert.equal(calls[1].opts.preconditionOpts.ifGenerationMatch,'456');
-  assert.equal(calls.length,2); // 실패 후 무조건 덮어쓰는 재시도가 없어야 합니다.
+  await assert.rejects(sandbox.requestApi('missing'),/등록되지 않은/);
 });
 
 test('닉네임 라우트는 인증된 사용자만 저장하고 잘못된 입력을 거절한다',async()=>{
@@ -191,6 +170,7 @@ test('닉네임 라우트는 인증된 사용자만 저장하고 잘못된 입�
     'firebase-functions/v2/https':{onRequest:(_,fn)=>fn},
     '../config/firebase':{db:{collection:name=>({doc:id=>({set:async value=>writes.push({name,id,value})})})},FieldValue:{serverTimestamp:()=> 'time'}},
     '../utils/common':{},'../utils/packsStorage':{},'../utils/inventoryStorage':{},
+    '../services/cardQueryService':{},'../services/inventoryMigrationService':{},
     '../utils/auth':{setCors(){},verifyUser:async()=>uid},
   });
   let status=200,body;
@@ -201,17 +181,4 @@ test('닉네임 라우트는 인증된 사용자만 저장하고 잘못된 입�
   await routes.updateNickname({method:'GET'},res);assert.equal(status,405);
   uid=null;await routes.updateNickname({method:'POST',body:{nickname:'저장불가'}},res);
   assert.equal(writes.length,1);
-});
-
-
-test('준비 상태와 기존 인덱스가 없어도 대기 카드로 파일을 생성한다', async () => {
-  const f = fixture();
-  f.data.delete('system/cardIndexState');
-  for (const type of ['byName', 'byNumber', 'cid']) f.versions[type] = 0;
-  f.queue('1', 'v1', card('카드', 'NO'));
-  const result = await f.service.processPendingCardIndexes();
-  assert.equal(result.processed, 1);
-  assert.equal(f.data.has('pendingCardIndexUpdates/1'), false);
-  for (const type of ['byName', 'byNumber', 'cid']) assert.equal(f.versions[type], 1);
-  assert.ok(f.manifest);
 });

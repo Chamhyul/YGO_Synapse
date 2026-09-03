@@ -12,95 +12,14 @@
  */
 const { requestCardIndexWork } = require('./cardIndexDispatchService');
 const { db, admin, getBucket, FieldValue } = require("../config/firebase");
-const { getIdxByName, getIdxByNumber, getIdxCid } = require("../utils/indexStorage");
+const { findCard, getCardByCid, getCardsByCids, documents: cardDocuments, invalidateCardQueries } = require('./cardQueryService');
 const { updateRarityMemoryCache, normalizeText } = require("../utils/common");
 const { saveCardAndQueueIndex } = require("./cardWriteService");
 const { crawlByCardName } = require("../scrapers/cardScraper");
 
-// [전역 RAM 인메모리 캐시 맵] - 개별 카드 TTL (10분) 만료 캐시
-const _fullMetaMemoryMap = new Map();
-const RAM_CARD_CACHE_TTL_MS = 10 * 60 * 1000; // 10분 후 RAM에서 자동 만료
-
-/**
- * 카드 이름을 Firestore 문서 ID로 사용하기 위한 정규화
- * - 제로폭 문자 제거, 공백 정규화, NFC 정규화
- * - '/' → '_SLASH_' 치환 (Firestore 문서 ID 제약)
- */
-function normalizeNameForDocId(name) {
-  return normalizeText(name).replace(/\//g, "_SLASH_");
-}
-
-/**
- * 인덱스 기반 카드 번호 검색
- * Storage 번호 인덱스에서 조회
- */
-async function getCardFromCacheByNo(cardNo) {
-  const upper = cardNo.toUpperCase();
-
-  try {
-    // 1단계: Storage 인덱스 캐시 조회 (가장 빠름)
-    let idxByNumber = await getIdxByNumber();
-    let entry = idxByNumber ? idxByNumber[upper] : null;
-    
-    // 캐시 미스 시 강제 갱신 후 재시도 (옵션 C)
-    if (!entry) {
-      idxByNumber = await getIdxByNumber(true);
-      entry = idxByNumber ? idxByNumber[upper] : null;
-    }
-    
-    if (entry) {
-      return { cid: entry.cid, fromIndex: true, indexData: entry };
-    }
-  } catch (idxErr) {
-    console.warn("Index lookup error in getCardFromCacheByNo:", idxErr.message);
-  }
-
-  // 2단계: 인덱스에 번호 부재 시 null 반환 (실시간 크롤링 파이프라인으로 전환)
-  return null;
-}
-
-/**
- * 인덱스 기반 카드 이름 검색
- * Storage 이름 인덱스에서 조회
- */
-async function getCardFromCacheByName(cardName) {
-  const normName = normalizeText(cardName);
-  const docId = normalizeNameForDocId(cardName);
-
-  try {
-    // 1단계: Storage 인덱스 캐시 조회 (가장 빠름)
-    let idxByName = await getIdxByName();
-    let entry = idxByName ? idxByName[docId] : null;
-    
-    // 캐시 미스 시 강제 갱신 후 재시도 (옵션 C)
-    if (!entry) {
-      idxByName = await getIdxByName(true);
-      entry = idxByName ? idxByName[docId] : null;
-    }
-    
-    if (entry) {
-      return { cid: entry.cid, fromIndex: true, indexData: entry };
-    }
-  } catch (idxErr) {
-    console.warn("Index lookup error in getCardFromCacheByName:", idxErr.message);
-  }
-
-  // 2단계: 기존 cards 컬렉션 fallback (하위 호환)
-  try {
-    const snapshot = await db.collection("cards")
-      .where("names", "array-contains", normName)
-      .limit(1)
-      .get();
-    if (snapshot.empty) return null;
-    const doc = snapshot.docs[0];
-    const data = doc.data();
-    const info = data.info || {};
-    return { cid: doc.id, info, fromIndex: false };
-  } catch (dbErr) {
-    console.error("Firestore lookup error in getCardFromCacheByName:", dbErr);
-    return null;
-  }
-}
+// 이름·번호 검색과 상세 조회는 동일한 원본 문서 캐시를 사용합니다.
+const getCardFromCacheByNo = cardNo => findCard({ number: cardNo });
+const getCardFromCacheByName = name => findCard({ name });
 
 function getParen(str) {
   if (!str) return null;
@@ -351,7 +270,7 @@ async function saveCardToFirestore(result, { deferIndexFlush = false } = {}) {
   await saveCardAndQueueIndex(cid, payload);
 
   // 부분 언어 데이터로 상세 캐시를 덮어쓰지 않습니다. 다음 조회에서 병합된 원본을 읽습니다.
-  _fullMetaMemoryMap.delete(String(cid));
+  invalidateCardQueries(cid);
   if (!deferIndexFlush) await requestCardIndexWork();
 
   // 레어도 매핑 동적 업데이트
@@ -372,171 +291,37 @@ async function saveCardToFirestore(result, { deferIndexFlush = false } = {}) {
   return { rarityChanged, updatedLangs, names, numbers: result.numbers, validLocales: result.validLocales || [] };
 }
 
-function buildSearchResponse(cid, info, isCached) {
-  if (!info) return { success: false, name: "정보 없음", numbers: [], status: 'error' };
-
-  const allNumbers = new Set();
-  const mergedRarities = {};
-  
-  // info는 배열(희소 배열) 또는 객체 형태일 수 있으므로 유효한 키(인덱스)를 추출
-  const validKeys = Object.keys(info);
-  if (validKeys.length === 0) return { success: false, name: "데이터 부족", numbers: [], status: 'error' };
-
-  // 모든 로케일의 정보를 순회하며 카드 번호와 레어리티 정보를 완전 병합
-  validKeys.forEach((key) => {
-    const data = info[key];
-    // data[2]는 해당 언어에서의 raritiesByNo 객체
-    if (data && Array.isArray(data) && data[2]) {
-      const rByNo = data[2];
-      for (const no in rByNo) {
-        const upperNo = no.toUpperCase();
-        allNumbers.add(upperNo);
-
-        const currentRars = rByNo[no]; // [PackName, rarity1, rarity2, ...]
-        if (!mergedRarities[upperNo]) {
-          mergedRarities[upperNo] = [...currentRars];
-        } else {
-          // 이미 해당 번호의 데이터가 있으면 팩 이름을 제외한 레어리티 정보만 중복 없이 추가
-          const existingList = mergedRarities[upperNo];
-          const incomingRars = currentRars.slice(1);
-          incomingRars.forEach((r) => {
-            if (r && !existingList.includes(r)) existingList.push(r);
-          });
-        }
-      }
-    }
-  });
-
-  // 대표 데이터 선정: 한국어(0) 우선, 없으면 첫 번째 유효 데이터 사용
-  const infoIndexKeys = Object.keys(info).filter(k => !isNaN(k) && Number(k) >= 0 && Number(k) <= 9);
-  
-  // 실제 데이터(이름)가 있는 인덱스들 중 우선순위 선정
-  const validDataIndices = infoIndexKeys.filter(k => {
-    const d = info[k];
-    return d && Array.isArray(d) && d[0] && String(d[0]).trim() !== "";
-  });
-
-  // 한국어(0)가 유효하면 0, 아니면 유효한 것 중 첫 번째, 아예 없으면 첫 번째 키
-  const primaryIdx = validDataIndices.includes("0") ? "0" : (validDataIndices.includes(0) ? 0 : (validDataIndices[0] || infoIndexKeys[0]));
-  const primaryData = info[primaryIdx] || ["-", 0, {}];
-  const [primaryName, illustrationCount] = primaryData;
-
-  const localeToIndex = { 'ko': 0, 'ja': 1, 'ae': 2, 'cn': 3, 'en': 4, 'de': 5, 'fr': 6, 'it': 7, 'es': 8, 'pt': 9 };
-  const indexToLocale = Object.keys(localeToIndex).reduce((obj, key) => {
-    obj[localeToIndex[key]] = key;
-    return obj;
-  }, {});
-
-  // info 객체(0~9 키)에서 실제 데이터가 있는 로케일만 추출
-  const infoLocales = validDataIndices.map(k => indexToLocale[k]).filter(Boolean);
-
-  // 프론트엔드(script.js) 기댓값에 100% 맞춘 성공 응답 객체
-  return {
-    success: true,
-    status: 'success',
-    isCached: !!isCached,
-    name: primaryName || "-",
-    numbers: Array.from(allNumbers).sort(),
-    raritiesByNo: mergedRarities,
-    illustrationCount: illustrationCount || 0,
-    linkData: { 
-      id: cid, 
-      // 단일 이동 시 사용할 로케일: 유효한 로케일 중 첫 번째 혹은 대표 로케일
-      locale: infoLocales[0] || indexToLocale[primaryIdx] || 'ko',
-      locales: infoLocales 
-    },
-    rarityMappingRaw: null 
-  };
-}
-
-/**
- * 인덱스 항목 엔트리에서 번호 목록과 레어도 맵을 추출하는 공통 유틸리티
- */
-function extractNumbersAndRarities(entryObj) {
+function buildSearchResponse(cid, info, isCached, { name, cardNo } = {}) {
+  if (!info) return { success: false, name: '정보 없음', numbers: [], status: 'error' };
+  const locales = ['ko', 'ja', 'ae', 'cn', 'en', 'de', 'fr', 'it', 'es', 'pt'];
+  const available = locales.map((locale, index) => ({ locale, data: info[index] }))
+    .filter(entry => Array.isArray(entry.data) && entry.data[0]);
+  if (!available.length) return { success: false, name: '정보 없음', numbers: [], status: 'error' };
+  const number = String(cardNo || '').trim().toUpperCase();
+  let selected = number ? available.filter(entry => Object.keys(entry.data[2] || {})
+    .some(no => no.trim().toUpperCase() === number)) : [];
+  if (!selected.length && name) selected = available.filter(entry => normalizeText(entry.data[0]) === normalizeText(name));
+  if (!selected.length) selected = [available[0]];
+  // 같은 이름을 공유하는 언어 항목은 기존 이름 인덱스와 동일하게 합칩니다.
+  const primary = selected[0];
+  selected = available.filter(entry => normalizeText(entry.data[0]) === normalizeText(primary.data[0]));
   const raritiesByNo = {};
-  const numbers = [];
-  for (const key in entryObj) {
-    if (key === 'cid' || key === 'illustrationCount' || key === 'locales') continue;
-    if (Array.isArray(entryObj[key])) {
-      numbers.push(key);
-      raritiesByNo[key] = ["", ...entryObj[key]];
-    }
+  for (const entry of selected) for (const [rawNo, details] of Object.entries(entry.data[2] || {})) {
+    if (!Array.isArray(details)) continue;
+    const no = rawNo.trim().toUpperCase();
+    const old = raritiesByNo[no];
+    raritiesByNo[no] = old ? [old[0], ...new Set([...old.slice(1), ...details.slice(1)])] : details.slice();
   }
-  return { numbers, raritiesByNo };
-}
-
-/**
- * 인덱스 데이터로부터 검색 응답 생성 (idx_byNumber용)
- */
-async function buildSearchResponseFromIndexByNo(cardNo, indexData) {
-  const name = indexData.name;
-  let numbers = [cardNo];
-  let raritiesByNo = { [cardNo]: ["", ...(indexData.rarity || [])] };
-  let locales = indexData.locales || ['ko'];
-
-  if (name) {
-    try {
-      const docId = normalizeNameForDocId(name);
-      const idxByName = await getIdxByName();
-      const nameEntry = idxByName[docId];
-      if (nameEntry) {
-        const { numbers: entryNumbers, raritiesByNo: entryRaritiesByNo } = extractNumbersAndRarities(nameEntry);
-        if (entryNumbers.length > 0) {
-          numbers = entryNumbers;
-          raritiesByNo = entryRaritiesByNo;
-        }
-        if (nameEntry.locales) {
-          locales = nameEntry.locales;
-        }
-      }
-    } catch (err) {
-      console.warn("buildSearchResponseFromIndexByNo - failed to merge other numbers:", err);
-    }
-  }
-
   return {
-    success: true,
-    isCached: true,
-    name: name || "-",
-    numbers: numbers.sort(),
-    raritiesByNo: raritiesByNo,
-    illustrationCount: indexData.illustrationCount || 0,
-    linkData: { 
-      id: indexData.cid, 
-      locale: (locales && locales.length > 0) ? locales[0] : 'ko',
-      locales: locales || ['ko']
-    },
-    rarityMappingRaw: null
+    success: true, status: 'success', isCached: !!isCached, cid: String(cid),
+    name: primary.data[0], numbers: Object.keys(raritiesByNo).sort(), raritiesByNo,
+    illustrationCount: Math.max(...selected.map(entry => Number(entry.data[1]) || 0)),
+    linkData: { id: String(cid), locale: primary.locale, locales: available.map(entry => entry.locale) },
+    // 전체 문서의 언어·스탯을 상세 화면에서도 재사용합니다.
+    info, names: [...new Set(available.map(entry => entry.data[0]))], rarityMappingRaw: null,
   };
 }
 
-/**
- * 인덱스 데이터로부터 검색 응답 생성 (idx_byName용)
- */
-function buildSearchResponseFromIndexByName(indexData) {
-  const { numbers, raritiesByNo } = extractNumbersAndRarities(indexData);
-
-  // 이름은 idx_byName 문서 ID에서 복원 (호출 측에서 전달)
-  return {
-    success: true,
-    isCached: true,
-    name: null, // 호출 측에서 설정
-    numbers,
-    raritiesByNo,
-    illustrationCount: indexData.illustrationCount || 0,
-    linkData: { 
-      id: indexData.cid, 
-      locale: (indexData.locales && indexData.locales.length > 0) ? indexData.locales[0] : 'ko',
-      locales: indexData.locales || ['ko']
-    },
-    rarityMappingRaw: null
-  };
-}
-
-/**
- * 카드 번호 자동 보정 (JP -> KR)
- * - 특정 패턴(DP15-JP, 20AP-JP)인 경우 이름을 비교하여 적절히 변환
- */
 async function resolveCardNumber(cardNo, cardName, cacheMap = null) {
   if (!cardNo || !cardName) return cardNo;
 
@@ -562,8 +347,8 @@ async function resolveCardNumber(cardNo, cardName, cacheMap = null) {
       }
     } else {
       // [Storage 전환] 인메모리 캐시에서 조회
-      const idxByNumber = await getIdxByNumber();
-      const idxEntry = idxByNumber[upperNo];
+      const card = await findCard({ number: upperNo });
+      const idxEntry = card && buildSearchResponse(card.cid, card.info, true, { cardNo: upperNo });
       exists = !!idxEntry;
       if (exists) {
         dbName = idxEntry.name;
@@ -669,169 +454,34 @@ function extractFilterMeta(infoData) {
  * 포괄 검색 / 필터용 CID 묶음 배치(Batch) 메타데이터 조회
  */
 async function getCardsMetaBatch(cids = []) {
-  if (!Array.isArray(cids) || cids.length === 0) {
-    return { success: true, results: {} };
-  }
-
-  const results = {};
-  const missingCids = [];
-
-  for (const rawCid of cids) {
-    if (!rawCid) continue;
-    const cidStr = String(rawCid).trim();
-    if (_fullMetaMemoryMap.has(cidStr)) {
-      const entry = _fullMetaMemoryMap.get(cidStr);
-      if (entry && (Date.now() - entry.timestamp) < RAM_CARD_CACHE_TTL_MS && entry.data) {
-        const infoObj = entry.data.info || entry.data.mergedInfo || {};
-        results[cidStr] = extractFilterMeta(infoObj);
-        continue;
-      }
-    }
-    missingCids.push(cidStr);
-  }
-
-  if (missingCids.length > 0) {
-    try {
-      const refs = missingCids.map(c => db.collection("cards").doc(c));
-      const snaps = await db.getAll(...refs);
-      snaps.forEach(snap => {
-        if (snap.exists) {
-          const data = snap.data();
-          const cardCid = snap.id;
-          const fullDataObj = {
-            cid: cardCid,
-            name: data.name || "",
-            info: data.info || {},
-            numbers: data.numbers || [],
-            raritiesByNo: data.raritiesByNo || {}
-          };
-          _fullMetaMemoryMap.set(cardCid, { data: fullDataObj, timestamp: Date.now() });
-          results[cardCid] = extractFilterMeta(data.info || {});
-        }
-      });
-    } catch (e) {
-      console.warn("getCardsMetaBatch getAll error:", e.message);
-    }
-  }
-
-  return { success: true, results };
+  if (!Array.isArray(cids) || cids.length > 200) throw new Error('카드는 최대 200개까지 조회할 수 있습니다.');
+  const cards = await getCardsByCids(cids);
+  return { success: true, results: Object.fromEntries(cards.filter(Boolean)
+    .map(card => [card.cid, extractFilterMeta(card.info)])) };
 }
 
-async function getCardMetadata(cid, name, cardNo = "", langOnly = false) {
-  const normCid = cid ? String(cid).trim() : "";
-  const normName = name ? String(name).trim() : "";
-  const normCardNo = cardNo ? String(cardNo).trim().toUpperCase() : "";
-
-  // 0단계: CID 키로 백엔드 RAM 인메모리 맵 탐색
-  let targetCid = normCid;
-
-  // 카드 번호(cardNo)가 들어왔으나 targetCid가 없는 경우: Firestore cards 컬렉션 numbers 배열 인덱스 0.01초 핀포인트 쿼리
-  if (!targetCid && normCardNo) {
-    try {
-      const snapshot = await db.collection("cards")
-        .where("numbers", "array-contains", normCardNo)
-        .limit(1)
-        .get();
-
-      if (!snapshot.empty) {
-        targetCid = snapshot.docs[0].id;
-      }
-    } catch (err) {
-      console.warn("idx_byNumber cards lookup warning:", err.message || err);
-    }
+async function getCardMetadata(cid, name, cardNo = '', langOnly = false) {
+  const card = await findCard({ cid, name, number: cardNo });
+  if (card) {
+    const displayName = name || buildSearchResponse(card.cid, card.info, true, { cardNo }).name;
+    return formatMetaResponse(card.cid, displayName, card.data, langOnly);
   }
-
-  // 카드 이름만 들어온 경우 인덱스에서 CID 추출
-  if (!targetCid && normName) {
-    const cached = await getCardFromCacheByName(normName);
-    if (cached) targetCid = cached.cid;
-  }
-
-  let memData = null;
-  if (targetCid && _fullMetaMemoryMap.has(targetCid)) {
-    const entry = _fullMetaMemoryMap.get(targetCid);
-    if (entry && (Date.now() - entry.timestamp) < RAM_CARD_CACHE_TTL_MS) {
-      memData = entry.data;
-    } else {
-      // 10분 이상 경과 시 RAM 캐시 자동 만료/제거
-      _fullMetaMemoryMap.delete(targetCid);
-    }
-  }
-
-  if (memData) {
-    return formatMetaResponse(targetCid, normName, memData, langOnly);
-  }
-
-  // 1단계: RAM 미스/만료 시 DB (cards 컬렉션/문서) 직접 조회 ➔ 읽어온 결과를 RAM 맵에 10분 TTL로 상주
-  let cardCid = targetCid;
-  if (cardCid) {
-    try {
-      const docRef = db.collection("cards").doc(String(cardCid));
-      const docSnap = await docRef.get();
-      
-      if (docSnap.exists) {
-        const data = docSnap.data();
-        const fullDataObj = {
-          cid: String(cardCid),
-          name: data.name || normName,
-          info: data.info || {},
-          numbers: data.numbers || [],
-          raritiesByNo: data.raritiesByNo || {}
-        };
-        // 백엔드 RAM 메모리 맵에 10분 TTL로 상주
-        _fullMetaMemoryMap.set(String(cardCid), { data: fullDataObj, timestamp: Date.now() });
-
-        return formatMetaResponse(cardCid, normName, fullDataObj, langOnly);
-      }
-    } catch (err) {
-      console.warn("getCardMetadata firestore lookup error:", err);
-    }
-  }
-
-  // 2단계: DB 미스 및 CID 부재 시 실시간 크롤링 파이프라인 수행 ➔ RAM 맵 & DB 동시 수록
   if (name) {
-    try {
-      const crawlRes = await crawlByCardName(name);
-      if (crawlRes && !crawlRes.isError) {
-        await saveCardToFirestore(crawlRes);
-
-        // 백엔드 RAM 메모리 맵에 즉시 상주
-        const fullMetaObj = {
-          cid: crawlRes.cid,
-          name: name,
-          info: crawlRes.mergedInfo || crawlRes.info || {},
-          numbers: crawlRes.numbers || [],
-          raritiesByNo: crawlRes.raritiesByNo || {}
-        };
-        _fullMetaMemoryMap.set(String(crawlRes.cid), { data: fullMetaObj, timestamp: Date.now() });
-
-        return formatMetaResponse(crawlRes.cid, name, fullMetaObj, langOnly);
-      }
-    } catch (crawlErr) {
-      console.error("getCardMetadata crawl error:", crawlErr);
+    const result = await crawlByCardName(name);
+    if (result && !result.isError) {
+      await saveCardToFirestore(result);
+      const saved = await getCardByCid(result.cid);
+      if (saved) return formatMetaResponse(saved.cid, name, saved.data, langOnly);
     }
   }
-
-  return { success: false, message: "카드 상세 데이터를 찾을 수 없습니다." };
+  return { success: false, message: '카드 상세 데이터를 찾을 수 없습니다.' };
 }
 
 async function getRamMemoryStats() {
-  if (!_isMemoryWarmedUp) {
-    await warmUpMemoryCache();
-  }
   const mem = process.memoryUsage();
-  return {
-    success: true,
-    isWarmedUp: _isMemoryWarmedUp,
-    totalRamCards: _fullMetaMemoryMap.size,
+  return { success: true, totalRamCards: cardDocuments.size,
     rssRamMB: `${(mem.rss / 1024 / 1024).toFixed(2)} MB`,
-    heapRamMB: `${(mem.heapUsed / 1024 / 1024).toFixed(2)} MB`
-  };
-}
-
-function flushMemoryCache() {
-  _fullMetaMemoryMap.clear();
-  return { success: true, message: "백엔드 RAM 인메모리 캐시가 클리어되었습니다." };
+    heapRamMB: `${(mem.heapUsed / 1024 / 1024).toFixed(2)} MB` };
 }
 
 module.exports = {
@@ -843,8 +493,5 @@ module.exports = {
   saveCardToFirestore,
   updateRarityMapping,
   buildSearchResponse,
-  buildSearchResponseFromIndexByNo,
-  buildSearchResponseFromIndexByName,
-  normalizeNameForDocId,
   resolveCardNumber
 };

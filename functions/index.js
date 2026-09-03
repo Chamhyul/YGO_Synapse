@@ -23,6 +23,7 @@ exports.getCardsMetaBatch = cardRoutes.getCardsMetaBatch;
 exports.crawlCardMetaByName = cardRoutes.crawlCardMetaByName;
 exports.getRamMemoryStats = cardRoutes.getRamMemoryStats;
 exports.searchCard = cardRoutes.searchCard;
+exports.resolveCardNames = cardRoutes.resolveCardNames;
 exports.addCards = cardRoutes.addCards;
 exports.moveCards = cardRoutes.moveCards;
 exports.discardCards = cardRoutes.discardCards;
@@ -61,6 +62,7 @@ const cardNumbersAdmin = require("./routes/admin/cardNumbers");
 const cardIndexesAdmin = require("./routes/admin/cardIndexes");
 exports.triggerAutoCrawl = crawlerAdmin.triggerAutoCrawl;
 exports.migrateCardNumbersField = cardNumbersAdmin.migrateCardNumbersField;
+exports.rebuildCardNames = cardIndexesAdmin.rebuildAllCardIndexes;
 exports.rebuildAllCardIndexes = cardIndexesAdmin.rebuildAllCardIndexes;
 
 // 예약 실행 및 작업 큐 진입점

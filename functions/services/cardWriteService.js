@@ -17,6 +17,7 @@ async function saveCardAndQueueIndex(cid, payload) {
   const batch = db.batch();
   const version = stageCardWrite(batch, cid, payload);
   await batch.commit();
+  require('./cardQueryService').invalidateCardQueries(cid);
   return version;
 }
 

@@ -1,4 +1,4 @@
-const { db, admin, FieldValue } = require("../config/firebase");
+const { db, FieldPath, FieldValue } = require("../config/firebase");
 const { getFunctions } = require("firebase-admin/functions");
 const { requestCardIndexWork } = require("./cardIndexDispatchService");
 const { stageCardWrite } = require("./cardWriteService");
@@ -91,7 +91,7 @@ async function processCardNumbersMigration(data) {
   }
 
   let query = db.collection("cards")
-    .orderBy(admin.firestore.FieldPath.documentId())
+    .orderBy(FieldPath.documentId())
     .limit(CARD_NUMBERS_MIGRATION_BATCH_SIZE);
   if (state.lastDocId) query = query.startAfter(state.lastDocId);
 

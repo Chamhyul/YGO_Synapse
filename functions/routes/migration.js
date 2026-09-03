@@ -2,12 +2,13 @@ const { onRequest } = require("firebase-functions/v2/https");
 const { setCors, verifyUser } = require("../utils/auth");
 const { fetchMyCardData_Node } = require("../services/migrationService");
 const { resolveCardNumber } = require("../services/cardService");
-const { downloadInventory, uploadInventory } = require("../utils/inventoryStorage");
-const { getIdxByNumber } = require("../utils/indexStorage");
+const { updateInventoryWithRetry, processAddCards } = require("../utils/inventoryStorage");
+const { findCard } = require('../services/cardQueryService');
+const { resolveGroupCids, inventoryMigrationStatus } = require('../services/inventoryMigrationService');
 
 /**
  * [공통] 마이그레이션 대상 데이터에서 구버전 일판 카드를 파악하고 캐시맵을 빌드
- * [Storage 전환] Firestore idx_byNumber 대신 인메모리 캐시 사용
+ * 카드 원본 DB와 조회 캐시 사용
  */
 async function buildJpCardCache(items, noExtractor) {
   const jpCardNos = [];
@@ -25,10 +26,11 @@ async function buildJpCardCache(items, noExtractor) {
 
   const cacheMap = {};
   if (jpCardNos.length > 0) {
-    // [Storage 전환] idx_byNumber 캐시에서 조회
-    const idxByNumber = await getIdxByNumber();
+    // 카드 원본에서 번호로 조회
+
     for (const cardNo of jpCardNos) {
-      const entry = idxByNumber[cardNo];
+      const card = await findCard({ number: cardNo });
+      const entry = card && require('../services/cardService').buildSearchResponse(card.cid, card.info, true, { cardNo });
       if (entry) {
         cacheMap[cardNo] = { exists: true, name: entry.name };
       } else {
@@ -65,63 +67,19 @@ exports.migrateFromSheet = onRequest({ invoker: "public" }, async (req, res) => 
       cardGroups[cardNo].items.push({ rarity, loc, qty, illustration });
     }
 
-    // [Storage 전환] Firestore 배치 쳀크 조회/쓰기 → Storage 인벤토리 다운로드/머지/업로드
-    const { data: inventory } = await downloadInventory(uid);
-    if (!inventory.cards) inventory.cards = {};
-    if (!inventory.locations) inventory.locations = {};
-    if (!inventory.rarities) inventory.rarities = {};
-    if (typeof inventory.amount !== 'number') inventory.amount = 0;
-
-    const updatedItems = [];
-
-    for (const cardNo in cardGroups) {
-      const group = cardGroups[cardNo];
-      if (!inventory.cards[cardNo]) {
-        inventory.cards[cardNo] = { name: group.name, items: [] };
-      }
-      const cardEntry = inventory.cards[cardNo];
-      const cardName = group.name || cardEntry.name || "Unknown";
-      cardEntry.name = cardName;
-
-      group.items.forEach(incoming => {
-        let matchIndex = cardEntry.items.findIndex(item =>
-          (item.rarity || item.proc) === incoming.rarity &&
-          item.loc === incoming.loc &&
-          (item.illustration || item.another) === incoming.illustration
-        );
-
-        if (matchIndex > -1) {
-          cardEntry.items[matchIndex].qty += incoming.qty;
-        } else {
-          cardEntry.items.push(incoming);
-        }
-
-        inventory.amount += incoming.qty;
-        inventory.rarities[incoming.rarity] = (inventory.rarities[incoming.rarity] || 0) + incoming.qty;
-
-        if (!inventory.locations[incoming.loc]) inventory.locations[incoming.loc] = [];
-        if (!inventory.locations[incoming.loc].includes(cardNo)) {
-          inventory.locations[incoming.loc].push(cardNo);
-        }
-
-        updatedItems.push({
-          cardNo,
-          name: cardName,
-          rarity: incoming.rarity,
-          qty: incoming.qty,
-          loc: incoming.loc,
-          illustration: incoming.illustration
-        });
-      });
-    }
-
-    await uploadInventory(uid, inventory);
+    await resolveGroupCids(cardGroups);
+    let updatedItems = [];
+    const finalData = await updateInventoryWithRetry(uid, inventory => {
+      updatedItems = processAddCards(inventory, cardGroups);
+    });
 
     return res.json({
       success: true,
       message: `${sheetData.allCards.length}개의 카드 데이터 이관 완료`,
       importedCount: sheetData.allCards.length,
-      updatedItems
+      updatedItems,
+      inventoryVersion: finalData.version,
+      inventoryMigration: inventoryMigrationStatus(finalData)
     });
 
   } catch (e) {
@@ -160,52 +118,13 @@ exports.migrateFromData = onRequest({ invoker: "public" }, async (req, res) => {
       cardGroups[cardNo].items.push({ rarity, loc, qty, illustration });
     }
 
-    // [Storage 전환] Firestore 배치 쳀크 조회/쓰기 → Storage 인벤토리 다운로드/머지/업로드
-    const { data: inventory } = await downloadInventory(uid);
-    if (!inventory.cards) inventory.cards = {};
-    if (!inventory.locations) inventory.locations = {};
-    if (!inventory.rarities) inventory.rarities = {};
-    if (typeof inventory.amount !== 'number') inventory.amount = 0;
+    await resolveGroupCids(cardGroups);
+    let updatedItems = [];
+    const finalData = await updateInventoryWithRetry(uid, inventory => {
+      updatedItems = processAddCards(inventory, cardGroups);
+    });
 
-    const updatedItems = [];
-
-    for (const cardNo in cardGroups) {
-      const group = cardGroups[cardNo];
-      if (!inventory.cards[cardNo]) {
-        inventory.cards[cardNo] = { name: group.name, items: [] };
-      }
-      const cardEntry = inventory.cards[cardNo];
-      const cardName = group.name || cardEntry.name || "Unknown";
-      cardEntry.name = cardName;
-
-      group.items.forEach(incoming => {
-        let matchIndex = cardEntry.items.findIndex(item =>
-          (item.rarity || item.proc) === incoming.rarity &&
-          item.loc === incoming.loc &&
-          (item.illustration || item.another) === incoming.illustration
-        );
-
-        if (matchIndex > -1) {
-          cardEntry.items[matchIndex].qty += incoming.qty;
-        } else {
-          cardEntry.items.push(incoming);
-        }
-
-        inventory.amount += incoming.qty;
-        inventory.rarities[incoming.rarity] = (inventory.rarities[incoming.rarity] || 0) + incoming.qty;
-
-        if (!inventory.locations[incoming.loc]) inventory.locations[incoming.loc] = [];
-        if (!inventory.locations[incoming.loc].includes(cardNo)) {
-          inventory.locations[incoming.loc].push(cardNo);
-        }
-
-        updatedItems.push({ cardNo, name: cardName, rarity: incoming.rarity, qty: incoming.qty, loc: incoming.loc, illustration: incoming.illustration });
-      });
-    }
-
-    await uploadInventory(uid, inventory);
-
-    return res.json({ success: true, message: `${data.length}개의 데이터 이관 완료`, importedCount: data.length, updatedItems });
+    return res.json({ success: true, message: `${data.length}개의 데이터 이관 완료`, importedCount: data.length, updatedItems, inventoryVersion: finalData.version, inventoryMigration: inventoryMigrationStatus(finalData) });
 
   } catch (e) {
     console.error("migrateFromData error:", e);

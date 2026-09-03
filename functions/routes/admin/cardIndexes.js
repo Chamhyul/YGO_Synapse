@@ -20,7 +20,7 @@ exports.rebuildAllCardIndexes = onRequest({
     const result = await cardIndexService.rebuildAllCardIndexes();
     return res.status(result.busy ? 409 : 200).json(result);
   } catch (error) {
-    console.error('[CardIndexes] 전체 재생성 실패', error);
-    return res.status(500).json({ success: false, message: '인덱스 재생성 실패. 대기 기록은 보존됩니다.' });
+    console.error('[CardManifest] 전체 재생성 실패', error);
+    return res.status(500).json({ success: false, message: '카드 목록 재생성 실패. 대기 기록은 보존됩니다.' });
   }
 });
