@@ -33,3 +33,6 @@ Thumbs.db
 # Firebase Service Account Keys
 *serviceAccount*.json
 serviceAccountKey.json
+
+# Local planning and guidance documents
+/docs/
