@@ -56,7 +56,7 @@ if (typeof firebase !== 'undefined' && firebase.appCheck &&
     });
 }
 
-const CLIENT_VERSION = "ver. 0.31.2";
+const CLIENT_VERSION = "ver. 0.32.0";
 
 const STORAGE_KEY = 'yugioh_spreadsheet_id';
 const RECENT_KEY = 'recent_card_searches';
@@ -1623,30 +1623,55 @@ async function initApp() {
     const searchInput = document.getElementById('card-search');
     if (searchInput && !searchInput._isInputBound) {
         searchInput._isInputBound = true;
+        let isSearchComposing = false;
         const handleFocusOrClick = () => {
             const val = searchInput.value.trim();
+            if (isSearchComposing && !val) return;
             if (!val) { showRecentInDropdown(); } else { filterAndShowDropdown(searchInput.value); }
         };
         searchInput.addEventListener('click', handleFocusOrClick);
         searchInput.addEventListener('focus', handleFocusOrClick);
         const debouncedFilter = debounce((val) => {
+            if (document.activeElement !== searchInput || searchInput.value !== val) return;
+            if (isSearchComposing && !val.trim()) return;
             filterAndShowDropdown(val);
         }, 50);
 
+        searchInput.addEventListener('compositionstart', () => {
+            isSearchComposing = true;
+            debouncedFilter.cancel();
+        });
+        searchInput.addEventListener('compositionend', () => {
+            isSearchComposing = false;
+            if (document.activeElement === searchInput) debouncedFilter(searchInput.value);
+        });
+
         searchInput.addEventListener('input', (e) => {
             const val = e.target.value;
-            if (!val) {
-                debouncedFilter.cancel && debouncedFilter.cancel();
-                showRecentInDropdown();
-            }
-            else debouncedFilter(val);
+            debouncedFilter.cancel();
             checkClearBtn();
+            if (!val.trim() && (isSearchComposing || e.isComposing)) {
+                // 한글 조합 도중의 일시적인 빈 값으로 최근 검색을 표시하지 않습니다.
+                return;
+            }
+            if (val.trim() && document.querySelector('#custom-dropdown .recent-header-item')) {
+                // 타이핑을 시작하면 이전 검색 기록을 대기 시간 없이 교체합니다.
+                filterAndShowDropdown(val);
+            } else {
+                // 실제로 입력을 모두 지운 경우에도 최종 입력값을 확인한 뒤 전환합니다.
+                debouncedFilter(val);
+            }
         });
 
         const dropdown = document.getElementById('custom-dropdown');
         if (dropdown) {
-            dropdown.addEventListener('mousedown', function (e) {
+            // 클릭 완료 전 blur로 목록이 닫히거나 화면이 바뀌지 않도록 포커스만 유지합니다.
+            dropdown.addEventListener('mousedown', (e) => {
                 e.preventDefault();
+            });
+            dropdown.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
                 const searchBtn = e.target.closest('.dropdown-search-btn');
                 if (searchBtn) {
                     const searchType = searchBtn.textContent.includes('이름으로') ? 'name' : 'number';
@@ -5391,6 +5416,11 @@ function matchKorean(item, query) {
 }
 
 function showRecentInDropdown() {
+    const currentValue = document.getElementById('card-search').value;
+    if (currentValue.trim()) {
+        filterAndShowDropdown(currentValue);
+        return;
+    }
     const recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
     const list = document.getElementById('custom-dropdown');
     UIStore.dropdownFocus = -1;
@@ -5542,7 +5572,6 @@ function filterAndShowDropdown(val, isMobile = false) {
     nameBtn.textContent = `"${val}"을 이름으로 검색`;
     nameBtn.addEventListener('click', (e) => {
         if (isMobile) executeMobileSearchWithOption(e, 'name');
-        else startSearchWithOption(e, 'name');
     });
 
     const noBtn = document.createElement('button');
@@ -5551,7 +5580,6 @@ function filterAndShowDropdown(val, isMobile = false) {
     noBtn.textContent = `"${val}"을 번호로 검색`;
     noBtn.addEventListener('click', (e) => {
         if (isMobile) executeMobileSearchWithOption(e, 'number');
-        else startSearchWithOption(e, 'number');
     });
 
     btnRow.appendChild(nameBtn);
@@ -6261,7 +6289,24 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
     if (!inputEl) return;
     const name = inputEl.value.trim();
     if (!name) return;
-    await refreshPublicDataQuietly();
+
+    // 선택 즉시 닫고 blur로 예약된 자동완성도 취소합니다.
+    inputEl.blur();
+    const dropdown = document.getElementById('custom-dropdown');
+    if (dropdown) {
+        dropdown.classList.remove('active');
+        dropdown.style.display = 'none';
+    }
+    toggleSearchWrapper(false);
+    checkClearBtn();
+
+    // 이미 목록에서 고른 대상은 공통 목록의 네트워크 갱신을 기다리지 않습니다.
+    if (forcedIsTarget === true) {
+        void refreshPublicDataQuietly();
+    } else {
+        await refreshPublicDataQuietly();
+        if (sequence !== searchSequence) return;
+    }
 
     const queryNorm = normalizeStr(name);
 
@@ -6322,6 +6367,8 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
             targetCardName = exactCardName;
         }
 
+        if (sequence !== searchSequence) return;
+
         const targetCid = fetchedCid || findCidByNameOrNo(targetCardName, prioritizeNumber);
         updateSearchHash('target', { cid: targetCid, code: prioritizeNumber }, true);
 
@@ -6331,8 +6378,10 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
         // animateVerticalExpand의 old 접기 애니메이션(0.4s)과 API 호출을 병렬 실행 — Safari 딜레이 해소
         const metaPromise = fetchCardMetaWithCache(targetCid, targetCardName, prioritizeNumber);
 
-        const renderTargetFunc = async (mountContainer) => {
-            await renderTargetSearchResult(targetCardName, targetRows, prioritizeNumber, mountContainer, targetCid, metaPromise);
+        const renderTargetFunc = (mountContainer) => {
+            // 동기적으로 그려지는 카드명/캐시 정보부터 표시하고 상세 조회는 이어서 반영합니다.
+            void renderTargetSearchResult(targetCardName, targetRows, prioritizeNumber, mountContainer, targetCid, metaPromise)
+                .catch(error => console.error('[Search] 대상 카드 렌더링 실패:', error));
         };
 
         if (UIStore.mode === 'search') {
@@ -7305,7 +7354,8 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
         targetCid = realCid;
         ClientCache.registerCid(targetCid, [targetCardName], [prioritizeNumber]);
         targetRows = getInventoryRowsByCidOrName(targetCid, targetCardName, prioritizeNumber);
-        if (bottomSec.parentNode === targetArea) renderTableToContainer(targetRows, bottomSec);
+        // 전환 애니메이션이 끝나면 결과 요소는 임시 컨테이너에서 본문으로 이동합니다.
+        if (bottomSec.isConnected) renderTableToContainer(targetRows, bottomSec);
     }
 
     if (!mountContainer) {
