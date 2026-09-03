@@ -2,7 +2,7 @@ const { onRequest } = require("firebase-functions/v2/https");
 const { setCors, verifyAppCheck } = require("../utils/auth");
 const deckScraper = require("../scrapers/deckScraper");
 
-exports.searchDeck = onRequest({ invoker: "public", memory: "512MiB", timeoutSeconds: 30 }, async (req, res) => {
+exports.searchDeck = onRequest({ invoker: "public", memory: "256MiB", timeoutSeconds: 30 }, async (req, res) => {
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
   if (!(await verifyAppCheck(req, res))) return;
@@ -16,7 +16,7 @@ exports.searchDeck = onRequest({ invoker: "public", memory: "512MiB", timeoutSec
   }
 });
 
-exports.getDeckCards = onRequest({ invoker: "public", memory: "512MiB", timeoutSeconds: 30 }, async (req, res) => {
+exports.getDeckCards = onRequest({ invoker: "public", memory: "256MiB", timeoutSeconds: 30 }, async (req, res) => {
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
   if (!(await verifyAppCheck(req, res))) return;

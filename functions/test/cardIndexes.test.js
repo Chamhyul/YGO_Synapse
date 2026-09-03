@@ -117,7 +117,7 @@ test('수동 재생성은 삭제된 카드의 이름과 번호를 제거한다',
   const f = fixture(); f.queue('1', 'v1', card('카드', 'NO'));
   await f.service.processPendingCardIndexes();
   f.data.delete('cards/1');
-  await f.service.rebuildAllCardIndexes();
+  await f.service.rebuildCardNames();
   assert.deepEqual(f.manifest, { names: [], numbers: [] });
 });
 
@@ -149,6 +149,8 @@ test('운영·로컬 주소 목록이 서버 등록과 일치하고 레거시 �
   const source=fs.readFileSync(path.join(__dirname,'../../public/script.js'),'utf8');
   const config=source.slice(0,source.indexOf('// Safari 최적화: callApi'));
   const functions=require('../index');
+  assert.equal(typeof functions.rebuildCardNames,'function');
+  for(const name of ['rebuildAllCardIndexes','buildIndex','syncCardManifestToStorage'])assert.equal(functions[name],undefined);
   for(const hostname of ['localhost','ygo-synapse.web.app']){
     const sandbox={location:{hostname}};vm.createContext(sandbox);
     vm.runInContext(config+'\nthis.endpoints=FIREBASE_CONFIG.ENDPOINTS;',sandbox);

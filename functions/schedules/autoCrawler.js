@@ -6,7 +6,7 @@ exports.autoCrawlFull = onSchedule({
   schedule: "0 4 * * *",
   timeZone: "Asia/Seoul",
   region: "asia-northeast3",
-  memory: "1GiB",
+  memory: "512MiB",
   timeoutSeconds: 540,
 }, async (event) => {
   console.log("[Scheduler] 전체 언어 자동 크롤링 시작 (04:00 KST)");
@@ -21,7 +21,7 @@ exports.autoCrawlQuick = onSchedule({
   schedule: "0 12,22 * * *",
   timeZone: "Asia/Seoul",
   region: "asia-northeast3",
-  memory: "1GiB",
+  memory: "512MiB",
   timeoutSeconds: 540,
 }, async (event) => {
   console.log("[Scheduler] 주요 언어 자동 크롤링 시작 (12:00/22:00 KST)");

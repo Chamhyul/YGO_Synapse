@@ -76,7 +76,7 @@ async function handleSearchExecution(req, res, options) {
   }
 }
 
-exports.searchCardByNo = onRequest({ invoker: "public", memory: "1GiB", timeoutSeconds: 60 }, (req, res) => {
+exports.searchCardByNo = onRequest({ invoker: "public", memory: "512MiB", timeoutSeconds: 60 }, (req, res) => {
   return handleSearchExecution(req, res, {
     paramKey: "cardNo",
     paramMissingMsg: "번호 미입력",
@@ -87,7 +87,7 @@ exports.searchCardByNo = onRequest({ invoker: "public", memory: "1GiB", timeoutS
   });
 });
 
-exports.searchCardByName = onRequest({ invoker: "public", memory: "1GiB", timeoutSeconds: 60 }, (req, res) => {
+exports.searchCardByName = onRequest({ invoker: "public", memory: "512MiB", timeoutSeconds: 60 }, (req, res) => {
   return handleSearchExecution(req, res, {
     paramKey: "name",
     paramMissingMsg: "이름 미입력",
@@ -125,7 +125,7 @@ async function runBackgroundCrawlAndSave(query) {
   }
 }
 
-exports.searchCard = onRequest({ invoker: "public", memory: "1GiB" }, async (req, res) => {
+exports.searchCard = onRequest({ invoker: "public", memory: "512MiB" }, async (req, res) => {
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
   if (!(await verifyAppCheck(req, res))) return;
@@ -179,7 +179,7 @@ async function applyInventoryGuard(req, res, paramKey) {
   return { uid, items };
 }
 
-exports.addCards = onRequest({ invoker: "public", memory: "512MiB" }, async (req, res) => {
+exports.addCards = onRequest({ invoker: "public", memory: "256MiB" }, async (req, res) => {
   const guard = await applyInventoryGuard(req, res, "rows");
   if (!guard) return;
   const { uid, items: rows } = guard;
@@ -222,7 +222,7 @@ exports.addCards = onRequest({ invoker: "public", memory: "512MiB" }, async (req
   }
 });
 
-exports.moveCards = onRequest({ invoker: "public", memory: "512MiB" }, async (req, res) => {
+exports.moveCards = onRequest({ invoker: "public", memory: "256MiB" }, async (req, res) => {
   const guard = await applyInventoryGuard(req, res, "moves");
   if (!guard) return;
   const { uid, items: moves } = guard;
@@ -248,7 +248,7 @@ exports.moveCards = onRequest({ invoker: "public", memory: "512MiB" }, async (re
   }
 });
 
-exports.discardCards = onRequest({ invoker: "public", memory: "512MiB" }, async (req, res) => {
+exports.discardCards = onRequest({ invoker: "public", memory: "256MiB" }, async (req, res) => {
   const guard = await applyInventoryGuard(req, res, "discards");
   if (!guard) return;
   const { uid, items: discards } = guard;
@@ -300,7 +300,6 @@ exports.suggestCardNames = onRequest({ invoker: "public" }, async (req, res) => 
  * [공통] 전체 카드 이름과 카드 번호 목록을 Storage에 JSON 파일로 동기화 (재빌드)
  * 카드 원본에서 목록을 재생성합니다. 기존 경로는 관리자 전용 별칭입니다.
  */
-exports.syncCardManifestToStorage = require('./admin/cardIndexes').rebuildAllCardIndexes;
 
 
 exports.getCardMetadata = onRequest({ invoker: "public", memory: "256MiB", timeoutSeconds: 60 }, async (req, res) => {
@@ -352,7 +351,7 @@ exports.getCardsMetaBatch = onRequest({ invoker: "public", memory: "256MiB", tim
 });
 
 // 크롤링 전용 독립 Cloud Function (메모리 100% 분리 격리)
-exports.crawlCardMetaByName = onRequest({ invoker: "public", memory: "1GiB" }, async (req, res) => {
+exports.crawlCardMetaByName = onRequest({ invoker: "public", memory: "512MiB" }, async (req, res) => {
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
   if (!(await verifyAppCheck(req, res))) return;

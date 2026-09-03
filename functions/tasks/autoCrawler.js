@@ -10,7 +10,7 @@ exports.autoCrawlTask = onTaskDispatched({
     maxConcurrentDispatches: 1,
   },
   region: "asia-northeast3",
-  memory: "1GiB",
+  memory: "512MiB",
   timeoutSeconds: 540,
 }, async (req) => {
   return resumeAutoCrawl(req.data);

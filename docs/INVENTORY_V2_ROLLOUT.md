@@ -61,7 +61,7 @@ Storage 에뮬레이터는 운영의 generation 조건부 업로드 충돌을 �
 
 ## 목록 생성과 배포 전환
 
-1. 관리자 `POST /rebuildCardNames`로 목록을 원본 DB에서 재생성합니다. 기존 `/rebuildAllCardIndexes`, `/buildIndex`, `/syncCardManifestToStorage`는 같은 관리자 구현의 전환용 별칭입니다.
+1. 관리자 `POST /rebuildCardNames`로 목록을 원본 DB에서 재생성합니다. 재생성 HTTP 진입점은 `/rebuildCardNames`로 통일했습니다. 기존 `/rebuildAllCardIndexes`, `/buildIndex`, `/syncCardManifestToStorage` 별칭은 코드에서 제거했습니다. 운영의 구형 함수는 새 함수 배포 성공 후 삭제 여부를 확인합니다.
 2. 새 `cardNames.json`의 이름·번호 목록을 확인합니다. 기존 세 idx 파일을 로컬에서 사용 불가능하게 해도 새 검색·목록 생성이 동작해야 합니다.
 3. 카드 수집 후 목록 갱신과 대기 기록 처리를 확인합니다. 공유하는 이름은 한 카드가 삭제되어도 다른 카드가 남아 있으면 목록에 유지되어야 합니다.
 4. 후속 갱신 실행에는 기존 Tasks 에뮬레이터가 필요합니다. 작업 중 추가된 변경과 저장 실패 시 대기 기록 보존을 확인합니다.

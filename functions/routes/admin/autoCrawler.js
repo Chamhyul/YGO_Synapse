@@ -5,7 +5,7 @@ const { controlAutoCrawl } = require("../../services/autoCrawlerService");
 
 exports.triggerAutoCrawl = onRequest({
   invoker: "public",
-  memory: "1GiB",
+  memory: "512MiB",
   timeoutSeconds: 540,
   region: "asia-northeast3",
 }, async (req, res) => {

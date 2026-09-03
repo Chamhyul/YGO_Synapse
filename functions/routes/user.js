@@ -26,7 +26,7 @@ exports.clearUserData = onRequest({ invoker: "public" }, async (req, res) => {
   }
 });
 
-exports.getInitialData = onRequest({ invoker: "public", memory: "512MiB" }, async (req, res) => {
+exports.getInitialData = onRequest({ invoker: "public", memory: "256MiB" }, async (req, res) => {
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
   if (!(await verifyAppCheck(req, res))) return;
@@ -125,7 +125,7 @@ exports.getInitialData = onRequest({ invoker: "public", memory: "512MiB" }, asyn
   }
 });
 
-exports.getUserData = onRequest({ invoker: "public", memory: "512MiB" }, async (req, res) => {
+exports.getUserData = onRequest({ invoker: "public", memory: "256MiB" }, async (req, res) => {
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
 

@@ -28,7 +28,6 @@ exports.addCards = cardRoutes.addCards;
 exports.moveCards = cardRoutes.moveCards;
 exports.discardCards = cardRoutes.discardCards;
 exports.suggestCardNames = cardRoutes.suggestCardNames;
-exports.syncCardManifestToStorage = cardRoutes.syncCardManifestToStorage;
 
 // 2. 팩 기능 모음
 const packRoutes = require("./routes/pack");
@@ -62,8 +61,7 @@ const cardNumbersAdmin = require("./routes/admin/cardNumbers");
 const cardIndexesAdmin = require("./routes/admin/cardIndexes");
 exports.triggerAutoCrawl = crawlerAdmin.triggerAutoCrawl;
 exports.migrateCardNumbersField = cardNumbersAdmin.migrateCardNumbersField;
-exports.rebuildCardNames = cardIndexesAdmin.rebuildAllCardIndexes;
-exports.rebuildAllCardIndexes = cardIndexesAdmin.rebuildAllCardIndexes;
+exports.rebuildCardNames = cardIndexesAdmin.rebuildCardNames;
 
 // 예약 실행 및 작업 큐 진입점
 const crawlerSchedules = require("./schedules/autoCrawler");
@@ -89,4 +87,3 @@ exports.getDeckCards = deckRoutes.getDeckCards;
 exports.searchPackNew = packRoutes.searchPack;
 exports.crawlPackBatchNew = packRoutes.crawlPackCardsBatch;
 exports.getCardFullMetaByCid = cardRoutes.getCardMetadata;
-exports.buildIndex = cardIndexesAdmin.rebuildAllCardIndexes;

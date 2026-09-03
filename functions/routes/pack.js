@@ -17,7 +17,7 @@ function packRoute(options, handler) {
   });
 }
 
-exports.searchPack = packRoute({ memory: "1GiB", timeoutSeconds: 120 }, params => {
+exports.searchPack = packRoute({ memory: "512MiB", timeoutSeconds: 120 }, params => {
   if (!params.packName) return { isError: true, message: '팩 이름 미입력' };
   return packService.searchPackByName(params.packName);
 });
@@ -25,7 +25,7 @@ exports.getPackCids = packRoute({}, params => {
   if (!params.packId) return { isError: true, message: '팩 ID 미입력' };
   return packService.loadPackCids(params.packId, params.locale || 'ko');
 });
-exports.crawlPackCardsBatch = packRoute({ memory: "1GiB", timeoutSeconds: 300 }, params => {
+exports.crawlPackCardsBatch = packRoute({ memory: "512MiB", timeoutSeconds: 300 }, params => {
   if (!params.packId && !Array.isArray(params.cids)) return { isError: true, message: '팩 ID 또는 카드 목록 미입력' };
   return packService.crawlPackCardsBatch(params);
 });

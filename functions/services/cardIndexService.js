@@ -80,10 +80,9 @@ async function rebuildManifest(force) {
   });
 }
 const processPendingCardIndexes = () => rebuildManifest(false);
-async function rebuildAllCardIndexes() {
+async function rebuildCardNames() {
   const result = await rebuildManifest(true);
   if (result.success) await requestCardIndexWork();
   return result;
 }
-const refreshCardManifest = rebuildAllCardIndexes;
-module.exports = { processPendingCardIndexes, rebuildAllCardIndexes, refreshCardManifest, withIndexLock, acknowledge };
+module.exports = { processPendingCardIndexes, rebuildCardNames, withIndexLock, acknowledge };

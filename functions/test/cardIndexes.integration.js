@@ -15,7 +15,7 @@ const card = (name, number) => ({ names: [name], numbers: [number], info: { 0: [
   await saveCardAndQueueIndex('1',card('기존','OLD'));
   assert.equal((await db.collection('cards').doc('1').get()).exists,true);
   assert.equal((await db.collection('pendingCardIndexUpdates').doc('1').get()).exists,true);
-  await service.rebuildAllCardIndexes();
+  await service.rebuildCardNames();
   await service.processPendingCardIndexes();
   assert.equal((await db.collection('pendingCardIndexUpdates').get()).empty,true);
   assert.equal((await findCard({ number: 'OLD' })).cid, '1');

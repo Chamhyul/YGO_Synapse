@@ -3,8 +3,8 @@ const { admin } = require('../../config/firebase');
 const { setCors, verifyUser } = require('../../utils/auth');
 const cardIndexService = require('../../services/cardIndexService');
 
-exports.rebuildAllCardIndexes = onRequest({
-  invoker: 'public', memory: '1GiB', timeoutSeconds: 540,
+exports.rebuildCardNames = onRequest({
+  invoker: 'public', memory: '512MiB', timeoutSeconds: 540,
 }, async (req, res) => {
   setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).send('');
@@ -17,7 +17,7 @@ exports.rebuildAllCardIndexes = onRequest({
     if (!(claims.admin === true || claims.role === 'owner' || claims.role === 'admin')) {
       return res.status(403).json({ success: false, message: '관리자 권한이 필요합니다.' });
     }
-    const result = await cardIndexService.rebuildAllCardIndexes();
+    const result = await cardIndexService.rebuildCardNames();
     return res.status(result.busy ? 409 : 200).json(result);
   } catch (error) {
     console.error('[CardManifest] 전체 재생성 실패', error);
