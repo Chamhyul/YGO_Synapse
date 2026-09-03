@@ -11389,6 +11389,54 @@ function openNoticeListMode() {
     };
 }
 
+const NOTICE_ALLOWED_TAGS = new Set([
+    'a', 'b', 'blockquote', 'br', 'code', 'del', 'div', 'em', 'h1', 'h2', 'h3',
+    'h4', 'h5', 'h6', 'hr', 'i', 'li', 'ol', 'p', 'pre', 's', 'span', 'strong', 'u', 'ul'
+]);
+const NOTICE_DROP_WITH_CONTENT_TAGS = new Set([
+    'base', 'embed', 'frame', 'iframe', 'link', 'meta', 'object', 'script', 'style', 'svg', 'template'
+]);
+
+function isSafeNoticeHref(href) {
+    try {
+        const url = new URL(href, window.location.origin);
+        return ['http:', 'https:', 'mailto:'].includes(url.protocol);
+    } catch (e) {
+        return false;
+    }
+}
+
+// 기존 notices.json도 안전하게 표시하기 위한 클라이언트 측 방어선입니다.
+function sanitizeNoticeHtml(content) {
+    const template = document.createElement('template');
+    template.innerHTML = String(content || '').replace(/\r?\n/g, '<br>');
+
+    Array.from(template.content.querySelectorAll('*')).reverse().forEach(element => {
+        const tag = element.tagName.toLowerCase();
+        if (!NOTICE_ALLOWED_TAGS.has(tag)) {
+            if (NOTICE_DROP_WITH_CONTENT_TAGS.has(tag)) element.remove();
+            else element.replaceWith(...Array.from(element.childNodes));
+            return;
+        }
+
+        const href = element.getAttribute('href');
+        const title = element.getAttribute('title');
+        const target = element.getAttribute('target');
+        Array.from(element.attributes).forEach(attr => element.removeAttribute(attr.name));
+
+        if (tag === 'a') {
+            if (href && isSafeNoticeHref(href)) element.setAttribute('href', href);
+            if (title) element.setAttribute('title', title);
+            if (target === '_blank') {
+                element.setAttribute('target', '_blank');
+                element.setAttribute('rel', 'noopener noreferrer');
+            }
+        }
+    });
+
+    return template.innerHTML;
+}
+
 /**
  * 모바일: 개별 공지 상세 모달 열기
  */
@@ -11412,7 +11460,7 @@ function openNoticeDetailMode(index) {
     // 내용 렌더링
     document.getElementById('mobile-detail-date').innerText = noti.date;
     document.getElementById('mobile-detail-title').innerText = noti.title;
-    document.getElementById('mobile-notice-content-body').innerHTML = noti.content.replace(/\n/g, '<br>');
+    document.getElementById('mobile-notice-content-body').innerHTML = sanitizeNoticeHtml(noti.content);
 
     detailInstance.open();
 
@@ -11576,7 +11624,7 @@ function updateMobileNoticeList() {
 
         item.innerHTML = `
             <div class="mobile-noti-item-date">${noti.date}</div>
-            <div class="mobile-noti-item-title">${pinIcon}${noti.title}${isNew ? '<span class="new-indicator" style="margin-left:6px;">NEW</span>' : ''}</div>
+            <div class="mobile-noti-item-title">${pinIcon}${escapeHTML(noti.title)}${isNew ? '<span class="new-indicator" style="margin-left:6px;">NEW</span>' : ''}</div>
         `;
         item.onclick = () => openNoticeDetailMode(idx);
         container.appendChild(item);
@@ -11594,7 +11642,7 @@ function navigateNotice(direction) {
 
         document.getElementById('mobile-detail-date').innerText = noti.date;
         document.getElementById('mobile-detail-title').innerText = noti.title;
-        document.getElementById('mobile-notice-content-body').innerHTML = noti.content.replace(/\n/g, '<br>');
+        document.getElementById('mobile-notice-content-body').innerHTML = sanitizeNoticeHtml(noti.content);
 
         // 읽음 처리
         markNoticeAsRead(noti.date);
@@ -12528,7 +12576,7 @@ function renderNotiPopup() {
         const pinIcon = noti.isPinned > 0 ? '<i class="material-icons pin-icon">push_pin</i>' : '';
         htmlStr += `
             <div class="noti-item ${noti.isPinned > 0 ? 'is-pinned' : ''} ${isNew ? 'is-new' : ''}" onclick="openNoticeModal('${noti.date}')">
-                <div class="noti-item-title">${pinIcon}${noti.title}</div>
+                <div class="noti-item-title">${pinIcon}${escapeHTML(noti.title)}</div>
                 <div class="noti-item-date">${noti.date}</div>
             </div>
         `;
@@ -12578,9 +12626,9 @@ function renderNoticeContentByDate(date, element) {
     noticesOnDate.forEach(noti => {
         const pinIcon = noti.isPinned > 0 ? '<i class="material-icons pin-icon">push_pin</i>' : '';
         contentHtml += `<div class="notice-content-item">
-            <div class="notice-content-title">${pinIcon}${noti.title}</div>
+            <div class="notice-content-title">${pinIcon}${escapeHTML(noti.title)}</div>
             <div class="notice-content-date">등록일: ${noti.date} ${new Date(noti.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</div>
-            <div class="notice-content-body">${noti.content.replace(/\n/g, '<br>')}</div>
+            <div class="notice-content-body">${sanitizeNoticeHtml(noti.content)}</div>
         </div>`;
     });
 
@@ -16560,5 +16608,4 @@ window.switchFaqTab = function(tabName) {
         document.querySelectorAll('.faq-tab-content-faq').forEach(el => el.style.display = 'none');
     }
 };
-
 

@@ -8,8 +8,63 @@
 const { onRequest } = require("firebase-functions/v2/https");
 const { db, admin } = require("../config/firebase");
 const { setCors, verifyUser } = require("../utils/auth");
+const cheerio = require("cheerio");
 
 const STORAGE_PATH = "public/notices.json";
+const ALLOWED_NOTICE_TAGS = new Set([
+  "a", "b", "blockquote", "br", "code", "del", "div", "em", "h1", "h2", "h3",
+  "h4", "h5", "h6", "hr", "i", "li", "ol", "p", "pre", "s", "span", "strong", "u", "ul",
+]);
+const DROP_WITH_CONTENT_TAGS = new Set([
+  "base", "embed", "frame", "iframe", "link", "meta", "object", "script", "style", "svg", "template",
+]);
+
+function isSafeNoticeHref(href) {
+  try {
+    const url = new URL(href, "https://ygo-synapse.web.app");
+    return ["http:", "https:", "mailto:"].includes(url.protocol);
+  } catch {
+    return false;
+  }
+}
+
+/** 허용된 서식만 남기고 공지 HTML에서 실행 가능한 요소와 속성을 제거합니다. */
+function sanitizeNoticeHtml(content) {
+  const $ = cheerio.load(String(content || ""), null, false);
+
+  $("*").toArray().reverse().forEach(node => {
+    const tag = node.tagName && node.tagName.toLowerCase();
+    if (!tag) return;
+
+    if (!ALLOWED_NOTICE_TAGS.has(tag)) {
+      if (DROP_WITH_CONTENT_TAGS.has(tag)) $(node).remove();
+      else $(node).replaceWith($(node).contents());
+      return;
+    }
+
+    const attrs = node.attribs || {};
+    const href = attrs.href;
+    const title = attrs.title;
+    const target = attrs.target;
+    Object.keys(attrs).forEach(name => $(node).removeAttr(name));
+
+    if (tag === "a") {
+      if (href && isSafeNoticeHref(href)) $(node).attr("href", href);
+      if (title) $(node).attr("title", title);
+      if (target === "_blank") {
+        $(node).attr("target", "_blank");
+        $(node).attr("rel", "noopener noreferrer");
+      }
+    }
+  });
+
+  return $.root().html() || "";
+}
+
+function sanitizeNoticeTitle(title) {
+  const $ = cheerio.load(String(title || ""), null, false);
+  return $.text().trim();
+}
 
 /** 현재 KST 시각을 "YYYY-MM-DDTHH:MM" 형식으로 반환 */
 function getKstDatetimeId() {
@@ -132,8 +187,8 @@ exports.manageNotice = onRequest(
         const newNotice = {
           id: finalId,
           date: finalId.substring(0, 10),
-          title: String(title),
-          content: String(content || ""),
+          title: sanitizeNoticeTitle(title),
+          content: sanitizeNoticeHtml(content),
           isPinned: parseInt(isPinned) || 0,
         };
 
@@ -147,8 +202,8 @@ exports.manageNotice = onRequest(
         const idx = notices.findIndex(n => n.id === id);
         if (idx === -1) return res.status(404).json({ error: `id '${id}'에 해당하는 공지가 없습니다.` });
 
-        if (title !== undefined) notices[idx].title = String(title);
-        if (content !== undefined) notices[idx].content = String(content);
+        if (title !== undefined) notices[idx].title = sanitizeNoticeTitle(title);
+        if (content !== undefined) notices[idx].content = sanitizeNoticeHtml(content);
         if (isPinned !== undefined) notices[idx].isPinned = parseInt(isPinned) || 0;
 
         const sorted = await saveNotices(notices);
@@ -298,4 +353,3 @@ exports.manageAdminRole = onRequest(
     }
   }
 );
-
