@@ -26,5 +26,5 @@ jobs:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YGO_SYNAPSE }}
 
       - name: Deploy to Firebase (Hosting, Functions, Rules)
-        run: npx firebase-tools deploy --non-interactive
-
+        # 소스에서 의도적으로 제거된 구형 Functions도 CI에서 정리할 수 있게 합니다.
+        run: npx firebase-tools deploy --non-interactive --force
