@@ -19,7 +19,7 @@ const INVENTORY_DIR = "users";
  */
 function createEmptyInventory() {
   return {
-    version: 2,
+    version: 3,
     updatedAt: new Date().toISOString(),
     amount: 0,
     locations: {},
@@ -50,7 +50,7 @@ async function downloadInventory(uid) {
           (data.cards && (typeof data.cards !== 'object' || Array.isArray(data.cards)))) {
         throw new Error('인벤토리 형식이 올바르지 않습니다. 원본을 보존합니다.');
       }
-      if (Number(data.version || 1) > 2) throw new Error('지원하지 않는 인벤토리 버전입니다.');
+      if (Number(data.version || 1) > 3) throw new Error('지원하지 않는 인벤토리 버전입니다.');
       return { data, generation: String(metadata.generation) };
     } catch (error) {
       if (Number(error.code) === 404 && attempt < 2) continue;
@@ -70,7 +70,7 @@ async function updateInventoryWithRetry(uid, updateFn, maxRetries = 3) {
     await prepareInventoryV2(data, resolutions);
     await updateFn(data);
     const status = inventoryMigrationStatus(data);
-    data.version = status.pendingCount ? 1 : 2;
+    data.version = status.status === 'complete' ? 3 : 1;
     if (before === JSON.stringify(data)) return data;
     data.updatedAt = new Date().toISOString();
     try {
@@ -126,6 +126,7 @@ function updateUserLocationsSummary(userData, changedCardsLocMap) {
 }
 
 function processAddCards(inventory, cardGroups) {
+  const { normalizeIllustrationId } = require('../services/inventoryMigrationService');
   if (!inventory.cards) inventory.cards = {};
   if (!inventory.locations) inventory.locations = {};
   if (!inventory.rarities) inventory.rarities = {};
@@ -147,6 +148,7 @@ function processAddCards(inventory, cardGroups) {
     }
 
     group.items.forEach(incoming => {
+      incoming = { ...incoming, illustration: normalizeIllustrationId(incoming.illustration ?? incoming.another) };
       let matchIndex = -1;
       for (let i = 0; i < cardEntry.items.length; i++) {
         const iRare = cardEntry.items[i].rarity || cardEntry.items[i].proc;
@@ -187,6 +189,7 @@ function processAddCards(inventory, cardGroups) {
 }
 
 function processMoveCards(inventory, moves) {
+  const { normalizeIllustrationId } = require('../services/inventoryMigrationService');
   if (!inventory.cards) inventory.cards = {};
   if (!inventory.locations) inventory.locations = {};
 
@@ -212,7 +215,7 @@ function processMoveCards(inventory, moves) {
       if (moveQ <= 0) return;
 
       const mRare = m.rarity || m.proc || "";
-      const mIllust = m.illustration || m.another || "";
+      const mIllust = normalizeIllustrationId(m.illustration ?? m.another);
       const mCurLoc = m.currentLoc || m.loc || "";
       const mTarLoc = m.targetLoc || "";
 
@@ -262,6 +265,7 @@ function processMoveCards(inventory, moves) {
 }
 
 function processDiscardCards(inventory, discards) {
+  const { normalizeIllustrationId } = require('../services/inventoryMigrationService');
   if (!inventory.cards) inventory.cards = {};
   if (!inventory.locations) inventory.locations = {};
   if (!inventory.rarities) inventory.rarities = {};
@@ -288,7 +292,7 @@ function processDiscardCards(inventory, discards) {
       if (discardQ <= 0) return;
 
       const dRare = d.rarity || d.proc || "";
-      const dIllust = d.illustration || d.another || "";
+      const dIllust = normalizeIllustrationId(d.illustration ?? d.another);
       const dLoc = d.loc || "";
 
       let matchIdx = -1;

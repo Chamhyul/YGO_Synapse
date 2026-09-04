@@ -4025,6 +4025,7 @@ async function fetchCardByName(input, force = false) {
         const cardDataPayload = {
             name: res.name,
             numbers: res.numbers,
+            illustrations: res.illustrations,
             illustrationCount: res.illustrationCount,
             raritiesByNo: res.raritiesByNo,
             linkData: res.linkData
@@ -4068,6 +4069,7 @@ async function fetchCardByName(input, force = false) {
                 applyPageCardDataToRows({
                     name: res.name,
                     numbers: numbers,
+                    illustrations: res.illustrations,
                     illustrationCount: res.illustrationCount,
                     rarities: selRarities,
                     raritiesByNo: res.raritiesByNo || {},
@@ -4094,6 +4096,7 @@ async function fetchCardByName(input, force = false) {
                 applyPageCardDataToRows({
                     name: res.name,
                     numbers: numbers,
+                    illustrations: res.illustrations,
                     illustrationCount: res.illustrationCount,
                     rarities: singleRarities,
                     raritiesByNo: res.raritiesByNo || {},
@@ -4583,6 +4586,7 @@ async function fetchCardByNumber(input, force = false) {
                 row.dataset.cardData = JSON.stringify({
                     name: res.name,
                     numbers: numbers,
+                    illustrations: res.illustrations,
                     illustrationCount: res.illustrationCount,
                     rarities: rarities,
                     raritiesByNo: res.raritiesByNo || {},
@@ -4599,6 +4603,7 @@ async function fetchCardByNumber(input, force = false) {
                 applyPageCardDataToRows({
                     name: res.name,
                     numbers: numbers,
+                    illustrations: res.illustrations,
                     illustrationCount: res.illustrationCount,
                     rarities: selRarities,
                     raritiesByNo: res.raritiesByNo || {},
@@ -4615,6 +4620,7 @@ async function fetchCardByNumber(input, force = false) {
             applyPageCardDataToRows({
                 name: res.name,
                 numbers: numbers,
+                illustrations: res.illustrations,
                 illustrationCount: res.illustrationCount,
                 rarities: rarities,
                 raritiesByNo: res.raritiesByNo || {},
@@ -4661,29 +4667,30 @@ function applyPageCardDataToRows(data, row_or_container) {
     const locInp = container.querySelector('[data-field="loc"]');
     const locWrap = locInp ? locInp.closest('.custom-select-wrapper') : null;
 
-    const count = data.illustrationCount || 1;
+    const illustrationIds = Array.isArray(data.illustrations) && data.illustrations.length
+        ? [...new Set(data.illustrations.map(Number).filter(id => Number.isInteger(id) && id > 0))].sort((a, b) => a - b)
+        : Array.from({ length: data.illustrationCount || 1 }, (_, i) => i + 1);
     let illustOptions = [];
 
     const isMobileDevice = document.documentElement.classList.contains('is-mobile-device');
 
     if (illustrationWrap) {
-        if (count > 1) {
-            illustOptions.push({ val: "기본", text: "기본" });
-            for (let i = 2; i <= count; i++) {
-                let suffix = "th"; if (i === 2) suffix = "nd"; if (i === 3) suffix = "rd";
-                illustOptions.push({ val: `${i}${suffix}`, text: `${i}${suffix}` });
-            }
+        if (illustrationIds.length > 1) {
+            illustrationIds.forEach(id => {
+                let suffix = "th"; if (id % 100 < 11 || id % 100 > 13) { if (id % 10 === 1) suffix = "st"; if (id % 10 === 2) suffix = "nd"; if (id % 10 === 3) suffix = "rd"; }
+                illustOptions.push({ val: String(id), text: id === 1 ? "기본" : `${id}${suffix}` });
+            });
             illustrationWrap.dataset.options = JSON.stringify(illustOptions);
             illustrationWrap.classList.remove('single-option');
             illustrationWrap.classList.remove('no-option');
         } else {
             if (anotherInp) {
-                anotherInp.value = "기본";
-                anotherInp.dataset.raw = "기본";
+                anotherInp.value = illustrationIds[0] === 1 ? "기본" : String(illustrationIds[0]);
+                anotherInp.dataset.raw = String(illustrationIds[0]);
             }
             illustrationWrap.classList.add('single-option');
             illustrationWrap.classList.remove('no-option');
-            illustrationWrap.dataset.options = JSON.stringify([{ val: "기본", text: "기본" }]);
+            illustrationWrap.dataset.options = JSON.stringify([{ val: String(illustrationIds[0]), text: illustrationIds[0] === 1 ? "기본" : String(illustrationIds[0]) }]);
         }
         if (!isMobileDevice && anotherInp) {
             setupDropdownForField(anotherInp, illustrationWrap);
@@ -6221,7 +6228,7 @@ async function refreshPublicDataQuietly() {
     if (Date.now() - _lastPublicRefreshAt < 60000) return;
     _publicRefreshPromise = (async () => {
         const res = await callApi('getInitialData', {
-            inventorySchema: 2,
+            inventorySchema: 3,
             rarityUpdatedAt: localStorage.getItem('rarityUpdatedAt') || '0',
             packUpdatedAt: localStorage.getItem('packUpdatedAt') || '0',
             cardListUpdatedAt: localStorage.getItem('cardListUpdatedAt') || '0'
@@ -6260,7 +6267,7 @@ async function refreshInitialData(forceSync = false) {
         callApi('getCardMetadata', { warmup: 'true' }).catch(() => {});
 
         const res = await callApi('getInitialData', {
-            inventorySchema: 2,
+            inventorySchema: 3,
             rarityUpdatedAt: localRarityUpdate,
             packUpdatedAt: localPackUpdate,
             cardListUpdatedAt: localCardListUpdate

@@ -58,12 +58,12 @@ function fixture(resolver = async () => '123') {
     concurrent(fn) { onSave = () => { fn(saved); generation = String(BigInt(generation) + 1n); }; } };
 }
 
-test('v1 로드 이관은 CID와 버전만 보완하고 수량·위치를 보존한다', async () => {
+test('v1 로드 이관은 CID와 일러스트 값을 보완하고 수량·위치를 보존한다', async () => {
   const f = fixture();
   await f.storage.updateInventoryWithRetry('user', () => {});
-  assert.equal(f.saved.version, 2);
+  assert.equal(f.saved.version, 3);
   assert.equal(f.saved.cards.A.cid, '123');
-  assert.deepEqual(f.saved.cards.A.items, inventory().cards.A.items);
+  assert.equal(f.saved.cards.A.items[0].illustration, '1');
   assert.equal(f.saved.amount, 3);
   await f.storage.updateInventoryWithRetry('user', () => {});
   assert.equal(f.calls, 1);
@@ -72,7 +72,7 @@ test('v1 로드 이관은 CID와 버전만 보완하고 수량·위치를 보존
 test('미발견은 null로 보존하고 v2 재로드에서 매번 조회하지 않는다', async () => {
   const f = fixture(async () => null);
   await f.storage.updateInventoryWithRetry('user', () => {});
-  assert.equal(f.saved.version, 2);
+  assert.equal(f.saved.version, 3);
   assert.equal(f.saved.cards.A.cid, null);
   assert.equal(f.migration.inventoryMigrationStatus(f.saved).unresolvedCount, 1);
   await f.storage.updateInventoryWithRetry('user', () => {});
@@ -125,6 +125,21 @@ test('큰 인벤토리는 진행을 저장하고 다음 로드에서 이어간�
   assert.equal(f.saved.version, 1);
   assert.equal(f.migration.inventoryMigrationStatus(f.saved).pendingCount, 5);
   await f.storage.updateInventoryWithRetry('user', () => {});
-  assert.equal(f.saved.version, 2);
+  assert.equal(f.saved.version, 3);
   assert.equal(f.calls, 45);
+});
+
+test('표시용 일러스트 값은 ciid 문자열로 바뀌고 중복 재고는 합쳐진다', async () => {
+  const f = fixture();
+  f.saved.cards.A.items = [
+    { rarity: 'N', qty: 1, loc: '선반', illustration: '기본' },
+    { rarity: 'N', qty: 2, loc: '선반', illustration: '1st' },
+    { rarity: 'N', qty: 3, loc: '선반', another: '2nd' },
+  ];
+  await f.storage.updateInventoryWithRetry('user', () => {});
+  assert.deepEqual(JSON.parse(JSON.stringify(f.saved.cards.A.items)), [
+    { rarity: 'N', qty: 3, loc: '선반', illustration: '1' },
+    { rarity: 'N', qty: 3, loc: '선반', illustration: '2' },
+  ]);
+  assert.equal(f.saved.version, 3);
 });

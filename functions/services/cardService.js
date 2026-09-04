@@ -1,7 +1,7 @@
 /**
  * 카드 info / mergedInfo의 위치별 의미 (Firestore에서는 숫자 문자열 키의 Map으로 저장):
  * 0~9: ko, ja, ae, cn, en, de, fr, it, es, pt 순서의 언어별 정보.
- *   각 언어 배열: [카드명, 일러스트 수, 번호별 레어도 정보, 일반 효과, 펜듈럼 효과].
+ *   각 언어 배열: [카드명, ciid 배열, 번호별 레어도 정보, 일반 효과, 펜듈럼 효과].
  *   번호별 레어도 정보: { 카드번호: [팩 이름, 레어도1, 레어도2, ...] }.
  * 10: 카드 종류 (0 몬스터, 1 마법, 2 함정).
  * 11: 세부 분류 배열 (ETCs 목록의 인덱스; 마법/함정 분류는 15부터).
@@ -302,6 +302,7 @@ function buildSearchResponse(cid, info, isCached, { name, cardNo } = {}) {
     .some(no => no.trim().toUpperCase() === number)) : [];
   if (!selected.length && name) selected = available.filter(entry => normalizeText(entry.data[0]) === normalizeText(name));
   if (!selected.length) selected = [available[0]];
+  const illustrationEntries = selected.slice();
   // 같은 이름을 공유하는 언어 항목은 기존 이름 인덱스와 동일하게 합칩니다.
   const primary = selected[0];
   selected = available.filter(entry => normalizeText(entry.data[0]) === normalizeText(primary.data[0]));
@@ -312,10 +313,16 @@ function buildSearchResponse(cid, info, isCached, { name, cardNo } = {}) {
     const old = raritiesByNo[no];
     raritiesByNo[no] = old ? [old[0], ...new Set([...old.slice(1), ...details.slice(1)])] : details.slice();
   }
+  const illustrations = [...new Set(illustrationEntries.flatMap(entry => {
+    const value = entry.data[1];
+    // 기존 문서의 count 형식도 재크롤링 전까지 안전하게 읽습니다.
+    return Array.isArray(value) ? value : Array.from({ length: Number(value) || 0 }, (_, i) => i + 1);
+  }).map(Number).filter(id => Number.isInteger(id) && id > 0))].sort((a, b) => a - b);
   return {
     success: true, status: 'success', isCached: !!isCached, cid: String(cid),
     name: primary.data[0], numbers: Object.keys(raritiesByNo).sort(), raritiesByNo,
-    illustrationCount: Math.max(...selected.map(entry => Number(entry.data[1]) || 0)),
+    illustrations,
+    illustrationCount: illustrations.length,
     linkData: { id: String(cid), locale: primary.locale, locales: available.map(entry => entry.locale) },
     // 전체 문서의 언어·스탯을 상세 화면에서도 재사용합니다.
     info, names: [...new Set(available.map(entry => entry.data[0]))], rarityMappingRaw: null,

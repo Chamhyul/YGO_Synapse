@@ -1,7 +1,7 @@
 /**
  * 카드 info / mergedInfo의 위치별 의미 (Firestore에서는 숫자 문자열 키의 Map으로 저장):
  * 0~9: ko, ja, ae, cn, en, de, fr, it, es, pt 순서의 언어별 정보.
- *   각 언어 배열: [카드명, 일러스트 수, 번호별 레어도 정보, 일반 효과, 펜듈럼 효과].
+ *   각 언어 배열: [카드명, ciid 배열, 번호별 레어도 정보, 일반 효과, 펜듈럼 효과].
  *   번호별 레어도 정보: { 카드번호: [팩 이름, 레어도1, 레어도2, ...] }.
  * 10: 카드 종류 (0 몬스터, 1 마법, 2 함정).
  * 11: 세부 분류 배열 (ETCs 목록의 인덱스; 마법/함정 분류는 15부터).
@@ -102,7 +102,17 @@ function parseCardDetailHtml(htmlText, locale) {
   const parsedName = $("#cardname h1").clone().children("span").remove().end().text().trim();
   if (!parsedName) return null;
 
-  const primaryAnotherCount = $(".set img").length || 0;
+  // 썸네일의 순번은 연속적이지 않을 수 있으므로 개수가 아닌 실제 ciid를 보존합니다.
+  const illustrationIds = [];
+  $("#thumbnail img").each(function () {
+    const src = $(this).attr("src") || "";
+    const id = $(this).attr("id") || "";
+    const raw = new URLSearchParams((src.split("?")[1] || "").replace(/&amp;/g, "&")).get("ciid") ||
+      id.match(/^thumbnail_card_image_(\d+)$/)?.[1] || $(this).attr("alt");
+    const ciid = Number(raw);
+    if (Number.isInteger(ciid) && ciid > 0 && !illustrationIds.includes(ciid)) illustrationIds.push(ciid);
+  });
+  illustrationIds.sort((a, b) => a - b);
   const locCardNumbers = [];
   const rarsByNo = {};
   const allRarities = [];
@@ -230,7 +240,7 @@ function parseCardDetailHtml(htmlText, locale) {
   }
 
   const mergedInfoSlot = new Array(18).fill(null);
-  mergedInfoSlot[locIdx] = [parsedName, primaryAnotherCount, rarsByNo, cardText, penText];
+  mergedInfoSlot[locIdx] = [parsedName, illustrationIds, rarsByNo, cardText, penText];
 
   const scaleText = $(".CardText.pen .item_box.pen_s .item_box_value").text();
   const scaleMatch = scaleText.match(/\d+/);
@@ -272,7 +282,7 @@ function parseCardDetailHtml(htmlText, locale) {
     if (defStr) mergedInfoSlot[16] = defStr.includes("?") ? -1 : parseInt(defStr, 10) || 0;
   }
 
-  return { mergedInfoSlot, newRarities: allRarities, primaryName: parsedName, primaryAnotherCount };
+  return { mergedInfoSlot, newRarities: allRarities, primaryName: parsedName, illustrationIds };
 }
 
 /**
@@ -414,7 +424,7 @@ async function _crawlDetail(detailLink, foundLocale, validLocales, type, origina
   );
 
   let primaryName = type === "name" ? originalQuery : "Unknown";
-  let primaryAnotherCount = 0;
+  let primaryIllustrationIds = [];
   const mergedCardInfo = new Array(18).fill(null);
   const allRarities = [];
   const resultsByCardNo = {};
@@ -426,7 +436,7 @@ async function _crawlDetail(detailLink, foundLocale, validLocales, type, origina
     const parsedData = parseCardDetailHtml(detailHtmls[d], loc);
     if (!parsedData) continue;
 
-    if (parsedData.primaryAnotherCount > primaryAnotherCount) primaryAnotherCount = parsedData.primaryAnotherCount;
+    if (loc === foundLocale) primaryIllustrationIds = parsedData.illustrationIds;
     if (loc === foundLocale && parsedData.primaryName) primaryName = parsedData.primaryName;
 
     allRarities.push(...parsedData.newRarities);
@@ -469,7 +479,9 @@ async function _crawlDetail(detailLink, foundLocale, validLocales, type, origina
     name: primaryName,
     isCached: false,
     numbers: extractedNumbers,
-    anotherCount: primaryAnotherCount,
+    illustrationIds: primaryIllustrationIds,
+    // 구 클라이언트가 새 카드 데이터를 읽는 동안만 사용하는 호환 필드입니다.
+    anotherCount: primaryIllustrationIds.length,
     linkData: { id: cid, locale: foundLocale || "ko" },
     rarities: targetRarities,
     raritiesByNo: raritiesOutput,

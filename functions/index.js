@@ -59,9 +59,11 @@ exports.uploadMembershipCsv = integrationRoutes.uploadMembershipCsv;
 const crawlerAdmin = require("./routes/admin/autoCrawler");
 const cardNumbersAdmin = require("./routes/admin/cardNumbers");
 const cardIndexesAdmin = require("./routes/admin/cardIndexes");
+const cardIllustrationsAdmin = require("./routes/admin/cardIllustrations");
 exports.triggerAutoCrawl = crawlerAdmin.triggerAutoCrawl;
 exports.migrateCardNumbersField = cardNumbersAdmin.migrateCardNumbersField;
 exports.rebuildCardNames = cardIndexesAdmin.rebuildCardNames;
+exports.migrateCardIllustrations = cardIllustrationsAdmin.migrateCardIllustrations;
 
 // 예약 실행 및 작업 큐 진입점
 const crawlerSchedules = require("./schedules/autoCrawler");
@@ -71,6 +73,7 @@ exports.processCardIndexTask = require("./tasks/cardIndexes").processCardIndexTa
 exports.processCardIndexUpdates = require("./schedules/cardIndexes").processCardIndexUpdates;
 exports.autoCrawlTask = require("./tasks/autoCrawler").autoCrawlTask;
 exports.migrateCardNumbersTask = require("./tasks/cardNumbers").migrateCardNumbersTask;
+exports.migrateCardIllustrationsTask = require("./tasks/cardIllustrations").migrateCardIllustrationsTask;
 
 // 공지 및 시스템 관리자 권한 API
 const noticesAdminRoutes = require("./routes/admin/notices");

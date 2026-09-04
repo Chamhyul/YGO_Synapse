@@ -3,6 +3,27 @@ const { normalizeText } = require('../utils/common');
 const { setTimeout, clearTimeout } = require('node:timers');
 const RETRY_MS = 24 * 60 * 60 * 1000;
 const BATCH_SIZE = 40;
+const CURRENT_INVENTORY_VERSION = 3;
+function normalizeIllustrationId(value) {
+  const text = String(value ?? '').trim();
+  if (!text || text === '기본' || text === '0') return '1';
+  const match = text.match(/^(\d+)(?:st|nd|rd|th)?$/i);
+  return match && Number(match[1]) > 0 ? String(Number(match[1])) : text;
+}
+
+function migrateIllustrations(inventory) {
+  for (const entry of Object.values(inventory.cards || {})) {
+    const merged = new Map();
+    for (const item of entry.items || []) {
+      item.illustration = normalizeIllustrationId(item.illustration ?? item.another);
+      delete item.another;
+      const key = JSON.stringify([item.rarity || item.proc || '', item.loc || '', item.illustration]);
+      if (merged.has(key)) merged.get(key).qty = (Number(merged.get(key).qty) || 0) + (Number(item.qty) || 0);
+      else merged.set(key, item);
+    }
+    entry.items = [...merged.values()];
+  }
+}
 const validCid = value => typeof value === 'string' && value.length > 0 &&
   !['LOCAL_CID', 'MISSING_CID', 'null', 'undefined'].includes(value) && !value.includes('/');
 
@@ -34,8 +55,9 @@ function inventoryMigrationStatus(inventory) {
 
 // 조회 성공과 미발견을 구분해 기록합니다. 실패한 항목은 완료 처리하지 않습니다.
 async function prepareInventoryV2(inventory, memo = new Map()) {
-  if (Number(inventory.version || 1) > 2) throw new Error('지원하지 않는 인벤토리 버전입니다.');
+  if (Number(inventory.version || 1) > CURRENT_INVENTORY_VERSION) throw new Error('지원하지 않는 인벤토리 버전입니다.');
   inventory.cards ||= {};
+  migrateIllustrations(inventory);
   const now = Date.now();
   if ((inventory.cidMigration?.retryAt || 0) > now) return;
   const candidates = Object.entries(inventory.cards).filter(([, entry]) =>
@@ -55,7 +77,7 @@ async function prepareInventoryV2(inventory, memo = new Map()) {
       console.warn('[InventoryV2] CID 조회 재시도:', error.code || error.message);
     }
   });
-  inventory.version = inventoryMigrationStatus(inventory).pendingCount ? 1 : 2;
+  inventory.version = inventoryMigrationStatus(inventory).status === 'complete' ? CURRENT_INVENTORY_VERSION : 1;
   if (failed) inventory.cidMigration = { retryableError: true, retryAt: Date.now() + 30000 };
   else if (inventory.cidMigration) delete inventory.cidMigration;
 }
@@ -79,4 +101,5 @@ async function resolveGroupCids(groups) {
   });
 }
 
-module.exports = { prepareInventoryV2, ensureInventoryV2, resolveGroupCids, inventoryMigrationStatus };
+module.exports = { prepareInventoryV2, ensureInventoryV2, resolveGroupCids, inventoryMigrationStatus,
+  normalizeIllustrationId, migrateIllustrations, CURRENT_INVENTORY_VERSION };
