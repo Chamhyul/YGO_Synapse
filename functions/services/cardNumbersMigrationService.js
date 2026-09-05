@@ -7,6 +7,7 @@ const CARD_NUMBERS_MIGRATION_BATCH_SIZE = 100;
 const CARD_NUMBERS_MIGRATION_DOC = db.collection("system").doc("cardNumbersMigration");
 
 function getNumbersFromCardInfo(info) {
+  info = require('../utils/cardSchema').toRuntimeInfo(info);
   const numbers = new Set();
 
   for (const [key, langInfo] of Object.entries(info || {})) {

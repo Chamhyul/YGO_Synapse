@@ -233,7 +233,7 @@ async function crawlSinglePack(pack) {
     if (existing && existing.exists) {
       const data = existing.data();
       const localeIdx = LOCALE_TO_INDEX[locale];
-      const cInfo = data.info ? data.info[localeIdx] : null;
+      const cInfo = require('../utils/cardSchema').toRuntimeInfo(data.info)[localeIdx];
 
       // 1단계(CID) 및 2단계(언어 정보) 존재 확인
       if (cInfo && cInfo[0]) {

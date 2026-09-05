@@ -12,6 +12,7 @@ function load(fetchImpl = async () => { throw new Error('unexpected fetch'); }) 
     fetch: fetchImpl,
     AbortSignal: { timeout: () => ({}) },
     require(name) {
+      if (name === '../utils/cardSchema') return require('../utils/cardSchema');
       if (name === '../config/firebase') {
         return { db: { collection: () => ({ doc: () => ({}) }) }, FieldPath: {} };
       }

@@ -385,7 +385,7 @@ async function resolveCardNumber(cardNo, cardName, cacheMap = null) {
  * 카드 상세 메타데이터 표준 응답 경량화 포맷터 (langOnly 옵션 지원)
  */
 function formatMetaResponse(cid, name, rawData, langOnly = false) {
-  const fullInfo = rawData.info || rawData.mergedInfo || {};
+  const fullInfo = require('../utils/cardSchema').toRuntimeInfo(rawData.info || rawData.mergedInfo || {});
   const normalizedInfoMap = {};
 
   if (Array.isArray(fullInfo)) {

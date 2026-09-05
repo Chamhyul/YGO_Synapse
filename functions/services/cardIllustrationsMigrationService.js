@@ -1,5 +1,6 @@
 const { db, FieldPath } = require('../config/firebase');
 const { getFunctions } = require('firebase-admin/functions');
+const { toStoredInfo, toRuntimeInfo } = require('../utils/cardSchema');
 
 const BATCH_SIZE = 1;
 const STALE_AFTER_MS = 10 * 60 * 1000;
@@ -11,7 +12,7 @@ function logProgress(event, details = {}) {
   const counts = `누적 ${details.processedCount || 0}장 처리 / 저장 ${details.updatedCount || 0}장 / 실패 ${details.failedCount || 0}장`;
   const messages = {
     start_requested: '일러스트 마이그레이션 시작 요청을 받았습니다.',
-    run_created: 'cards 컬렉션의 첫 문서부터 일러스트 수집을 시작합니다.',
+    run_created: 'cards 컬렉션의 첫 문서부터 문서 구조 변환과 일러스트 수집을 시작합니다.',
     run_resumed: '저장된 마지막 처리 위치부터 일러스트 수집을 재개합니다.',
     task_enqueued: '다음 카드 처리 작업을 큐에 등록했습니다.',
     task_received: '카드 처리 작업이 실행되었습니다. 진행 상태를 읽습니다.',
@@ -19,7 +20,7 @@ function logProgress(event, details = {}) {
     batch_loaded: `문서 조회 완료: ${details.documentIds?.map(id => `cards/${id}`).join(', ') || '남은 문서 없음'} (이전 처리 문서: ${details.afterDocId || '없음'})`,
     card_started: `문서 cards/${details.cid} «${details.cardName}» 처리 시작 — ${details.ordinal}번째 카드`,
     card_crawled: `문서 cards/${details.cid} 언어별 조회 완료. DB 저장을 시작합니다.`,
-    card_updated: `문서 cards/${details.cid} 저장 완료 — ${details.updatedLanguageIndexes?.map(index => LANGUAGE_NAMES[index]).join(', ')}`,
+    card_updated: `문서 cards/${details.cid} 새 구조(schemaVersion 2) 저장 완료 — 일러스트 갱신: ${details.updatedLanguageIndexes?.map(index => LANGUAGE_NAMES[index]).join(', ') || '해당 언어 없음'}`,
     card_failed: `문서 cards/${details.cid} 처리 실패 — ${details.error}`,
     checkpoint_saved: `${counts}. 마지막 처리 문서: cards/${details.lastDocId}. 진행 위치를 저장했습니다.`,
     run_completed: `일러스트 마이그레이션 순회 완료 — ${counts}`,
@@ -80,15 +81,15 @@ async function startCardIllustrationsMigration() {
     await db.runTransaction(async transaction => {
       const snapshot = await transaction.get(STATE_DOC);
       const state = snapshot.exists ? snapshot.data() : null;
-      if (state?.status === 'running') {
-        if (Date.now() - Number(state.lastUpdatedAt || 0) < STALE_AFTER_MS) throw new Error('MIGRATION_ALREADY_RUNNING');
+      if (state?.targetSchemaVersion === 2 && ['running', 'failed'].includes(state.status)) {
+        if (state.status === 'running' && Date.now() - Number(state.lastUpdatedAt || 0) < STALE_AFTER_MS) throw new Error('MIGRATION_ALREADY_RUNNING');
         activeRunId = state.runId;
         resumed = true;
-        transaction.set(STATE_DOC, { batchSize: BATCH_SIZE, lastUpdatedAt: Date.now(), lastError: null }, { merge: true });
+        transaction.set(STATE_DOC, { status: 'running', batchSize: BATCH_SIZE, lastUpdatedAt: Date.now(), lastError: null }, { merge: true });
         return;
       }
       transaction.set(STATE_DOC, {
-        status: 'running', runId, batchSize: BATCH_SIZE, lastDocId: null,
+        status: 'running', runId, targetSchemaVersion: 2, batchSize: BATCH_SIZE, lastDocId: null,
         processedCount: 0, updatedCount: 0, failedCount: 0,
         startedAt: Date.now(), lastUpdatedAt: Date.now(), completedAt: null,
         lastError: null,
@@ -97,7 +98,7 @@ async function startCardIllustrationsMigration() {
     logProgress(resumed ? 'run_resumed' : 'run_created', { runId: activeRunId, batchSize: BATCH_SIZE });
     await enqueue(activeRunId);
     return { httpStatus: 202, success: true, status: 'running', runId: activeRunId, resumed,
-      batchSize: BATCH_SIZE, message: `일러스트 재크롤링을 시작했습니다. 카드 ${BATCH_SIZE}개씩 순차 처리합니다.` };
+      batchSize: BATCH_SIZE, message: `문서 구조 변환과 일러스트 재크롤링을 시작했습니다. 카드 ${BATCH_SIZE}개씩 순차 처리합니다.` };
   } catch (error) {
     if (error.message === 'MIGRATION_ALREADY_RUNNING') {
       return { httpStatus: 409, success: false, message: '이미 일러스트 마이그레이션이 진행 중입니다.' };
@@ -109,7 +110,7 @@ async function startCardIllustrationsMigration() {
 }
 
 async function recrawlCardIllustrations(cardDoc) {
-  const existingInfo = cardDoc.data().info || {};
+  const existingInfo = toRuntimeInfo(cardDoc.data().info);
   const info = {};
   const failedLocales = [];
   const localeResults = [];
@@ -125,7 +126,7 @@ async function recrawlCardIllustrations(cardDoc) {
         : result.status === 'parseError' ? '페이지에서 일러스트 번호를 추출하지 못함'
           : `요청 실패 (${result.httpStatus || result.error || '네트워크 오류'})`;
       console.warn(`${label} — ${reason}. 기존 DB 값을 유지합니다.`);
-      if (result.status !== 'notReleased') failedLocales.push({ locale, status: result.status });
+      if (existingInfo[index]?.[0] || result.status !== 'notReleased') failedLocales.push({ locale, status: result.status });
       continue;
     }
     const langInfo = existingInfo[index] || existingInfo[String(index)];
@@ -138,9 +139,6 @@ async function recrawlCardIllustrations(cardDoc) {
     info[index][1] = result.ids;
   }
 
-  if (!Object.keys(info).length) {
-    throw new Error(`갱신 가능한 언어 없음: ${failedLocales.map(item => item.locale).join(',')}`);
-  }
   return { info, failedLocales, localeResults };
 }
 
@@ -149,7 +147,7 @@ async function processCardIllustrationsMigration(data) {
   logProgress('task_received', { runId: runId || null });
   const stateSnapshot = await STATE_DOC.get();
   const state = stateSnapshot.exists ? stateSnapshot.data() : null;
-  if (!runId || !state || state.status !== 'running' || state.runId !== runId) {
+  if (!runId || !state || state.targetSchemaVersion !== 2 || state.status !== 'running' || state.runId !== runId) {
     logProgress('task_ignored', {
       runId: runId || null,
       stateExists: Boolean(state),
@@ -185,14 +183,23 @@ async function processCardIllustrationsMigration(data) {
   let lastError = null;
   for (const cardDoc of snapshot.docs) {
     try {
-      const cardInfo = cardDoc.data().info || {};
+      const cardInfo = toRuntimeInfo(cardDoc.data().info);
       const cardName = cardInfo[0]?.[0] || Object.values(cardInfo).find(slot => Array.isArray(slot) && slot[0])?.[0] || '이름 없음';
       logProgress('card_started', { runId, cid: cardDoc.id, cardName, ordinal: (state.processedCount || 0) + updated + failed + 1 });
       const result = await recrawlCardIllustrations(cardDoc);
       logProgress('card_crawled', { runId, cid: cardDoc.id, locales: result.localeResults });
-      const updates = { updatedAt: Date.now() };
-      for (const [index, slot] of Object.entries(result.info)) updates[`info.${index}`] = slot;
-      await cardDoc.ref.update(updates);
+      if (result.failedLocales.length) throw new Error(`언어 수집 실패: ${result.failedLocales.map(item => `${item.locale} (${item.status})`).join(', ')}`);
+      // 네트워크 대기 중 일반 크롤러가 저장한 이름/팩/효과를 보존합니다.
+      // info 전체를 교체해야 기존 숫자 키가 DB에서 제거됩니다.
+      await db.runTransaction(async transaction => {
+        const latest = await transaction.get(cardDoc.ref);
+        if (!latest.exists) throw new Error('처리 중 카드 문서가 삭제되었습니다.');
+        const storedInfo = toStoredInfo(latest.data().info);
+        for (const [index, slot] of Object.entries(result.info)) {
+          if (storedInfo[LOCALES[index]]) storedInfo[LOCALES[index]].ciid = slot[1];
+        }
+        transaction.update(cardDoc.ref, { info: storedInfo, schemaVersion: 2, updatedAt: Date.now() });
+      });
       updated++;
       logProgress('card_updated', {
         runId,
@@ -207,6 +214,10 @@ async function processCardIllustrationsMigration(data) {
       lastError = `${cardDoc.id}: ${error.message || error}`;
       console.error('[CardIllustrationsMigration]', lastError);
       logProgress('card_failed', { runId, cid: cardDoc.id, error: error.message || String(error) });
+      await STATE_DOC.set({ status: 'failed', failedDocId: cardDoc.id, lastError,
+        lastUpdatedAt: Date.now() }, { merge: true });
+      console.error(`[일러스트 마이그레이션] cards/${cardDoc.id}에서 중단했습니다. 커서를 이동하지 않았습니다. 다시 시작하면 이 문서부터 재시도합니다.`);
+      return;
     }
   }
   const lastDocId = snapshot.docs[snapshot.docs.length - 1].id;
@@ -216,7 +227,7 @@ async function processCardIllustrationsMigration(data) {
     updatedCount: (state.updatedCount || 0) + updated,
     failedCount: (state.failedCount || 0) + failed,
     lastBatchProcessed: snapshot.size, lastBatchUpdated: updated,
-    lastUpdatedAt: Date.now(), lastError,
+    lastUpdatedAt: Date.now(), lastError, failedDocId: null,
   }, { merge: true });
   logProgress('checkpoint_saved', {
     runId,

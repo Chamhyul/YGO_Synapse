@@ -91,6 +91,7 @@ async function crawlPackCardsBatch(options) {
 
       if (doc.exists) {
         const d = doc.data();
+        d.info = require('../utils/cardSchema').toRuntimeInfo(d.info);
         cachedInfo = new Array(18).fill(null);
         if (d.info) {
           Object.keys(d.info).forEach(k => { cachedInfo[parseInt(k)] = d.info[k]; });

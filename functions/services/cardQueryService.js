@@ -1,5 +1,6 @@
 const { db } = require('../config/firebase');
 const { normalizeText } = require('../utils/common');
+const { toRuntimeInfo } = require('../utils/cardSchema');
 
 const TTL = 60 * 1000;
 const documents = new Map();
@@ -9,7 +10,7 @@ let revision = 0;
 const normalizeNumber = value => String(value || '').trim().toUpperCase();
 
 function rememberCard(cid, data) {
-  const card = { cid: String(cid), data, info: data.info || {} };
+  const card = { cid: String(cid), data, info: toRuntimeInfo(data.info) };
   documents.set(card.cid, { value: card, expires: Date.now() + TTL });
   if (documents.size > 2000) documents.delete(documents.keys().next().value);
   return card;
@@ -49,7 +50,7 @@ async function getCardByCid(cid) {
     const snapshot = await db.collection('cards').doc(id).get();
     if (!snapshot.exists) return null;
     const data = snapshot.data();
-    return started === revision ? rememberCard(snapshot.id, data) : { cid: snapshot.id, data, info: data.info || {} };
+    return started === revision ? rememberCard(snapshot.id, data) : { cid: snapshot.id, data, info: toRuntimeInfo(data.info) };
   });
 }
 
@@ -70,7 +71,7 @@ async function getCardsByCids(cids) {
       return snapshots.filter(snapshot => snapshot.exists).map(snapshot => {
         const data = snapshot.data();
         return started === revision ? rememberCard(snapshot.id, data)
-          : { cid: snapshot.id, data, info: data.info || {} };
+          : { cid: snapshot.id, data, info: toRuntimeInfo(data.info) };
       });
     });
     for (const card of cards) found.set(card.cid, card);
@@ -86,7 +87,7 @@ async function findCards(field, input) {
     const snapshot = await db.collection('cards').where(field, 'array-contains', value).get();
     return snapshot.docs.map(doc => {
       const data = doc.data();
-      return started === revision ? rememberCard(doc.id, data) : { cid: doc.id, data, info: data.info || {} };
+      return started === revision ? rememberCard(doc.id, data) : { cid: doc.id, data, info: toRuntimeInfo(data.info) };
     });
   });
 }
