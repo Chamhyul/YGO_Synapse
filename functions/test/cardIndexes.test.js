@@ -9,7 +9,7 @@ const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringi
 function loadModule(file, mocks) {
   const filename = path.join(__dirname, '..', file);
   const module = { exports: {} };
-  const sandbox = { module, exports: module.exports, console, Date, Buffer,
+  const sandbox = { module, exports: module.exports, console, Date, Buffer, process,
     require: name => Object.hasOwn(mocks, name) ? mocks[name] : require(name) };
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), sandbox, { filename });
   return module.exports;
@@ -164,6 +164,32 @@ test('운영·로컬 주소 목록이 서버 등록과 일치하고 레거시 �
   const helper=source.slice(source.indexOf('const cardResponseCache ='),source.indexOf('// 검색 시 최신 공통 목록'));
   const sandbox={location:{hostname:'localhost'}};vm.createContext(sandbox);vm.runInContext(config+helper,sandbox);
   await assert.rejects(sandbox.requestApi('missing'),/등록되지 않은/);
+});
+
+test('초기 데이터는 본문 중복 없이 Storage 링크와 generation만 반환한다',async()=>{
+  const metadata={
+    'public/cardNames.json':{updated:'2026-09-05T00:00:00.000Z',generation:'101'},
+    'public/packs.json':{updated:'2026-09-05T00:00:01.000Z',generation:'102'},
+    'public/rarityMapping.json':{updated:'2026-09-05T00:00:02.000Z',generation:'103'},
+  };
+  const routes=loadModule('routes/user.js',{
+    'firebase-functions/v2/https':{onRequest:(_,fn)=>fn},
+    '../config/firebase':{
+      db:{collection:()=>({doc:()=>({})})},admin:{},FieldValue:{},
+      getBucket:()=>({name:'test.appspot.com',file:name=>({getMetadata:async()=>[metadata[name]]})}),
+    },
+    '../utils/inventoryStorage':{},'../services/inventoryMigrationService':{},
+    '../utils/auth':{setCors(){},verifyAppCheck:async()=>true,verifyUser:async()=>null},
+  });
+  let body;
+  const res={status(){return this;},json(value){body=value;return this;}};
+  await routes.getInitialData({method:'GET'},res);
+  assert.equal(body.schemaVersion,2);
+  assert.equal(body.syncType,'storage-links');
+  assert.deepEqual(Object.keys(body.resources),['cardManifest','packs','rarity']);
+  assert.equal(body.resources.cardManifest.generation,'101');
+  assert.match(body.resources.cardManifest.url,/public%2FcardNames\.json\?alt=media$/);
+  for(const removed of ['cardNames','packData','rarity','masterCache'])assert.equal(body[removed],undefined);
 });
 
 test('닉네임 라우트는 인증된 사용자만 저장하고 잘못된 입력을 거절한다',async()=>{

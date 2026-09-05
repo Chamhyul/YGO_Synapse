@@ -6227,12 +6227,7 @@ async function refreshPublicDataQuietly() {
     if (_publicRefreshPromise) return _publicRefreshPromise;
     if (Date.now() - _lastPublicRefreshAt < 60000) return;
     _publicRefreshPromise = (async () => {
-        const res = await callApi('getInitialData', {
-            inventorySchema: 3,
-            rarityUpdatedAt: localStorage.getItem('rarityUpdatedAt') || '0',
-            packUpdatedAt: localStorage.getItem('packUpdatedAt') || '0',
-            cardListUpdatedAt: localStorage.getItem('cardListUpdatedAt') || '0'
-        });
+        const res = await callApi('getInitialData');
         await applyPublicData(res);
         _lastPublicRefreshAt = Date.now();
     })();
@@ -6258,22 +6253,11 @@ async function refreshInitialData(forceSync = false) {
             return;
         }
 
-        const localRarityUpdate = parseInt(localStorage.getItem('rarityUpdatedAt') || '0');
-        const localPackUpdate = parseInt(localStorage.getItem('packUpdatedAt') || '0');
-        const localCardListUpdate = parseInt(localStorage.getItem('cardListUpdatedAt') || '0');
-
         // [스마트 온디맨드 웜업] getInitialData와 동시에 getCardMetadata 컨테이너를 선제 깨우기
         // → API 컨테이너 초기화 요청이며 전체 카드 데이터를 미리 읽지는 않습니다.
         callApi('getCardMetadata', { warmup: 'true' }).catch(() => {});
 
-        const res = await callApi('getInitialData', {
-            inventorySchema: 3,
-            rarityUpdatedAt: localRarityUpdate,
-            packUpdatedAt: localPackUpdate,
-            cardListUpdatedAt: localCardListUpdate
-        }, {
-            lastUpdated: lastSync
-        });
+        const res = await callApi('getInitialData');
 
         await applyPublicData(res);
         _lastPublicRefreshAt = Date.now();
@@ -7698,83 +7682,93 @@ function applyUserData(res) {
     refreshCurrentSearchResult();
 }
 
+function rarityLangsToRows(data) {
+    const langs = data && data.langs;
+    if (!langs || typeof langs !== 'object' || Array.isArray(langs)) throw new Error('레어도 파일 형식 오류');
+    for (let i = 0; i <= 10; i++) if (!Array.isArray(langs[String(i)])) throw new Error(`레어도 언어 ${i} 형식 오류`);
+    const rows = [['display', 'ko', 'ja', 'ae', 'cn', 'en', 'de', 'fr', 'it', 'es', 'pt']];
+    for (let row = 0; row < langs['10'].length; row++) {
+        rows.push([langs['10'][row], ...Array.from({ length: 10 }, (_, i) => langs[String(i)][row] || '')]);
+    }
+    return rows;
+}
+
+async function downloadPublicResource(descriptor) {
+    if (!descriptor || descriptor.available !== true || !descriptor.url || !descriptor.generation) return null;
+    const url = new URL(descriptor.url);
+    url.searchParams.set('generation', descriptor.generation);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`공개 데이터 다운로드 실패: HTTP ${response.status}`);
+    return response.json();
+}
+
 async function applyPublicData(res) {
-    if (res.masterCache) {
-        // syncType 식별을 캐시 계층으로 전달
-        res.masterCache.syncType = res.syncType;
-        await ClientCache.setMasterData(res.masterCache);
-    } else {
-        console.warn("[Sync] No masterCache found in response.");
+    if (!res || res.schemaVersion !== 2 || res.syncType !== 'storage-links' || !res.resources) {
+        throw new Error('지원하지 않는 공개 데이터 응답 형식입니다.');
     }
+    const versions = await MasterDB.get('publicResourceVersions') || {};
+    const nextVersions = { ...versions };
+    const resources = res.resources;
 
-    // [Storage 최적화] 카드 이름 및 번호 목록 지능형 다운로드 및 영구 캐싱
-    const localLastUpdate = parseInt(localStorage.getItem('cardListUpdatedAt') || '0');
-    const cacheSize = cardCacheInstance ? cardCacheInstance._allKnownNames.size : 0;
-    const numberCount = CardDataStore.allCardNumbers ? CardDataStore.allCardNumbers.length : 0;
-    const shouldUpdateCardList = (res.cardListInfo && res.cardListInfo.updatedAt > localLastUpdate) || cacheSize === 0 || numberCount === 0;
-
-    if (res.rarityUpdatedAt) {
-        localStorage.setItem('rarityUpdatedAt', res.rarityUpdatedAt);
-    }
-
-    const saveBatch = {};
-
-    // 자동완성 이름·번호 목록은 기존 형식으로 동기화합니다.
-    const cardManifestData = res.cardNames || res.cardListData;
-    if (cardManifestData && typeof cardManifestData === 'object') {
+    const cardDescriptor = resources.cardManifest;
+    const needsCards = cardDescriptor?.available && (versions.cardManifest !== cardDescriptor.generation ||
+        !CardDataStore.allCardNames?.length || !CardDataStore.allCardNumbers?.length);
+    if (needsCards) {
         try {
-            const data = cardManifestData;
-            if (Array.isArray(data.names)) {
-                await CardListCache.persist({ names: data.names, numbers: data.numbers || [] });
-                if (res.cardListUpdatedAt) localStorage.setItem('cardListUpdatedAt', res.cardListUpdatedAt);
+            const data = await downloadPublicResource(cardDescriptor);
+            if (!data || !Array.isArray(data.names) || !Array.isArray(data.numbers) ||
+                data.names.some(value => typeof value !== 'string') || data.numbers.some(value => typeof value !== 'string')) {
+                throw new Error('카드 매니페스트 형식 오류');
             }
-
-
-        } catch (manifestErr) {
-            console.warn("[Single-Flight] Apply cardNames error:", manifestErr);
+            await CardListCache.persist({ names: data.names, numbers: data.numbers });
+            nextVersions.cardManifest = cardDescriptor.generation;
+            localStorage.setItem('cardListUpdatedAt', String(cardDescriptor.updatedAt || 0));
+        } catch (error) {
+            console.warn('[Sync] 카드 매니페스트 갱신 실패. 기존 캐시를 유지합니다.', error);
         }
     }
 
-    // [Single-Flight 최적화] 팩 목록 본문이 동봉되어 온 경우
-    if (res.packData && typeof res.packData === 'object') {
-        CardDataStore.masterJSON.pack = res.packData;
-        if (res.packUpdatedAt) {
-            localStorage.setItem('packUpdatedAt', res.packUpdatedAt);
+    const cacheUpdates = {};
+    const packsDescriptor = resources.packs;
+    if (packsDescriptor?.available && (versions.packs !== packsDescriptor.generation ||
+        !Object.keys(CardDataStore.masterJSON.pack || {}).length)) {
+        try {
+            const data = await downloadPublicResource(packsDescriptor);
+            if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('팩 목록 형식 오류');
+            cacheUpdates.packData = data;
+            nextVersions.packs = packsDescriptor.generation;
+        } catch (error) {
+            console.warn('[Sync] 팩 목록 갱신 실패. 기존 캐시를 유지합니다.', error);
         }
-        saveBatch.packData = res.packData;
+    }
+
+    const rarityDescriptor = resources.rarity;
+    if (rarityDescriptor?.available && (versions.rarity !== rarityDescriptor.generation ||
+        !CardDataStore.masterJSON.rarity?.length)) {
+        try {
+            cacheUpdates.rarity = rarityLangsToRows(await downloadPublicResource(rarityDescriptor));
+            nextVersions.rarity = rarityDescriptor.generation;
+        } catch (error) {
+            console.warn('[Sync] 레어도 매핑 갱신 실패. 기존 캐시를 유지합니다.', error);
+        }
+    }
+
+    cacheUpdates.publicResourceVersions = nextVersions;
+    await MasterDB.saveMasterDataBatch(cacheUpdates);
+    if (cacheUpdates.packData) {
+        CardDataStore.masterJSON.pack = cacheUpdates.packData;
+        localStorage.setItem('packUpdatedAt', String(packsDescriptor.updatedAt || 0));
         updatePackNamesCache();
-    } else if (res.packListInfo && res.packListInfo.url) {
-        const localPackUpdate = parseInt(localStorage.getItem('packUpdatedAt') || '0');
-        const packCount = (CardDataStore.masterJSON && CardDataStore.masterJSON.pack) ? Object.keys(CardDataStore.masterJSON.pack).length : 0;
-
-        if (localPackUpdate < res.packListInfo.updatedAt || packCount === 0) {
-            try {
-                const packsUrl = `${res.packListInfo.url}?t=${res.packListInfo.updatedAt}`;
-                const response = await fetch(packsUrl);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const packsData = await response.json();
-
-                if (packsData && typeof packsData === 'object') {
-                    CardDataStore.masterJSON.pack = packsData;
-                    localStorage.setItem('packUpdatedAt', res.packListInfo.updatedAt);
-                    saveBatch.packData = packsData;
-                    updatePackNamesCache();
-                }
-            } catch (e) {
-                console.error("[Sync] Failed to download packs.json from Storage:", e);
-            }
-        }
+    }
+    if (cacheUpdates.rarity) {
+        CardDataStore.masterJSON.rarity = cacheUpdates.rarity;
+        localStorage.setItem('rarityUpdatedAt', String(rarityDescriptor.updatedAt || 0));
     }
 
-    // 수집된 동기화 데이터를 1회 일괄 저장 (Single Batch Write)
-    if (Object.keys(saveBatch).length > 0) {
-        await MasterDB.saveMasterDataBatch(saveBatch);
-    }
+    currentSheetLastUpdated = res.serverTime || Date.now();
+    localStorage.setItem('masterSyncUpdatedAt', String(currentSheetLastUpdated));
 
-    currentSheetLastUpdated = res.lastUpdated || 0;
-    localStorage.setItem('masterSyncUpdatedAt', currentSheetLastUpdated);
-
-    rarityMappingRaw = res.rarityData || res.rarityMappingRaw || CardDataStore.masterJSON.rarity || [];
+    rarityMappingRaw = CardDataStore.masterJSON.rarity || [];
     if (rarityMappingRaw.length > 0) {
         const headers = rarityMappingRaw[0];
         rarityColMap = {};

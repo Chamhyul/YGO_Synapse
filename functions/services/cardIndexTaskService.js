@@ -1,7 +1,8 @@
 const { processPendingCardIndexes } = require('./cardIndexService');
 const { claimCardIndexTask, finishCardIndexTask, retryCardIndexTask } = require('./cardIndexDispatchService');
 
-// 크롤링 요청과 후속 Tasks가 같은 실제 처리 함수를 호출합니다.
+// 최초 직접 실행 또는 후속 Tasks가 현재 대기분을 처리합니다. 처리 중 새 대기분이
+// 생기면 다음 Tasks를 예약하고, 대기열이 비면 idle로 바꾼 뒤 종료합니다.
 async function runCardIndexTask(runId) {
   if (!(await claimCardIndexTask(runId))) return { success: true, superseded: true };
   try {

@@ -1,13 +1,43 @@
-const { db, FieldPath, FieldValue } = require('../config/firebase');
+const { db, FieldPath } = require('../config/firebase');
 const { getFunctions } = require('firebase-admin/functions');
-const { crawlCardInPack, LOCALE_TO_INDEX } = require('../scrapers/cardScraper');
-const { stageCardWrite } = require('./cardWriteService');
-const { requestCardIndexWork } = require('./cardIndexDispatchService');
 
-// 상세 HTML은 크기가 크므로 한 Task에서 소수의 카드만 순차 처리합니다.
-const BATCH_SIZE = 2;
-const LOCALES = Object.keys(LOCALE_TO_INDEX);
+const BATCH_SIZE = 1;
+const STALE_AFTER_MS = 10 * 60 * 1000;
+const LOCALES = ['ko', 'ja', 'ae', 'cn', 'en', 'de', 'fr', 'it', 'es', 'pt'];
 const STATE_DOC = db.collection('system').doc('cardIllustrationsMigration');
+
+function extractIllustrationIds(html) {
+  const start = String(html || '').search(/<div\b[^>]*\bid=["']thumbnail["'][^>]*>/i);
+  if (start < 0) return null;
+  const end = html.indexOf('</div>', start);
+  if (end < 0) return null;
+  const thumbnail = html.slice(start, end);
+  const ids = [];
+  for (const match of thumbnail.matchAll(/(?:[?&](?:amp;)?)ciid=(\d+)|thumbnail_card_image_(\d+)/gi)) {
+    const id = Number(match[1] || match[2]);
+    if (Number.isInteger(id) && id > 0 && !ids.includes(id)) ids.push(id);
+  }
+  return ids.sort((a, b) => a - b);
+}
+
+async function fetchIllustrationIds(cid, locale) {
+  try {
+    const url = `https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid=${encodeURIComponent(cid)}&request_locale=${locale}`;
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': locale },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (response.status === 404) return { status: 'notReleased' };
+    if (response.status === 429 || response.status >= 500) return { status: 'retryableError', httpStatus: response.status };
+    if (!response.ok) return { status: 'notReleased', httpStatus: response.status };
+    const html = await response.text();
+    if (!/id=["']cardname["']/i.test(html)) return { status: 'notReleased' };
+    const ids = extractIllustrationIds(html);
+    return ids && ids.length ? { status: 'success', ids } : { status: 'parseError' };
+  } catch (error) {
+    return { status: 'retryableError', error: error.name || error.message };
+  }
+}
 
 async function enqueue(runId) {
   const queue = getFunctions().taskQueue(
@@ -21,11 +51,18 @@ async function enqueue(runId) {
 
 async function startCardIllustrationsMigration() {
   const runId = String(Date.now());
+  let activeRunId = runId;
+  let resumed = false;
   try {
     await db.runTransaction(async transaction => {
       const snapshot = await transaction.get(STATE_DOC);
-      if (snapshot.exists && snapshot.data().status === 'running') {
-        throw new Error('MIGRATION_ALREADY_RUNNING');
+      const state = snapshot.exists ? snapshot.data() : null;
+      if (state?.status === 'running') {
+        if (Date.now() - Number(state.lastUpdatedAt || 0) < STALE_AFTER_MS) throw new Error('MIGRATION_ALREADY_RUNNING');
+        activeRunId = state.runId;
+        resumed = true;
+        transaction.set(STATE_DOC, { batchSize: BATCH_SIZE, lastUpdatedAt: Date.now(), lastError: null }, { merge: true });
+        return;
       }
       transaction.set(STATE_DOC, {
         status: 'running', runId, batchSize: BATCH_SIZE, lastDocId: null,
@@ -34,8 +71,8 @@ async function startCardIllustrationsMigration() {
         lastError: null,
       });
     });
-    await enqueue(runId);
-    return { httpStatus: 202, success: true, status: 'running', runId,
+    await enqueue(activeRunId);
+    return { httpStatus: 202, success: true, status: 'running', runId: activeRunId, resumed,
       batchSize: BATCH_SIZE, message: `일러스트 재크롤링을 시작했습니다. 카드 ${BATCH_SIZE}개씩 순차 처리합니다.` };
   } catch (error) {
     if (error.message === 'MIGRATION_ALREADY_RUNNING') {
@@ -48,30 +85,27 @@ async function startCardIllustrationsMigration() {
 }
 
 async function recrawlCardIllustrations(cardDoc) {
+  const existingInfo = cardDoc.data().info || {};
   const info = {};
-  const names = new Set();
-  const numbers = new Set();
   const failedLocales = [];
 
-  // 언어별 HTML을 동시에 보관하지 않도록 반드시 순차 호출합니다.
-  for (const locale of LOCALES) {
-    const result = await crawlCardInPack(cardDoc.id, locale);
-    if (!result || result.isError) {
-      failedLocales.push(locale);
+  for (let index = 0; index < LOCALES.length; index++) {
+    const locale = LOCALES[index];
+    const result = await fetchIllustrationIds(cardDoc.id, locale);
+    if (result.status !== 'success') {
+      if (result.status !== 'notReleased') failedLocales.push({ locale, status: result.status });
       continue;
     }
-    const index = LOCALE_TO_INDEX[locale];
-    const langInfo = result.mergedInfoSlot?.[index];
+    const langInfo = existingInfo[index] || existingInfo[String(index)];
     if (!Array.isArray(langInfo) || !langInfo[0]) continue;
-    info[index] = langInfo;
-    names.add(langInfo[0]);
-    Object.keys(langInfo[2] || {}).forEach(number => numbers.add(String(number).trim().toUpperCase()));
+    info[index] = langInfo.slice();
+    info[index][1] = result.ids;
   }
 
   if (!Object.keys(info).length) {
-    throw new Error(`모든 언어 크롤링 실패: ${failedLocales.join(',')}`);
+    throw new Error(`갱신 가능한 언어 없음: ${failedLocales.map(item => item.locale).join(',')}`);
   }
-  return { info, names: [...names], numbers: [...numbers], failedLocales };
+  return { info, failedLocales };
 }
 
 async function processCardIllustrationsMigration(data) {
@@ -86,24 +120,21 @@ async function processCardIllustrationsMigration(data) {
   if (snapshot.empty) {
     await STATE_DOC.set({ status: 'completed', completedAt: Date.now(),
       lastUpdatedAt: Date.now() }, { merge: true });
-    await requestCardIndexWork();
     return;
   }
 
-  const batch = db.batch();
   let updated = 0;
   let failed = 0;
   let lastError = null;
   for (const cardDoc of snapshot.docs) {
     try {
       const result = await recrawlCardIllustrations(cardDoc);
-      const payload = { info: result.info, updatedAt: Date.now() };
-      if (result.names.length) payload.names = FieldValue.arrayUnion(...result.names);
-      if (result.numbers.length) payload.numbers = FieldValue.arrayUnion(...result.numbers);
-      stageCardWrite(batch, cardDoc.id, payload);
+      const updates = { updatedAt: Date.now() };
+      for (const [index, slot] of Object.entries(result.info)) updates[`info.${index}`] = slot;
+      await cardDoc.ref.update(updates);
       updated++;
       if (result.failedLocales.length) {
-        console.warn(`[CardIllustrationsMigration] ${cardDoc.id} 일부 언어 실패: ${result.failedLocales.join(',')}`);
+        console.warn(`[CardIllustrationsMigration] ${cardDoc.id} 일부 언어 실패: ${JSON.stringify(result.failedLocales)}`);
       }
     } catch (error) {
       failed++;
@@ -111,8 +142,6 @@ async function processCardIllustrationsMigration(data) {
       console.error('[CardIllustrationsMigration]', lastError);
     }
   }
-  if (updated) await batch.commit();
-
   const lastDocId = snapshot.docs[snapshot.docs.length - 1].id;
   await STATE_DOC.set({
     lastDocId,
@@ -125,5 +154,5 @@ async function processCardIllustrationsMigration(data) {
   await enqueue(runId);
 }
 
-module.exports = { BATCH_SIZE, LOCALES, startCardIllustrationsMigration,
-  processCardIllustrationsMigration, recrawlCardIllustrations };
+module.exports = { BATCH_SIZE, LOCALES, extractIllustrationIds, fetchIllustrationIds,
+  startCardIllustrationsMigration, processCardIllustrationsMigration, recrawlCardIllustrations };

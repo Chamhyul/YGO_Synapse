@@ -70,7 +70,6 @@ const crawlerSchedules = require("./schedules/autoCrawler");
 exports.autoCrawlFull = crawlerSchedules.autoCrawlFull;
 exports.autoCrawlQuick = crawlerSchedules.autoCrawlQuick;
 exports.processCardIndexTask = require("./tasks/cardIndexes").processCardIndexTask;
-exports.processCardIndexUpdates = require("./schedules/cardIndexes").processCardIndexUpdates;
 exports.autoCrawlTask = require("./tasks/autoCrawler").autoCrawlTask;
 exports.migrateCardNumbersTask = require("./tasks/cardNumbers").migrateCardNumbersTask;
 exports.migrateCardIllustrationsTask = require("./tasks/cardIllustrations").migrateCardIllustrationsTask;

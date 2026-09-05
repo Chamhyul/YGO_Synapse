@@ -1,11 +1,8 @@
 const { onRequest } = require("firebase-functions/v2/https");
 const { db, admin, getBucket, FieldValue } = require("../config/firebase");
-const { mapToRowArray, getRarityMappingFromStorage } = require("../utils/common");
 const { setCors, verifyUser, verifyAppCheck } = require("../utils/auth");
-const { getPacksMetadataInfo, downloadPacksMetadata } = require("../utils/packsStorage");
 const { downloadInventory, updateInventoryWithRetry, deleteInventory } = require("../utils/inventoryStorage");
 
-const { getLegacyCidMap } = require('../services/cardQueryService');
 const { ensureInventoryV2, inventoryMigrationStatus } = require('../services/inventoryMigrationService');
 
 exports.clearUserData = onRequest({ invoker: "public" }, async (req, res) => {
@@ -32,92 +29,34 @@ exports.getInitialData = onRequest({ invoker: "public", memory: "256MiB" }, asyn
   if (!(await verifyAppCheck(req, res))) return;
 
   try {
-    const start = Date.now();
-
-    // 1. 팩 목록 타임스탬프 비교 및 Single-Flight 데이터 준비
-    const clientPackUpdatedAt = parseInt(req.query.packUpdatedAt || (req.body && req.body.packUpdatedAt) || 0);
-    const packListInfo = await getPacksMetadataInfo();
-    const serverPackUpdatedAt = packListInfo ? packListInfo.updatedAt : 0;
-
-    let packData = null;
-    if (!clientPackUpdatedAt || clientPackUpdatedAt < serverPackUpdatedAt) {
-      packData = await downloadPacksMetadata().catch(() => null);
-    }
-
-    // 2. 카드 목록(매니페스트) 타임스탬프 비교 및 Single-Flight 데이터 준비
-    const clientCardListUpdatedAt = parseInt(req.query.cardListUpdatedAt || (req.body && req.body.cardListUpdatedAt) || 0);
     const bucket = getBucket();
-    const file = bucket.file("public/cardNames.json");
-    let cardListInfo = { url: null, updatedAt: 0 };
-    let serverCardListUpdatedAt = 0;
-    let cardListGeneration = null;
-    
-    try {
-      const [metadata] = await file.getMetadata();
-      serverCardListUpdatedAt = new Date(metadata.updated).getTime();
-      cardListGeneration = metadata.generation;
-      if (process.env.FUNCTIONS_EMULATOR === "true") {
-        cardListInfo.url = `http://127.0.0.1:9199/download/storage/v1/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
-      } else {
-        cardListInfo.url = `https://storage.googleapis.com/${bucket.name}/${file.name}`;
-      }
-      cardListInfo.updatedAt = serverCardListUpdatedAt;
-    } catch (e) {
-      console.warn("[Sync] cardNames.json not found in storage");
-    }
-
-    let cardNames = null;
-    if (!clientCardListUpdatedAt || clientCardListUpdatedAt < serverCardListUpdatedAt) {
+    const getResource = async (path, format) => {
+      const file = bucket.file(path);
       try {
-        const [manifestBuf] = await bucket.file(file.name, { generation: cardListGeneration }).download();
-        cardNames = JSON.parse(manifestBuf.toString("utf-8"));
-        const clientSchema = Number(req.query.inventorySchema || req.body?.inventorySchema || 1);
-        if (clientSchema < 2) cardNames.cids = await getLegacyCidMap();
-      } catch (err) {
-        console.warn("[Sync] cardNames.json download/parse failed for Single-Flight bundle:", err.message);
+        const [metadata] = await file.getMetadata();
+        const url = process.env.FUNCTIONS_EMULATOR === "true"
+          ? `http://127.0.0.1:9199/download/storage/v1/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media`
+          : `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media`;
+        return { available: true, url, updatedAt: new Date(metadata.updated).getTime(),
+          generation: String(metadata.generation), format };
+      } catch (error) {
+        if (Number(error.code) !== 404) console.warn(`[Sync] ${path} metadata error:`, error.message);
+        return { available: false, url: null, updatedAt: 0, generation: null, format };
       }
-    }
-
-    // 3. 레어도 매핑 타임스탬프 비교 및 Single-Flight 데이터 준비
-    const clientRarityUpdatedAt = parseInt(req.query.rarityUpdatedAt || (req.body && req.body.rarityUpdatedAt) || 0);
-    const rarityRes = await getRarityMappingFromStorage();
-    const serverRarityUpdatedAt = rarityRes ? rarityRes.updatedAt : 0;
-    
-    let rowWiseRarityMapping = null;
-    if (!clientRarityUpdatedAt || clientRarityUpdatedAt < serverRarityUpdatedAt) {
-      const langsData = rarityRes && rarityRes.data ? rarityRes.data.langs : null;
-      rowWiseRarityMapping = mapToRowArray(langsData);
-    }
-
-    const masterCache = {
-      cardList: cardNames,
-      pack: packData,
-      rarity: rowWiseRarityMapping
     };
 
-    const end = Date.now();
+    const [cardManifest, packs, rarity] = await Promise.all([
+      getResource("public/cardNames.json", "card-manifest-v2"),
+      getResource("public/packs.json", "packs-v1"),
+      getResource("public/rarityMapping.json", "rarity-langs-v1"),
+    ]);
+
     return res.json({
       success: true,
-      syncType: "storage",
-      lastUpdated: Date.now(),
-
-      // [1] 타임스탬프 명칭 통일 3종
-      cardListUpdatedAt: serverCardListUpdatedAt,
-      packUpdatedAt: serverPackUpdatedAt,
-      rarityUpdatedAt: serverRarityUpdatedAt,
-
-      // [2] 데이터 본문 최상위 명칭 통일 3종 (Single-Flight 변경 시에만 전송)
-      cardNames,              // 카드 이름 본문
-      packData,               // 팩 목록 본문
-      rarity: rowWiseRarityMapping, // 레어도 본문
-
-      // [3] 브라우저 세션 캐시용 대칭 포맷
-      masterCache,
-
-      // Storage 메타데이터 가이드 정보
-      cardListInfo,
-      packListInfo,
-      debug: { serverTime: (end - start) }
+      schemaVersion: 2,
+      syncType: "storage-links",
+      serverTime: Date.now(),
+      resources: { cardManifest, packs, rarity },
     });
   } catch (e) {
     console.error("getInitialData error:", e);

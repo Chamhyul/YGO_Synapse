@@ -47,7 +47,8 @@ async function ensureCardIndexWorker({ direct = false } = {}) {
     return next.runId;
   });
   if (runId && direct) {
-    // 실제 호출 시 읽어 서비스 간 순환 초기화를 피합니다.
+    // 최초 처리는 카드 등록·크롤링 요청 안에서 바로 실행합니다.
+    // 처리 중 새 변경이 들어온 경우에만 finishCardIndexTask가 후속 Tasks를 예약합니다.
     const { runCardIndexTask } = require('./cardIndexTaskService');
     return runCardIndexTask(runId);
   }
@@ -55,8 +56,8 @@ async function ensureCardIndexWorker({ direct = false } = {}) {
   return { scheduled: Boolean(runId) };
 }
 
-// 수집 완료 경로에서는 예약만 하지 않고 첫 묶음의 파일 저장까지 기다립니다.
-// 실패를 성공으로 숨기지 않습니다. 원본과 대기 기록은 재시도를 위해 유지됩니다.
+// 카드 변경 직후 첫 처리는 호출한 함수에서 직접 실행합니다. 그 사이 새 대기분이
+// 생긴 경우에만 finishCardIndexTask가 후속 Tasks를 이어가며, 0이 되는 순간 멈춥니다.
 async function requestCardIndexWork() {
   return ensureCardIndexWorker({ direct: true });
 }
@@ -105,4 +106,4 @@ async function retryCardIndexTask(runId, error) {
   });
 }
 
-module.exports = { ensureCardIndexWorker, requestCardIndexWork, claimCardIndexTask, finishCardIndexTask, retryCardIndexTask };
+module.exports = { requestCardIndexWork, claimCardIndexTask, finishCardIndexTask, retryCardIndexTask };
