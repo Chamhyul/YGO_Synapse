@@ -12558,10 +12558,15 @@ async function fetchNotices() {
 
         // id 형식: "YYYY.MM.DDTHH:MM" (KST). 과도기 하이픈 형식도 함께 읽습니다.
         // createdAt: 브라우저가 파싱할 수 있는 ISO 구분자로 변환하여 작성 시각 반영
-        notices = (data.notices || []).map(n => ({
-            ...n,
-            createdAt: new Date(String(n.id).replace(/^(\d{4})\.(\d{2})\.(\d{2})T/, '$1-$2-$3T') + ':00+09:00').getTime()
-        }));
+        notices = (data.notices || []).map(n => {
+            const normalizedId = String(n.id).replace(/^(\d{4})-(\d{2})-(\d{2})T/, '$1.$2.$3T');
+            return {
+                ...n,
+                id: normalizedId,
+                date: normalizedId.substring(0, 10),
+                createdAt: new Date(normalizedId.replace(/^(\d{4})\.(\d{2})\.(\d{2})T/, '$1-$2-$3T') + ':00+09:00').getTime()
+            };
+        });
 
         // 데이터 로드 후 초기 UI 업데이트
         updateNotiBadge();
