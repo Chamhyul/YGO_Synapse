@@ -66,7 +66,7 @@ function sanitizeNoticeTitle(title) {
   return $.text().trim();
 }
 
-/** 현재 KST 시각을 "YYYY-MM-DDTHH:MM" 형식으로 반환 */
+/** 현재 KST 시각을 "YYYY.MM.DDTHH:MM" 형식으로 반환 */
 function getKstDatetimeId() {
   const now = new Date();
   // KST = UTC+9
@@ -76,7 +76,7 @@ function getKstDatetimeId() {
   const dd = String(kst.getUTCDate()).padStart(2, "0");
   const hh = String(kst.getUTCHours()).padStart(2, "0");
   const mi = String(kst.getUTCMinutes()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+  return `${yyyy}.${mm}.${dd}T${hh}:${mi}`;
 }
 
 /** Storage에서 현재 notices.json을 읽어 notices 배열을 반환 */
@@ -97,7 +97,11 @@ async function readNotices() {
 
 /** notices 배열을 정렬 후 Storage에 저장 */
 async function saveNotices(notices) {
-  const sorted = [...notices].sort((a, b) => {
+  const normalized = notices.map(notice => {
+    const id = String(notice.id || "").replace(/^(\d{4})-(\d{2})-(\d{2})T/, "$1.$2.$3T");
+    return { ...notice, id, date: id.substring(0, 10) };
+  });
+  const sorted = normalized.sort((a, b) => {
     const aPinned = a.isPinned > 0;
     const bPinned = b.isPinned > 0;
     if (aPinned && bPinned) return a.isPinned - b.isPinned;
