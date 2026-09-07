@@ -57,7 +57,7 @@ if (typeof firebase !== 'undefined' && firebase.appCheck &&
     });
 }
 
-const CLIENT_VERSION = "ver. 0.32.0";
+const CLIENT_VERSION = "ver. 0.33.0";
 
 const STORAGE_KEY = 'yugioh_spreadsheet_id';
 const RECENT_KEY = 'recent_card_searches';
