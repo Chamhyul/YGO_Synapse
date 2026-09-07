@@ -8103,70 +8103,120 @@ function handleMoveNameInput(input) {
     }
 }
 
-function setupCardNameAutocomplete(wrapper) {
+// 이름/번호는 편집 중 추천만 표시하고, 명시적인 확정 동작에서만 조회합니다.
+function setupCardSearchDropdown(wrapper, getSuggestions, lookup) {
     const input = wrapper.querySelector('input');
+    if (input._cardSearchController) return;
+    // 기존 인라인 조회/초기화와 키보드 처리를 이 제어기로 통합합니다.
+    ['oninput', 'onblur', 'onkeydown'].forEach(attr => input.removeAttribute(attr));
+    let dropdown = wrapper._dropdown;
+    if (!dropdown) {
+        dropdown = document.createElement('ul');
+        dropdown.className = 'global-dropdown custom-options';
+        document.body.appendChild(dropdown);
+        wrapper._dropdown = dropdown;
+    }
     let currentFocusIdx = -1;
-
-    // 이미 드롭다운 이벤트가 바인딩된 경우 중복 바인딩 방지
-    if (input._isDropdownBound && wrapper._dropdown) {
-        return;
-    }
-    input._isDropdownBound = true;
-
-    // 개별 드롭다운 요소 생성 또는 찾기 후 Body에 부착 및 참조 보관
-    let localDropdown = wrapper._dropdown;
-    if (!localDropdown) {
-        localDropdown = document.createElement('ul');
-        localDropdown.className = 'global-dropdown custom-options';
-        document.body.appendChild(localDropdown);
-        wrapper._dropdown = localDropdown;
-    }
-
-    const closeDropdown = () => {
+    let committedValue = null;
+    let dirty = true;
+    const close = () => {
+        scheduled.cancel();
+        currentFocusIdx = -1;
         wrapper.classList.remove('active');
         input.classList.remove('active');
-        localDropdown.classList.remove('active');
-        if (UIStore.activeDropdownInput === input) {
-            currentFocusIdx = -1;
-            UIStore.activeDropdownInput = null;
-        }
+        dropdown.classList.remove('active');
+        if (UIStore.activeDropdownInput === input) UIStore.activeDropdownInput = null;
     };
-
-    const renderDropdown = (filtered) => {
-        if (document.activeElement !== input) {
-            closeDropdown();
-            return;
+    const commit = value => {
+        close();
+        if (input.readOnly || input.disabled) return;
+        input.value = value;
+        if (!dirty && committedValue === value) return;
+        committedValue = value;
+        dirty = false;
+        lookup(input);
+    };
+    const render = () => {
+        if (document.activeElement !== input || input.readOnly || input.disabled) { close(); return; }
+        UIStore.activeDropdownInput = input;
+        currentFocusIdx = -1;
+        dropdown.innerHTML = '';
+        const values = getSuggestions();
+        for (const value of values) {
+            const li = document.createElement('li');
+            li.className = 'custom-option';
+            li.innerText = value;
+            li.onmousedown = event => event.preventDefault();
+            li.onclick = () => commit(value);
+            dropdown.appendChild(li);
         }
-        wrapper.classList.add('active');
-        input.classList.add('active');
-        localDropdown.classList.add('active');
-        localDropdown.innerHTML = "";
-
-        if (filtered.length === 0) {
+        if (!values.length) {
             const li = document.createElement('li');
             li.className = 'custom-option item-no-match';
-            li.innerText = '카드 이름 확인';
-            localDropdown.appendChild(li);
-        } else {
-            filtered.forEach(name => {
-                const li = document.createElement('li');
-                li.className = 'custom-option';
-                li.innerText = name;
-                li.onmousedown = (e) => e.preventDefault();
-                li.onclick = () => {
-                    input.value = name;
-                    closeDropdown();
-                    input.dispatchEvent(new Event('input'));
-                    input.dispatchEvent(new Event('change'));
-                    fetchCardByName(input);
-                };
-                localDropdown.appendChild(li);
-            });
+            li.innerText = input.dataset.field === 'no' ? '번호 확인' : '카드 이름 확인';
+            dropdown.appendChild(li);
         }
-
-        positionDropdown(localDropdown, wrapper);
+        wrapper.classList.add('active');
+        dropdown.classList.add('active');
+        positionDropdown(dropdown, wrapper);
     };
+    const scheduled = debounce(render, 100);
+    input._cardSearchController = { close, refresh: render };
+    input.addEventListener('input', () => {
+        dirty = true;
+        if (input.dataset.field === 'no') {
+            const start = input.selectionStart;
+            input.value = input.value.replace(/[ㄱ-ㅎㅏ-ㅣ가-힣]/g, '').toUpperCase();
+            input.setSelectionRange(start, start);
+        }
+        // 조회 결과의 하위 필드는 이 시점에 초기화하거나 갱신하지 않습니다.
+        scheduled();
+    });
+    input.addEventListener('focus', () => {
+        if (dirty || input.value !== committedValue) render();
+    });
+    input.addEventListener('click', () => {
+        if (!input.readOnly) render();
+    });
+    input.addEventListener('blur', close);
+    input.addEventListener('keydown', event => {
+        if (event.isComposing) return;
+        if (input.readOnly) {
+            if (input.dataset.field === 'name' && ['Escape', 'Backspace', 'Delete'].includes(event.key)) {
+                event.preventDefault();
+                close();
+                dirty = true;
+                committedValue = null;
+                clearPageNameAndNo(input);
+            }
+            return;
+        }
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            commit(input.value);
+        } else if (event.key === 'Tab') {
+            // 예약 렌더를 기다리지 않고 현재 문자열의 첫 추천을 확정합니다.
+            if (dirty || input.value !== committedValue) {
+                const first = getSuggestions()[0];
+                if (first !== undefined) commit(first);
+            }
+            close(); // 기본 Tab/Shift+Tab 포커스 이동은 그대로 둡니다.
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            close();
+        } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (!dropdown.classList.contains('active')) render();
+            const items = dropdown.querySelectorAll('li:not(.item-no-match)');
+            if (!items.length) return;
+            currentFocusIdx = (currentFocusIdx + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+            updateHighlight(items, currentFocusIdx);
+        }
+    });
+}
 
+function setupCardNameAutocomplete(wrapper) {
+    const input = wrapper.querySelector('input');
     const showAllOwnedNames = () => {
         let allNames = cardCacheInstance.getAllNames();
         const ownedNamesSet = cardCacheInstance.getOwnedNamesSet();
@@ -8186,15 +8236,13 @@ function setupCardNameAutocomplete(wrapper) {
                 if (filteredNames.length >= 8) break; // 8개 매칭 충족 시 조기 종료
             }
         }
-        renderDropdown(filteredNames);
+        return filteredNames;
     };
 
     const handleInput = () => {
-        UIStore.activeDropdownInput = input;
         const query = input.value.replace(/\s+/g, '').toLowerCase();
         if (!query) {
-            showAllOwnedNames();
-            return;
+            return showAllOwnedNames();
         }
 
         const ownedNamesSet = cardCacheInstance.getOwnedNamesSet();
@@ -8221,141 +8269,19 @@ function setupCardNameAutocomplete(wrapper) {
             }
         }
 
-        renderDropdown(sortCardNameSuggestions(matches, query, 8).map(item => item.original));
+        return sortCardNameSuggestions(matches, query, 8).map(item => item.original);
     };
 
-    const debouncedHandleInput = debounce(handleInput, 100);
-    input.addEventListener('input', debouncedHandleInput);
-
-    input.addEventListener('focus', () => {
-        UIStore.activeDropdownInput = input;
-        if (UIStore.pendingBlurFn && UIStore.activeDropdownInput === input) { clearTimeout(UIStore.pendingBlurFn); UIStore.pendingBlurFn = null; }
-        const query = input.value.replace(/\s+/g, '').toLowerCase();
-        if (query) {
-            handleInput();
-        } else {
-            showAllOwnedNames();
-        }
-    });
-    input.addEventListener('blur', () => {
-        if (debouncedHandleInput.cancel) debouncedHandleInput.cancel();
-        closeDropdown();
-    });
-    input.addEventListener('keydown', (e) => {
-        if (!localDropdown.classList.contains('active')) return;
-
-        const items = localDropdown.querySelectorAll('li');
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            currentFocusIdx++;
-            if (currentFocusIdx >= items.length) currentFocusIdx = 0;
-            updateHighlight(items, currentFocusIdx);
-        }
-        else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            currentFocusIdx--;
-            if (currentFocusIdx < 0) currentFocusIdx = items.length - 1;
-            updateHighlight(items, currentFocusIdx);
-        }
-        else if (e.key === 'Enter') {
-            if (e.isComposing) return;
-            e.preventDefault();
-            if (currentFocusIdx > -1 && items[currentFocusIdx]) {
-                items[currentFocusIdx].click();
-            } else {
-                input.blur();
-            }
-        }
-        else if (e.key === 'Escape') {
-            e.preventDefault();
-            closeDropdown();
-        }
-        else if (e.key === 'Tab') {
-            if (e.isComposing) return;
-            let selectedVal = null;
-            if (currentFocusIdx > -1 && items[currentFocusIdx]) {
-                selectedVal = items[currentFocusIdx].innerText;
-            } else if (items.length > 0) {
-                selectedVal = items[0].innerText;
-            }
-            if (selectedVal) {
-                input.value = selectedVal;
-                input.dispatchEvent(new Event('input'));
-                input.dispatchEvent(new Event('change'));
-                fetchCardByName(input);
-            }
-            closeDropdown();
-        }
-    });
+    setupCardSearchDropdown(wrapper, handleInput, fetchCardByName);
 }
 
-/**
- * 전체 카드 DB 대상 로컬 캐시 자동 완성 (일반 등록 모드용)
- */
 function setupGlobalCardNameAutocomplete(wrapper) {
     const input = wrapper.querySelector('input');
-    let currentFocusIdx = -1;
-
-    let localDropdown = wrapper._dropdown;
-    if (!localDropdown) {
-        localDropdown = document.createElement('ul');
-        localDropdown.className = 'global-dropdown custom-options';
-        document.body.appendChild(localDropdown);
-        wrapper._dropdown = localDropdown;
-    }
-
-    const closeDropdown = () => {
-        wrapper.classList.remove('active');
-        localDropdown.classList.remove('active');
-        if (UIStore.activeDropdownInput === input) {
-            currentFocusIdx = -1;
-            UIStore.activeDropdownInput = null;
-        }
-    };
-
-    const renderDropdown = (filtered) => {
-        // 포커스 상태가 아니면 렌더링하지 않음
-        if (document.activeElement !== input) {
-            closeDropdown();
-            return;
-        }
-
-        wrapper.classList.add('active');
-        localDropdown.classList.add('active');
-        localDropdown.innerHTML = "";
-
-        if (filtered.length === 0) {
-            const li = document.createElement('li');
-            li.className = 'custom-option item-no-match';
-            li.innerText = '카드 이름 확인';
-            localDropdown.appendChild(li);
-        } else {
-            filtered.forEach(name => {
-                const li = document.createElement('li');
-                li.className = 'custom-option';
-                li.innerText = name;
-                li.onmousedown = (e) => e.preventDefault();
-                li.onclick = () => {
-                    input.value = name;
-                    closeDropdown();
-                    input.dispatchEvent(new Event('input'));
-                    input.dispatchEvent(new Event('change'));
-                    fetchCardByName(input);
-                };
-                localDropdown.appendChild(li);
-            });
-        }
-
-        positionDropdown(localDropdown, wrapper);
-    };
-
     const handleInput = () => {
-        UIStore.activeDropdownInput = input;
         const query = input.value.trim().toLowerCase();
 
         if (!query) {
-            closeDropdown();
-            return;
+            return [];
         }
 
         const normalizedQuery = query.replace(/\s+/g, '');
@@ -8382,137 +8308,14 @@ function setupGlobalCardNameAutocomplete(wrapper) {
             }
         }
 
-        renderDropdown(sortCardNameSuggestions(matches, normalizedQuery, 8).map(item => item.original));
+        return sortCardNameSuggestions(matches, normalizedQuery, 8).map(item => item.original);
     };
 
-    const debouncedHandleInput = debounce(handleInput, 100);
-    input.addEventListener('input', debouncedHandleInput);
-
-    // 포커스 시 드롭다운 즉시 표시
-    input.addEventListener('focus', () => {
-        if (input.value.trim()) {
-            handleInput();
-        }
-    });
-
-    input.addEventListener('blur', () => {
-        if (debouncedHandleInput.cancel) debouncedHandleInput.cancel();
-        closeDropdown();
-    });
-
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Tab') {
-            if (e.isComposing) return; // 한글 입력 조합 중 탭 키 중복 처리 방지
-            if (localDropdown.classList.contains('active')) {
-                const items = localDropdown.querySelectorAll('li:not(.item-no-match)');
-                let selectedVal = null;
-
-                if (currentFocusIdx > -1 && items[currentFocusIdx]) {
-                    selectedVal = items[currentFocusIdx].innerText;
-                } else if (items.length > 0) {
-                    selectedVal = items[0].innerText;
-                }
-
-                if (selectedVal) {
-                    input.value = selectedVal;
-                    input.dispatchEvent(new Event('input'));
-                    input.dispatchEvent(new Event('change'));
-                    fetchCardByName(input);
-                }
-                closeDropdown();
-            }
-            // e.preventDefault() 없음 → 브라우저 기본 Tab/Shift+Tab 동작 그대로 수행
-            return;
-        }
-
-        if (!localDropdown.classList.contains('active')) return;
-
-        const items = localDropdown.querySelectorAll('li:not(.item-no-match)');
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            currentFocusIdx++;
-            if (currentFocusIdx >= items.length) currentFocusIdx = 0;
-            updateHighlight(items, currentFocusIdx);
-        }
-        else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            currentFocusIdx--;
-            if (currentFocusIdx < 0) currentFocusIdx = items.length - 1;
-            updateHighlight(items, currentFocusIdx);
-        }
-        else if (e.key === 'Enter') {
-            if (e.isComposing) return;
-            if (currentFocusIdx > -1 && items[currentFocusIdx]) {
-                e.preventDefault();
-                items[currentFocusIdx].click();
-            } else {
-                // 선택된 항목이 없을 때 Enter를 치면 드롭다운 닫고 blur 처리
-                closeDropdown();
-                input.blur();
-            }
-        }
-        else if (e.key === 'Escape') {
-            e.preventDefault();
-            closeDropdown();
-        }
-    });
+    setupCardSearchDropdown(wrapper, handleInput, fetchCardByName);
 }
 
 function setupCardNoAutocomplete(wrapper) {
     const input = wrapper.querySelector('input');
-    let currentFocusIdx = -1;
-
-    // 개별 드롭다운 요소 생성 또는 찾기 후 Body에 부착 및 참조 보관
-    let localDropdown = wrapper._dropdown;
-    if (!localDropdown) {
-        localDropdown = document.createElement('ul');
-        localDropdown.className = 'global-dropdown custom-options';
-        document.body.appendChild(localDropdown);
-        wrapper._dropdown = localDropdown;
-    }
-
-    const closeDropdown = () => {
-        wrapper.classList.remove('active');
-        localDropdown.classList.remove('active');
-        if (UIStore.activeDropdownInput === input) {
-            currentFocusIdx = -1;
-            UIStore.activeDropdownInput = null;
-        }
-    };
-    const renderDropdown = (filtered) => {
-        if (document.activeElement !== input) {
-            closeDropdown();
-            return;
-        }
-        wrapper.classList.add('active');
-        localDropdown.classList.add('active');
-        localDropdown.innerHTML = "";
-
-        if (filtered.length === 0) {
-            const li = document.createElement('li');
-            li.className = 'custom-option item-no-match';
-            li.innerText = '번호 확인';
-            localDropdown.appendChild(li);
-        } else {
-            filtered.forEach(no => {
-                const li = document.createElement('li'); li.className = 'custom-option'; li.innerText = no; li.onmousedown = (e) => e.preventDefault(); li.onclick = () => {
-                    input.dataset.programmatic = "true"; // blur 검증 방지
-                    input.value = no; closeDropdown();
-                    input.dispatchEvent(new Event('input'));
-                    input.dispatchEvent(new Event('change'));
-                    
-                    // 드롭다운 번호 선택 즉시 fetchCardByNumber(input, true)를 통해 전체 셋업 및 하이퍼링크 매핑 완료
-                    fetchCardByNumber(input, true);
-                    
-                    setTimeout(() => { delete input.dataset.programmatic; }, 200); // 검증 완료 후 플래그 해제
-                }; localDropdown.appendChild(li);
-            });
-        }
-
-        positionDropdown(localDropdown, wrapper);
-        if (!localDropdown.parentNode) document.body.appendChild(localDropdown);
-    };
-
     const isDiscardOrMove = (UIStore.mode === 'discard') || (UIStore.mode === 'move') || (wrapper.id && (wrapper.id.startsWith('wrap-discard') || wrapper.id.startsWith('wrap-move') || wrapper.id.startsWith('wrap-from')));
 
     const getNameVal = () => {
@@ -8578,8 +8381,6 @@ function setupCardNoAutocomplete(wrapper) {
     };
 
     const handleInput = () => {
-        if (input.hasAttribute('readonly') || wrapper.classList.contains('no-option')) { closeDropdown(); return; }
-        UIStore.activeDropdownInput = input;
         const val = input.value.trim();
         const source = getSourceList();
         const query = val.toUpperCase();
@@ -8593,64 +8394,10 @@ function setupCardNoAutocomplete(wrapper) {
                 if (matches.length >= 8) break; // 8개 매칭 충족 시 조기 종료
             }
         }
-        renderDropdown(matches);
+        return matches;
     };
 
-    const debouncedHandleInput = debounce(handleInput, 100);
-    input.addEventListener('input', debouncedHandleInput);
-
-    input.addEventListener('focus', () => {
-        if (input.hasAttribute('readonly') || wrapper.classList.contains('no-option')) { closeDropdown(); return; }
-        activeDropdownInput = input;
-        if (UIStore.pendingBlurFn && activeDropdownInput === input) { clearTimeout(UIStore.pendingBlurFn); UIStore.pendingBlurFn = null; }
-        const val = input.value.trim().toUpperCase();
-        const source = getSourceList();
-        const nameVal = getNameVal();
-
-        if (val || nameVal) {
-            let matches = [];
-            for (let i = 0; i < source.length; i++) {
-                const no = source[i];
-                if (no.toUpperCase().includes(val)) {
-                    matches.push(no);
-                    if (matches.length >= 8) break;
-                }
-            }
-            renderDropdown(matches);
-        } else {
-            if (source.length > 0) renderDropdown(source.slice(0, 8)); // 8개로 제한하여 렌더링
-        }
-    });
-    input.addEventListener('blur', () => {
-        if (debouncedHandleInput.cancel) debouncedHandleInput.cancel();
-        closeDropdown();
-    });
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Tab') {
-            if (localDropdown.classList.contains('active')) {
-                let selectedVal = null; const items = localDropdown.querySelectorAll('li:not(.item-no-match)');
-                if (currentFocusIdx > -1 && items[currentFocusIdx]) { selectedVal = items[currentFocusIdx].innerText; } else if (items.length > 0) { selectedVal = items[0].innerText; }
-                if (selectedVal) {
-                    input.dataset.programmatic = "true";
-                    input.value = selectedVal;
-                    input.dispatchEvent(new Event('input'));
-                    input.dispatchEvent(new Event('change'));
-                    
-                    // 탭 선택 즉시 fetchCardByNumber(input, true)를 통해 전체 셋업 및 하이퍼링크 매핑 완료
-                    fetchCardByNumber(input, true);
-                    
-                    setTimeout(() => { delete input.dataset.programmatic; }, 200);
-                }
-                closeDropdown();
-            } return;
-        }
-        if (!localDropdown.classList.contains('active')) return;
-        const items = localDropdown.querySelectorAll('li:not(.item-no-match)');
-        if (e.key === 'ArrowDown') { e.preventDefault(); currentFocusIdx++; if (currentFocusIdx >= items.length) currentFocusIdx = 0; updateHighlight(items, currentFocusIdx); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); currentFocusIdx--; if (currentFocusIdx < 0) currentFocusIdx = items.length - 1; updateHighlight(items, currentFocusIdx); }
-        else if (e.key === 'Enter') { if (currentFocusIdx > -1 && items[currentFocusIdx]) { e.preventDefault(); items[currentFocusIdx].click(); } }
-        else if (e.key === 'Escape') { closeDropdown(); }
-    });
+    setupCardSearchDropdown(wrapper, handleInput, fetchCardByNumber);
 }
 
 /**
@@ -9054,6 +8801,10 @@ function setupIllustrationField(wrapper, changeCallback) {
 }
 
 function setupCustomDropdown(wrapper, changeCallback) {
+    if (wrapper.querySelector('[data-field="no"]')) {
+        setupCardNoAutocomplete(wrapper);
+        return;
+    }
     if (wrapper.querySelector('[data-field="illust"]')) {
         setupIllustrationField(wrapper, changeCallback);
         return;
