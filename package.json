@@ -6,7 +6,16 @@
     "dev": "firebase emulators:start",
     "dev:ui": "npx -y http-server public",
     "serve": "firebase serve",
-    "deploy": "firebase deploy"
+    "deploy": "firebase deploy",
+    "illustrations:sync": "node scripts/sync_card_illustrations.js",
+    "illustrations:upload:dry-run": "node scripts/upload_card_illustrations.js",
+    "illustrations:upload": "node scripts/upload_card_illustrations.js --apply",
+    "illustrations:sync:cloud": "node scripts/sync_card_illustrations_cloud.js --apply",
+    "illustrations:phash": "node scripts/build_card_illustration_phash.js",
+    "test:illustrations": "node --test scripts/sync_card_illustrations.test.js scripts/upload_card_illustrations.test.js scripts/build_card_illustration_phash.test.js scripts/illustration_images.test.js"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "sharp": "^0.35.4"
+  }
 }

@@ -23,6 +23,7 @@ const HTTP_FUNCTION_NAMES = [
     "uploadMembershipCsv",
     "searchDeck",
     "searchCard",
+    "searchCardByImage",
     "resolveCardNames",
     "suggestCardNames",
     "getDeckCards",

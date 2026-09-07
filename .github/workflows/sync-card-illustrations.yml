@@ -1,0 +1,44 @@
+name: Sync card illustrations
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 매일 한국 시간 오전 3시 30분
+    - cron: "30 18 * * *"
+
+concurrency:
+  group: card-illustration-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install illustration dependencies
+        run: npm ci
+
+      - name: Install Firebase dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YGO_SYNAPSE }}
+
+      - name: Synchronize changed illustrations
+        run: node scripts/sync_card_illustrations_cloud.js --apply

@@ -34,5 +34,9 @@ Thumbs.db
 *serviceAccount*.json
 serviceAccountKey.json
 
+# Locally synchronized card illustration assets and state
+resources/illustrations/
+data/illustration-sync/
+
 # Local planning and guidance documents
 /docs/

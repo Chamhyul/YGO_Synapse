@@ -28,6 +28,7 @@ exports.addCards = cardRoutes.addCards;
 exports.moveCards = cardRoutes.moveCards;
 exports.discardCards = cardRoutes.discardCards;
 exports.suggestCardNames = cardRoutes.suggestCardNames;
+exports.searchCardByImage = require('./routes/cardImageSearch').searchCardByImage;
 
 // 2. 팩 기능 모음
 const packRoutes = require("./routes/pack");
