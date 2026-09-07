@@ -7351,6 +7351,7 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
         // tempBox 초기화 후 Fragment를 한 번에 삽입 (Reflow 1회)
         tempBox.innerHTML = '';
         tempBox.appendChild(fragment);
+        SearchIllustrations.mount(tempBox, targetCid || cardMeta?.cid, cardMeta?.info);
     };
 
     if (!targetCid) targetCid = findCidByNameOrNo(targetCardName, prioritizeNumber);
