@@ -120,7 +120,8 @@ async function saveNotices(notices) {
   await file.save(JSON.stringify(payload, null, 2), {
     contentType: "application/json",
     public: true,
-    metadata: { cacheControl: "public, max-age=3600" },
+    // 고정 URL을 유지하면서 ETag로 변경 여부를 재검증합니다.
+    metadata: { cacheControl: "public, max-age=0, must-revalidate" },
   });
 
   return sorted;

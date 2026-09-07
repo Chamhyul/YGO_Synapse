@@ -12536,6 +12536,24 @@ function signOutCurrentUser() {
 
 let notices = []; // Storage(notices.json)에서 로드된 공지사항 데이터
 const READ_NOTICES_KEY = 'ygo_synapse_read_notices';
+const NOTICE_STORAGE_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? 'http://127.0.0.1:9199/v0/b/ygo-synapse.firebasestorage.app/o/public%2Fnotices.json?alt=media'
+    : 'https://storage.googleapis.com/ygo-synapse.firebasestorage.app/public/notices.json';
+
+function applyNotices(nextNotices) {
+    // id 형식: "YYYY.MM.DDTHH:MM" (KST). 과도기 하이픈 형식도 함께 읽습니다.
+    // createdAt: 브라우저가 파싱할 수 있는 ISO 구분자로 변환하여 작성 시각 반영
+    notices = (Array.isArray(nextNotices) ? nextNotices : []).map(n => {
+        const normalizedId = String(n.id).replace(/^(\d{4})-(\d{2})-(\d{2})T/, '$1.$2.$3T');
+        return {
+            ...n,
+            id: normalizedId,
+            date: normalizedId.substring(0, 10),
+            createdAt: new Date(normalizedId.replace(/^(\d{4})\.(\d{2})\.(\d{2})T/, '$1-$2-$3T') + ':00+09:00').getTime()
+        };
+    });
+    updateNotiBadge();
+}
 
 /**
  * [개편] Storage(notices.json)에서 공지사항 데이터를 가져옵니다.
@@ -12543,36 +12561,17 @@ const READ_NOTICES_KEY = 'ygo_synapse_read_notices';
  */
 async function fetchNotices() {
     try {
-        let url = 'https://storage.googleapis.com/ygo-synapse.firebasestorage.app/public%2Fnotices.json';
-        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-            url = 'http://127.0.0.1:9199/v0/b/ygo-synapse.firebasestorage.app/o/public%2Fnotices.json?alt=media';
-        }
-        const res = await fetch(url);
+        // 캐시된 본문이 있어도 ETag를 재검증하여 최신 공지만 적용합니다.
+        const res = await fetch(NOTICE_STORAGE_URL, { cache: 'no-cache' });
         if (!res.ok) {
             // 파일이 존재하지 않는 경우(404 등) 예외를 발생시키지 않고 빈 공지로 처리
-            notices = [];
-            updateNotiBadge();
+            applyNotices([]);
             return;
         }
         const data = await res.json();
-
-        // id 형식: "YYYY.MM.DDTHH:MM" (KST). 과도기 하이픈 형식도 함께 읽습니다.
-        // createdAt: 브라우저가 파싱할 수 있는 ISO 구분자로 변환하여 작성 시각 반영
-        notices = (data.notices || []).map(n => {
-            const normalizedId = String(n.id).replace(/^(\d{4})-(\d{2})-(\d{2})T/, '$1.$2.$3T');
-            return {
-                ...n,
-                id: normalizedId,
-                date: normalizedId.substring(0, 10),
-                createdAt: new Date(normalizedId.replace(/^(\d{4})\.(\d{2})\.(\d{2})T/, '$1-$2-$3T') + ':00+09:00').getTime()
-            };
-        });
-
-        // 데이터 로드 후 초기 UI 업데이트
-        updateNotiBadge();
+        applyNotices(data.notices);
     } catch (error) {
-        notices = [];
-        updateNotiBadge();
+        applyNotices([]);
         console.warn("Notice file fetch failed or empty notices:", error.message || error);
     }
 }
@@ -12761,10 +12760,7 @@ function markNoticeAsRead(date) {
  */
 window.NoticeSet = {
     url: FIREBASE_CONFIG.ENDPOINTS.manageNotice,
-
-    storageUrl: (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-        ? "http://127.0.0.1:9199/v0/b/ygo-synapse.firebasestorage.app/o/public%2Fnotices.json?alt=media"
-        : "https://storage.googleapis.com/ygo-synapse.firebasestorage.app/public/notices.json",
+    storageUrl: NOTICE_STORAGE_URL,
 
     async request(body) {
         if (typeof firebase === 'undefined' || !firebase.auth) {
@@ -12789,7 +12785,14 @@ window.NoticeSet = {
             });
             const result = await res.json();
             console.log("결과:", result);
-            if (res.ok && typeof fetchNotices === 'function') fetchNotices();
+            if (res.ok && Array.isArray(result.notices)) {
+                // 관리 API가 반환한 최신 목록을 즉시 적용해 Storage 캐시와 분리합니다.
+                applyNotices(result.notices);
+                const popup = document.getElementById('noti-popup');
+                if (popup && popup.classList.contains('active')) renderNotiPopup();
+            } else if (res.ok) {
+                await fetchNotices();
+            }
             return result;
         } catch (e) {
             console.error("요청 중 오류 발생:", e);
@@ -12799,7 +12802,7 @@ window.NoticeSet = {
 
     async list() {
         try {
-            const res = await fetch(this.storageUrl);
+            const res = await fetch(this.storageUrl, { cache: 'no-cache' });
             if (!res.ok) {
                 console.log("등록된 공지사항이 없습니다.");
                 return [];
