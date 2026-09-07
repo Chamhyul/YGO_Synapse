@@ -3349,6 +3349,7 @@ function handleDiscardNameInput(input) {
 
 
 function resetDiscardRow(row, level) {
+    IllustrationPicker.close(false, false);
     const target = getQueryTarget(row);
     const illustInp = target.querySelector('.discard-card-illustration, .desktop-card-illust, [data-field="illust"]'); const rareInp = target.querySelector('.discard-card-rarity, .desktop-card-rare, [data-field="rare"]'); const locInp = target.querySelector('.discard-card-loc, .desktop-card-loc, [data-field="loc"]'); const qtyInput = target.querySelector('.discard-card-qty, .desktop-card-qty, [data-field="qty"]');
     const illustWrap = illustInp ? illustInp.closest('.custom-select-wrapper') : null; const rareWrap = rareInp ? rareInp.closest('.custom-select-wrapper') : null; const locWrap = locInp ? locInp.closest('.custom-select-wrapper') : null;
@@ -3356,7 +3357,7 @@ function resetDiscardRow(row, level) {
     if (rareWrap) { rareWrap.classList.remove('single-option'); rareWrap.classList.add('no-option'); }
     if (locWrap) { locWrap.classList.remove('single-option'); locWrap.classList.add('no-option'); }
     if (level === 'no') {
-        illustInp.value = ""; illustInp.setAttribute('readonly', true); if (illustWrap) illustWrap.dataset.options = "[]";
+        setIllustrationValue(illustInp, ""); illustInp.setAttribute('readonly', true); if (illustWrap) illustWrap.dataset.options = "[]";
         rareInp.value = ""; rareInp.setAttribute('readonly', true); if (rareWrap) rareWrap.dataset.options = "[]"; delete rareInp.dataset.raw;
         locInp.value = ""; if (locWrap) locWrap.dataset.options = "[]"; delete locInp.dataset.raw; qtyInput.value = '';
     }
@@ -3367,6 +3368,7 @@ function resetDiscardRow(row, level) {
 }
 
 function updateDiscardIllusts(row, matches) {
+    prepareOwnedIllustrations(row, matches);
     const target = getQueryTarget(row);
     const illustInp = target.querySelector('.discard-card-illustration, [data-field="illust"]');
     const illustWrap = illustInp ? illustInp.closest('.custom-select-wrapper') : null;
@@ -3380,11 +3382,11 @@ function updateDiscardIllusts(row, matches) {
     illustWrap.dataset.options = JSON.stringify(options);
     illustInp.removeAttribute('readonly'); illustWrap.classList.remove('no-option');
     setupDropdownForField(illustInp, illustWrap);
-    const currentVal = illustInp.value; const isValid = options.some(o => o.val === currentVal);
+    const currentVal = getIllustrationValue(illustInp); const isValid = options.some(o => o.val === currentVal);
     if (isValid) { handleDiscardIllustChange(illustInp); } else {
-        if (options.length === 1) { illustWrap.classList.add('single-option'); illustInp.value = options[0].val; handleDiscardIllustChange(illustInp); }
-        else if (options.length === 0) { illustInp.value = ""; illustWrap.classList.add('no-option'); resetDiscardRow(row, 'no'); }
-        else { illustInp.value = ""; illustWrap.classList.remove('single-option'); handleDiscardIllustChange(illustInp); }
+        if (options.length === 1) { illustWrap.classList.add('single-option'); setIllustrationValue(illustInp, options[0].val); handleDiscardIllustChange(illustInp); }
+        else if (options.length === 0) { setIllustrationValue(illustInp, ""); illustWrap.classList.add('no-option'); resetDiscardRow(row, 'no'); }
+        else { setIllustrationValue(illustInp, ""); illustWrap.classList.remove('single-option'); handleDiscardIllustChange(illustInp); }
     }
 
     if (document.documentElement.classList.contains('is-mobile-device')) {
@@ -3431,7 +3433,8 @@ function handleDiscardIllustChange(input) {
     const target = getQueryTarget(row);
     const cardNoInp = target.querySelector('.discard-card-no, [data-field="no"]');
     const cardNo = cardNoInp ? cardNoInp.value.trim() : "";
-    const selectedIllust = input.value;
+    const selectedIllust = getIllustrationValue(input);
+    setIllustrationValue(input, selectedIllust);
     if (!selectedIllust) {
         const rareInp = target.querySelector('.discard-card-rarity, [data-field="rare"]');
         if (rareInp) { rareInp.value = ""; handleDiscardRareChange(rareInp); }
@@ -3453,7 +3456,7 @@ function updateDiscardRarities(row, matches) {
     const cardNoInp = target.querySelector('.discard-card-no, [data-field="no"]');
     const cardNo = cardNoInp ? cardNoInp.value.trim() : "";
     const illustInp = target.querySelector('.discard-card-illustration, [data-field="illust"]');
-    const illust = illustInp ? illustInp.value : "";
+    const illust = getIllustrationValue(illustInp);
     if (!rareInp || !rareWrap || !cardNo) return;
 
     const uniqueRares = [...new Set(matches.map(r => String(r[2]).trim()))].sort(compareRarity);
@@ -3484,7 +3487,7 @@ function updateDiscardRaritiesDynamic(wrap) {
     const cardNoInp = target.querySelector('.discard-card-no, [data-field="no"]');
     const cardNo = cardNoInp ? cardNoInp.value.trim().toUpperCase() : "";
     const illustInp = target.querySelector('.discard-card-illustration, [data-field="illust"]');
-    const illust = illustInp ? illustInp.value : "";
+    const illust = getIllustrationValue(illustInp);
     const rareInput = target.querySelector('.discard-card-rarity, [data-field="rare"]');
     const rare = rareInput ? (rareInput.dataset.raw || rareInput.value) : "";
     if (!cardNo || !illust || !rare) return;
@@ -3505,7 +3508,7 @@ function handleDiscardRareChange(input) {
     const cardNoInp = target.querySelector('.discard-card-no, [data-field="no"]');
     const cardNo = cardNoInp ? cardNoInp.value.trim() : "";
     const illustInp = target.querySelector('.discard-card-illustration, [data-field="illust"]');
-    const selectedIllust = illustInp ? illustInp.value : "";
+    const selectedIllust = getIllustrationValue(illustInp);
     const selectedRare = input.dataset.raw || input.value;
     if (!input.value) {
         const locInp = target.querySelector('.discard-card-loc, [data-field="loc"]');
@@ -3528,7 +3531,7 @@ function updateDiscardLocations(row, matches) {
     const cardNoInp = target.querySelector('.discard-card-no, [data-field="no"]');
     const cardNo = cardNoInp ? cardNoInp.value.trim() : "";
     const illustInp = target.querySelector('.discard-card-illustration, [data-field="illust"]');
-    const illust = illustInp ? illustInp.value : "";
+    const illust = getIllustrationValue(illustInp);
     const rareInput = target.querySelector('.discard-card-rarity, [data-field="rare"]');
     const rare = rareInput ? (rareInput.dataset.raw || rareInput.value) : "";
     if (!locInp || !locWrap || !cardNo) return;
@@ -3572,7 +3575,7 @@ function updateDiscardLocationsDynamic(wrap) {
     const cardNoInp = target.querySelector('.discard-card-no, [data-field="no"]');
     const cardNo = cardNoInp ? cardNoInp.value.trim() : "";
     const illustInp = target.querySelector('.discard-card-illustration, [data-field="illust"]');
-    const illust = illustInp ? illustInp.value : "";
+    const illust = getIllustrationValue(illustInp);
     const rareInput = target.querySelector('.discard-card-rarity, [data-field="rare"]');
     const rare = rareInput ? (rareInput.dataset.raw || rareInput.value) : "";
     if (!cardNo || !illust || !rare) return;
@@ -3808,6 +3811,7 @@ function handleCardQtyInput(input) {
 }
 
 function clearPageNameAndNo(btn_or_input) {
+    IllustrationPicker.close(false, false);
     const container = getActiveContainer(btn_or_input);
     if (!container) return;
     const row = getRowFromInput(btn_or_input);
@@ -3821,10 +3825,12 @@ function clearPageNameAndNo(btn_or_input) {
     if (container) {
         delete container.dataset.searchMode;
         delete container.dataset.cardData;
+        delete container.dataset.illustrationCid;
     }
     if (row) {
         delete row.dataset.searchMode;
         delete row.dataset.cardData;
+        delete row.dataset.illustrationCid;
     }
 
     if (nameInput) {
@@ -3928,7 +3934,7 @@ async function fetchCardByName(input, force = false) {
         if (wrap) { wrap.dataset.options = "[]"; wrap.classList.remove('single-option'); wrap.classList.add('no-option'); }
     }
     if (illustInp) { 
-        illustInp.value = ""; 
+        setIllustrationValue(illustInp, "");
         illustInp.setAttribute('readonly', true); 
         const wrap = illustInp.closest('.custom-select-wrapper');
         if (wrap) { wrap.dataset.options = "[]"; wrap.classList.remove('single-option'); wrap.classList.add('no-option'); }
@@ -4031,6 +4037,7 @@ async function fetchCardByName(input, force = false) {
             raritiesByNo: res.raritiesByNo,
             linkData: res.linkData
         };
+        prepareCardIllustrations(container, res.linkData?.id, res.illustrations || []);
 
         if (container) {
             container.dataset.cardData = JSON.stringify(cardDataPayload);
@@ -4179,7 +4186,7 @@ function updateSubCellsFromCache(cardNo, row_or_container) {
 
     if (rarityInp) { rarityInp.value = ""; rarityInp.setAttribute('readonly', true); }
     if (rarityWrap) { rarityWrap.dataset.options = "[]"; rarityWrap.classList.remove('single-option'); rarityWrap.classList.add('no-option'); }
-    if (anotherInp) { anotherInp.value = ""; anotherInp.setAttribute('readonly', true); }
+    if (anotherInp) { setIllustrationValue(anotherInp, ""); anotherInp.setAttribute('readonly', true); }
     if (illustrationWrap) { illustrationWrap.dataset.options = "[]"; illustrationWrap.classList.remove('single-option'); illustrationWrap.classList.add('no-option'); }
 }
 
@@ -4205,6 +4212,7 @@ function lockNameInputAndSetLink(nameInput, name, container, linkData = null) {
     }
     
     if (finalLinkId && finalLinkId !== "MISSING_CID") {
+        prepareCardIllustrations(container, finalLinkId);
         nameInput.classList.add('hyperlink-style');
         nameInput.style.cursor = 'pointer';
         nameInput.style.textDecoration = 'underline';
@@ -4655,6 +4663,7 @@ function applyPageCardDataToRows(data, row_or_container) {
     if (!data || !container) return;
 
     container.dataset.cardData = JSON.stringify(data);
+    prepareCardIllustrations(container, data.linkData?.id, data.illustrations || []);
 
     const row = getRowFromInput(container);
     if (row && row !== container) {
@@ -4686,14 +4695,14 @@ function applyPageCardDataToRows(data, row_or_container) {
             illustrationWrap.classList.remove('no-option');
         } else {
             if (anotherInp) {
-                anotherInp.value = illustrationIds[0] === 1 ? "기본" : String(illustrationIds[0]);
+                setIllustrationValue(anotherInp, String(illustrationIds[0]));
                 anotherInp.dataset.raw = String(illustrationIds[0]);
             }
             illustrationWrap.classList.add('single-option');
             illustrationWrap.classList.remove('no-option');
             illustrationWrap.dataset.options = JSON.stringify([{ val: String(illustrationIds[0]), text: illustrationIds[0] === 1 ? "기본" : String(illustrationIds[0]) }]);
         }
-        if (!isMobileDevice && anotherInp) {
+        if (anotherInp) {
             setupDropdownForField(anotherInp, illustrationWrap);
         }
     }
@@ -5421,6 +5430,38 @@ function matchKorean(item, query) {
     }
 
     return false;
+}
+
+/**
+ * 카드명 자동완성 공통 관련도 정렬.
+ * 완전 일치 → 앞부분 일치 → 더 앞에서 일치 → 짧은 이름 → 가나다순 순서입니다.
+ */
+function compareCardNameSuggestion(a, b, query) {
+    const normalizedQuery = normalizeStr(query);
+    const normalizedA = a.normalized || normalizeStr(a.original || a.val || a);
+    const normalizedB = b.normalized || normalizeStr(b.original || b.val || b);
+
+    const exactA = normalizedA === normalizedQuery;
+    const exactB = normalizedB === normalizedQuery;
+    if (exactA !== exactB) return exactA ? -1 : 1;
+
+    const startsA = normalizedA.startsWith(normalizedQuery);
+    const startsB = normalizedB.startsWith(normalizedQuery);
+    if (startsA !== startsB) return startsA ? -1 : 1;
+
+    const indexA = normalizedA.indexOf(normalizedQuery);
+    const indexB = normalizedB.indexOf(normalizedQuery);
+    const positionA = indexA < 0 ? Number.MAX_SAFE_INTEGER : indexA;
+    const positionB = indexB < 0 ? Number.MAX_SAFE_INTEGER : indexB;
+    if (positionA !== positionB) return positionA - positionB;
+
+    const originalA = String(a.original || a.val || a);
+    const originalB = String(b.original || b.val || b);
+    return originalA.length - originalB.length || originalA.localeCompare(originalB, 'ko');
+}
+
+function sortCardNameSuggestions(items, query, limit = 8) {
+    return items.slice().sort((a, b) => compareCardNameSuggestion(a, b, query)).slice(0, limit);
 }
 
 function showRecentInDropdown() {
@@ -8175,13 +8216,12 @@ function setupCardNameAutocomplete(wrapper) {
                         const allDepleted = nos.every(no => UIStore.mode === 'move' ? isMoveCardDepleted(no, targetRow) : isCardDepleted(no, targetRow));
                         if (allDepleted) continue;
                     }
-                    matches.push(item.original);
-                    if (matches.length >= 8) break;
+                    matches.push(item);
                 }
             }
         }
 
-        renderDropdown(matches);
+        renderDropdown(sortCardNameSuggestions(matches, query, 8).map(item => item.original));
     };
 
     const debouncedHandleInput = debounce(handleInput, 100);
@@ -8326,8 +8366,7 @@ function setupGlobalCardNameAutocomplete(wrapper) {
                 const item = CardDataStore.allCardNamesNormalized[i];
                 if (item.chosung.includes(queryChosung)) {
                     if (Hangul.search(item.normalized, normalizedQuery) !== -1) {
-                        matches.push(item.original);
-                        if (matches.length >= 8) break; // 8개 매칭 충족 시 조기 종료
+                        matches.push(item);
                     }
                 }
             }
@@ -8337,14 +8376,13 @@ function setupGlobalCardNameAutocomplete(wrapper) {
                 const item = localNamesNormalized[i];
                 if (item.chosung.includes(queryChosung)) {
                     if (Hangul.search(item.normalized, normalizedQuery) !== -1) {
-                        matches.push(item.original);
-                        if (matches.length >= 8) break;
+                        matches.push(item);
                     }
                 }
             }
         }
 
-        renderDropdown(matches);
+        renderDropdown(sortCardNameSuggestions(matches, normalizedQuery, 8).map(item => item.original));
     };
 
     const debouncedHandleInput = debounce(handleInput, 100);
@@ -8928,7 +8966,98 @@ function updateDropdownArrowState(wrapper) {
     }
 }
 
+// Labels are presentation only; inventory comparisons keep their original values.
+function getIllustrationValue(input) {
+    if (!input || !input.value) return '';
+    return input.dataset.raw || IllustrationImages.ciidValue(input.value) || input.value;
+}
+
+function setIllustrationValue(input, value) {
+    if (!input) return;
+    input.dataset.raw = String(value || '');
+    input.value = IllustrationImages.label(value) || String(value || '');
+    updateInputAutoWidth(input);
+}
+
+function prepareCardIllustrations(container, cid, ids = []) {
+    if (!container || !IllustrationImages.normalizeKey(cid, 1)) return;
+    container.dataset.illustrationCid = String(cid);
+    const row = getRowFromInput(container);
+    if (row) row.dataset.illustrationCid = String(cid);
+    void IllustrationImages.preloadCard(String(cid), ids);
+}
+
+function prepareOwnedIllustrations(container, matches) {
+    const cid = matches.find(item => item[6])?.[6] || findCidByNameOrNo(matches[0]?.[0]);
+    prepareCardIllustrations(container, cid, matches.map(item => item[5] || '1'));
+}
+
+function openIllustrationPicker(input, wrapper) {
+    if (!input || input.disabled) return;
+    if (UIStore.mode === 'move') updateMoveIllustsDynamic(wrapper);
+    else if (UIStore.mode === 'discard') updateDiscardIllustsDynamic(wrapper);
+    const options = JSON.parse(wrapper.dataset.options || '[]');
+    updateDropdownArrowState(wrapper);
+    if (options.length < 2) {
+        if (options.length === 1 && getIllustrationValue(input) !== String(options[0].val)) {
+            setIllustrationValue(input, options[0].val);
+            if (wrapper._changeCallback) wrapper._changeCallback(input);
+        }
+        if (options.length === 0) {
+            setIllustrationValue(input, '');
+            if (wrapper._changeCallback) wrapper._changeCallback(input);
+        }
+        return;
+    }
+    const row = getRowFromInput(input);
+    const container = getActiveContainer(row) || row;
+    let data = {};
+    try { data = JSON.parse(container?.dataset.cardData || row?.dataset.cardData || '{}'); } catch (_) {}
+    const cid = container?.dataset.illustrationCid || row?.dataset.illustrationCid || data.linkData?.id;
+    IllustrationPicker.open({
+        anchor: input, cid, options, value: getIllustrationValue(input),
+        mobile: document.documentElement.classList.contains('is-mobile-device'),
+        onSelect: opt => {
+            setIllustrationValue(input, opt.val);
+            if (wrapper._changeCallback) wrapper._changeCallback(input);
+            else if (UIStore.mode === 'move') handleMoveIllustChange(input);
+            else if (UIStore.mode === 'discard') handleDiscardIllustChange(input);
+            if (document.documentElement.classList.contains('is-mobile-device')) renderMobileCards();
+        }
+    });
+}
+
+function setupIllustrationField(wrapper, changeCallback) {
+    const input = wrapper.querySelector('input');
+    wrapper._changeCallback = changeCallback;
+    input.readOnly = true;
+    input.setAttribute('aria-haspopup', 'dialog');
+    if (!input.hasAttribute('aria-expanded')) input.setAttribute('aria-expanded', 'false');
+    setIllustrationValue(input, getIllustrationValue(input));
+    updateDropdownArrowState(wrapper);
+    if (wrapper.dataset.illustrationInit) return;
+    wrapper.dataset.illustrationInit = 'true';
+    wrapper.addEventListener('click', event => {
+        // Mobile wrappers already have an inline handler for the second sheet.
+        if (wrapper.hasAttribute('onclick')) return;
+        event.stopPropagation();
+        openIllustrationPicker(input, wrapper);
+    });
+    input.addEventListener('keydown', event => {
+        if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(event.key)) {
+            event.preventDefault();
+            openIllustrationPicker(input, wrapper);
+        }
+    });
+    wrapper._arrowObserver = new MutationObserver(() => updateDropdownArrowState(wrapper));
+    wrapper._arrowObserver.observe(wrapper, { attributes: true, attributeFilter: ['data-options'] });
+}
+
 function setupCustomDropdown(wrapper, changeCallback) {
+    if (wrapper.querySelector('[data-field="illust"]')) {
+        setupIllustrationField(wrapper, changeCallback);
+        return;
+    }
     const input = wrapper.querySelector('.custom-input');
     const isFreeType = wrapper.dataset.type === 'free';
     let currentFocusIdx = -1;
@@ -9183,7 +9312,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
         const cardNoInp = row.querySelector('.move-card-no, .desktop-card-no, [data-field="no"]');
         const cardNo = cardNoInp ? cardNoInp.value.trim() : "";
         const illustInp = row.querySelector('.move-card-illustration, .desktop-card-illust, [data-field="illust"]');
-        const illust = illustInp ? illustInp.value : "";
+        const illust = getIllustrationValue(illustInp);
 
         const rareInput = row.querySelector('.move-card-rarity, .desktop-card-rare, [data-field="rare"]');
         if (!rareInput || !cardNo) return;
@@ -9361,6 +9490,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
 
 
 function resetMoveRow(row, level) {
+    IllustrationPicker.close(false, false);
     const target = getQueryTarget(row);
     const illustInp = target.querySelector('.move-card-illustration, .desktop-card-illust, [data-field="illust"]'); const rareInp = target.querySelector('.move-card-rarity, .desktop-card-rare, [data-field="rare"]'); const fromInp = target.querySelector('.move-card-from, .desktop-card-loc, [data-field="loc"]'); const qtyInput = target.querySelector('.move-card-qty, .desktop-card-qty, [data-field="qty"]');
     const illustWrap = illustInp ? illustInp.closest('.custom-select-wrapper') : null; const rareWrap = rareInp ? rareInp.closest('.custom-select-wrapper') : null; const fromWrap = fromInp ? fromInp.closest('.custom-select-wrapper') : null;
@@ -9370,7 +9500,7 @@ function resetMoveRow(row, level) {
 
     if (qtyInput) qtyInput.setAttribute('readonly', true);
     if (level === 'no') { 
-        illustInp.value = ""; illustInp.setAttribute('readonly', true); if (illustWrap) illustWrap.dataset.options = "[]"; 
+        setIllustrationValue(illustInp, ""); illustInp.setAttribute('readonly', true); if (illustWrap) illustWrap.dataset.options = "[]";
         rareInp.value = ""; rareInp.setAttribute('readonly', true); if (rareWrap) rareWrap.dataset.options = "[]"; delete rareInp.dataset.raw; 
         fromInp.value = ""; if (fromWrap) fromWrap.dataset.options = "[]"; delete fromInp.dataset.raw; qtyInput.value = ''; 
     }
@@ -9380,6 +9510,7 @@ function resetMoveRow(row, level) {
     }
 }
 function updateMoveIllusts(row, matches) {
+    prepareOwnedIllustrations(row, matches);
     const target = getQueryTarget(row);
     const illustInp = target.querySelector('.move-card-illustration, [data-field="illust"]');
     const illustWrap = illustInp ? illustInp.closest('.custom-select-wrapper') : null;
@@ -9393,8 +9524,8 @@ function updateMoveIllusts(row, matches) {
     illustWrap.dataset.options = JSON.stringify(options);
     illustInp.removeAttribute('readonly'); illustWrap.classList.remove('no-option');
     setupDropdownForField(illustInp, illustWrap);
-    const currentVal = illustInp.value; const isValid = options.some(o => o.val === currentVal);
-    if (isValid) { handleMoveIllustChange(illustInp); } else { if (options.length === 0) { illustInp.value = ""; illustWrap.classList.add('no-option'); } else if (options.length === 1) { illustWrap.classList.add('single-option'); illustInp.value = options[0].val; handleMoveIllustChange(illustInp); } else { illustInp.value = ""; illustWrap.classList.remove('single-option'); handleMoveIllustChange(illustInp); } }
+    const currentVal = getIllustrationValue(illustInp); const isValid = options.some(o => o.val === currentVal);
+    if (isValid) { handleMoveIllustChange(illustInp); } else { if (options.length === 0) { setIllustrationValue(illustInp, ""); illustWrap.classList.add('no-option'); } else if (options.length === 1) { illustWrap.classList.add('single-option'); setIllustrationValue(illustInp, options[0].val); handleMoveIllustChange(illustInp); } else { setIllustrationValue(illustInp, ""); illustWrap.classList.remove('single-option'); handleMoveIllustChange(illustInp); } }
 
     if (document.documentElement.classList.contains('is-mobile-device')) {
         renderMobileCards();
@@ -9405,7 +9536,8 @@ function handleMoveIllustChange(input) {
     const target = getQueryTarget(row);
     const cardNoInp = target.querySelector('.move-card-no, [data-field="no"]');
     const cardNo = cardNoInp ? cardNoInp.value.trim() : "";
-    const selectedIllust = input.value;
+    const selectedIllust = getIllustrationValue(input);
+    setIllustrationValue(input, selectedIllust);
     if (!selectedIllust) {
         const rareInp = target.querySelector('.move-card-rarity, [data-field="rare"]');
         if (rareInp) { rareInp.value = ""; handleMoveRareChange(rareInp); }
@@ -9426,7 +9558,7 @@ function updateMoveRarities(row, matches) {
     const cardNoInp = target.querySelector('.move-card-no, [data-field="no"]');
     const cardNo = cardNoInp ? cardNoInp.value.trim() : "";
     const illustInp = target.querySelector('.move-card-illustration, [data-field="illust"]');
-    const illust = illustInp ? illustInp.value : "";
+    const illust = getIllustrationValue(illustInp);
     if (!rareInp || !rareWrap || !cardNo) return;
 
     const uniqueRares = [...new Set(matches.map(r => String(r[2]).trim()))].sort(compareRarity);
@@ -9448,7 +9580,7 @@ function handleMoveRareChange(input) {
     const cardNoInp = target.querySelector('.move-card-no, [data-field="no"]');
     const cardNo = cardNoInp ? cardNoInp.value.trim() : "";
     const illustInp = target.querySelector('.move-card-illustration, [data-field="illust"]');
-    const selectedIllust = illustInp ? illustInp.value : "";
+    const selectedIllust = getIllustrationValue(illustInp);
     const selectedRare = input.dataset.raw || input.value;
     if (!input.value) {
         const fromInp = target.querySelector('.move-card-from, [data-field="loc"]');
@@ -9513,7 +9645,7 @@ function updateMoveRowMaxQty(qtyInput) {
     const locInp = target.querySelector('.move-card-from, [data-field="loc"]');
     
     const no = noInp ? noInp.value.trim().toUpperCase() : '';
-    const illust = illustInp ? illustInp.value.trim() : '';
+    const illust = getIllustrationValue(illustInp);
     const rare = rareInp ? (rareInp.dataset.raw || rareInp.value.trim()) : '';
     const loc = locInp ? locInp.value.trim() : '';
     
@@ -9545,7 +9677,7 @@ function updateMoveLocations(row, matches) {
     const cardNoInp = target.querySelector('.move-card-no, [data-field="no"]');
     const cardNo = cardNoInp ? cardNoInp.value.trim() : "";
     const illustInp = target.querySelector('.move-card-illustration, [data-field="illust"]');
-    const illust = illustInp ? illustInp.value : "";
+    const illust = getIllustrationValue(illustInp);
     const rareInput = target.querySelector('.move-card-rarity, [data-field="rare"]');
     const rare = rareInput ? (rareInput.dataset.raw || rareInput.value) : "";
     if (!fromInp || !fromWrap || !cardNo) return;
@@ -14074,7 +14206,7 @@ function getMobileCardHtml(idx, nextNum, data) {
     }
     
     const cardNo = data.cardNo || '';
-    const illust = data.illustration || '';
+    const illust = IllustrationImages.label(data.illustration) || '';
     const rarity = data.rarity ? getLocalizedRarity(data.rarity) : '';
     const loc = data.loc || '';
     const to = data.to || '';
@@ -14140,7 +14272,7 @@ function getMobileCardHtml(idx, nextNum, data) {
                     <div class="sheet-form-field half">
                         <label>일러스트</label>
                         <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="illust" data-type="strict" style="position:relative;" onclick="openSheetDropdownOverlay('illust')">
-                            <input type="text" class="custom-input ${illustClass}" data-field="illust" value="${illust}" placeholder="일러스트" readonly>
+                            <input type="text" class="custom-input ${illustClass}" data-field="illust" data-raw="${escapeHTML(data.illustration || '')}" value="${illust}" placeholder="일러스트" readonly>
                             <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
                         </div>
                     </div>
@@ -14197,7 +14329,7 @@ function updateMobileCardDisplay(cardEl) {
     }
 
     const cardNo = noInp ? noInp.value.trim().toUpperCase() : '';
-    const illust = illustInp ? illustInp.value.trim() : '';
+    const illust = IllustrationImages.label(getIllustrationValue(illustInp));
     const rarity = rareInp ? getLocalizedRarity(rareInp.dataset.raw || rareInp.value) : '';
     const loc = locInp ? locInp.value.trim() : '';
     const to = toInp ? toInp.value.trim() : '';
@@ -15012,6 +15144,7 @@ function openEditBottomSheet(idx) {
 }
 
 function closeEntryBottomSheet() {
+    IllustrationPicker.close(false, false);
     const listContainer = getActiveMobileListContainer();
     const sheetContainer = document.getElementById('sheet-fields-container');
     const overlay = document.getElementById('bottom-sheet-overlay');
@@ -15908,7 +16041,7 @@ function clearBottomSheetField(type, event) {
                 }
                 const illustInp = document.getElementById('sheet-card-illust') || row.querySelector('.page-card-illustration');
                 if (illustInp) {
-                    illustInp.value = "";
+                    setIllustrationValue(illustInp, "");
                     illustInp.dataset.raw = "";
                 }
                 const rareWrap = document.getElementById('wrap-sheet-rare') || row.querySelector('[data-field-wrap="rare"]');
@@ -15934,6 +16067,12 @@ function clearBottomSheetField(type, event) {
 }
 
 function openSheetDropdownOverlay(type) {
+    if (type === 'illust') {
+        const input = document.getElementById('sheet-card-illust');
+        const wrapper = document.getElementById('wrap-sheet-illust');
+        if (input && wrapper) openIllustrationPicker(input, wrapper);
+        return;
+    }
     const dropdownSheet = document.getElementById('mobile-sheet-dropdown-select');
     const dropdownOverlay = document.getElementById('sheet-dropdown-overlay');
     const optionsList = document.getElementById('dropdown-select-options-list');
@@ -16180,7 +16319,7 @@ function renderDesktopCardsFromData(dataArray) {
             if (nameInp) nameInp.value = data.name;
             if (noInp) noInp.value = data.cardNo;
             if (illustInp) {
-                illustInp.value = data.illustration;
+                setIllustrationValue(illustInp, data.illustration);
                 illustInp.dataset.raw = data.illustration;
             }
             if (rareInp) {
@@ -16317,7 +16456,7 @@ function desktopAddEntry(mode, subMode, initialData = null) {
             if (nameInp) nameInp.value = initialData.name || "";
             if (noInp) noInp.value = initialData.cardNo || "";
             if (illustInp) {
-                illustInp.value = initialData.illustration || "";
+                setIllustrationValue(illustInp, initialData.illustration || "");
                 illustInp.dataset.raw = initialData.illustration || "";
             }
             if (rareInp) {
