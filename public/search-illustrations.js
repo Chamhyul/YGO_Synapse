@@ -45,7 +45,7 @@
         let opened = false, switching = 0, heightAnimation = null;
         async function initialize() {
             gallery.textContent = '일러스트를 불러오는 중…';
-            const index = await root.IllustrationImages.loadIndex().catch(() => null);
+            const index = await root.IllustrationImages.loadIndex(fetch, cid).catch(() => null);
             if (!gallery.isConnected) return;
             const items = entries(info, index, cid);
             gallery.replaceChildren();

@@ -1,5 +1,5 @@
 const sharp = require('sharp');
-const { getBucket } = require('../config/firebase');
+const { downloadProductionFile } = require('../config/firebase');
 
 const SEARCH_INDEX_PATH = 'system/illustration-search/phash.json';
 const ALGORITHM_VERSION = 'phash-dct-32x32-v1';
@@ -82,7 +82,7 @@ function validateIndex(index) {
 
 async function loadSearchIndex(now = Date.now()) {
   if (cachedIndex && now < cacheExpiresAt) return cachedIndex;
-  const [buffer] = await getBucket().file(SEARCH_INDEX_PATH).download();
+  const buffer = await downloadProductionFile(SEARCH_INDEX_PATH);
   cachedIndex = validateIndex(JSON.parse(buffer.toString('utf8')));
   cacheExpiresAt = now + CACHE_TTL_MS;
   return cachedIndex;
@@ -111,6 +111,16 @@ async function searchImage(image, options = {}) {
   return { queryHash, matches: findNearest(index, queryHash, options.maxResults, options.maxDistance) };
 }
 
+async function searchImages(images, options = {}) {
+  if (!Array.isArray(images) || !images.length) throw new Error('분석할 이미지가 없습니다.');
+  if (images.length > 20) throw new Error('한 번에 최대 20개의 카드 영역을 분석할 수 있습니다.');
+  const index = await loadSearchIndex();
+  return Promise.all(images.map(async (image, regionIndex) => {
+    const queryHash = await phashImage(decodeImage(image));
+    return { regionIndex, queryHash, matches: findNearest(index, queryHash, options.maxResults, options.maxDistance) };
+  }));
+}
+
 function resetCache() {
   cachedIndex = null;
   cacheExpiresAt = 0;
@@ -118,5 +128,5 @@ function resetCache() {
 
 module.exports = {
   ALGORITHM_VERSION, MAX_INPUT_BYTES, phashFromPixels, hammingDistance, decodeImage,
-  phashImage, validateIndex, loadSearchIndex, findNearest, searchImage, resetCache,
+  phashImage, validateIndex, loadSearchIndex, findNearest, searchImage, searchImages, resetCache,
 };

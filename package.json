@@ -1,6 +1,7 @@
 {
   "name": "ygo-synapse-root",
   "version": "1.0.0",
+  "license": "AGPL-3.0-only",
   "description": "Yu-Gi-Oh Card Management System Root",
   "scripts": {
     "dev": "firebase emulators:start",
@@ -12,10 +13,13 @@
     "illustrations:upload": "node scripts/upload_card_illustrations.js --apply",
     "illustrations:sync:cloud": "node scripts/sync_card_illustrations_cloud.js --apply",
     "illustrations:phash": "node scripts/build_card_illustration_phash.js",
-    "test:illustrations": "node --test scripts/sync_card_illustrations.test.js scripts/upload_card_illustrations.test.js scripts/build_card_illustration_phash.test.js scripts/illustration_images.test.js scripts/illustration_picker.test.js scripts/search_illustrations.test.js"
+    "test:illustrations": "node --test scripts/sync_card_illustrations.test.js scripts/upload_card_illustrations.test.js scripts/build_card_illustration_phash.test.js scripts/illustration_images.test.js scripts/illustration_picker.test.js scripts/search_illustrations.test.js scripts/photo_card_search.test.js"
   },
   "private": true,
   "devDependencies": {
     "sharp": "^0.35.4"
+  },
+  "dependencies": {
+    "onnxruntime-web": "^1.21.0"
   }
 }

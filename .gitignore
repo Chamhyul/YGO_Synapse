@@ -37,6 +37,7 @@ serviceAccountKey.json
 # Locally synchronized card illustration assets and state
 resources/illustrations/
 data/illustration-sync/
+data/models/
 
 # Local planning and guidance documents
 /docs/

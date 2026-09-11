@@ -2,10 +2,13 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // public 폴더 하위 리소스는 모든 사용자 읽기 가능, 쓰기는 전면 차단
-    match /public/{allPaths=**} {
-      allow read: if true;
-      allow write: if false;
+    // Public JSON resources remain readable; illustration originals are private.
+    match /public/{fileName} {
+      allow get: if true;
+    }
+    match /public/{folder}/{child}/{rest=**} {
+      allow get: if !(folder == 'resources' && child == 'illustrations')
+                 && !(folder == 'indexes' && child == 'illustration_sources.json');
     }
     // 그 외 기타 경로는 읽기/쓰기 모두 기본 차단
     match /{allPaths=**} {

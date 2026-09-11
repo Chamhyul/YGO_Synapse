@@ -5,11 +5,12 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
     'use strict';
 
-    const BUCKET = 'ygo-synapse.firebasestorage.app';
-    const INDEX_URL = `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/public%2Findexes%2Fillustration_sources.json?alt=media`;
-    const STORAGE_BASE = `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/`;
+    const isLocalDev = typeof location !== 'undefined'
+        && ['localhost', '127.0.0.1', '192.168.0.22'].includes(location.hostname);
+    const ILLUSTRATION_BASE_URL = isLocalDev ? 'https://ygo-synapse.web.app' : '';
+    const INDEX_URL = `${ILLUSTRATION_BASE_URL}/api/illustrations/`;
     const MOMOBAKO_BASE = 'https://cdn.233.momobako.com/ygopro/pics';
-    let indexPromise = null;
+    const indexPromises = new Map();
     const preloads = new Map();
 
     function ciidValue(value) {
@@ -36,10 +37,8 @@
     }
 
     function storageUrl(path, contentSha256) {
-        const normalized = String(path || '').replace(/^\/+/, '');
-        if (!normalized) return null;
-        const version = contentSha256 ? `&v=${encodeURIComponent(String(contentSha256).slice(0, 12))}` : '';
-        return `${STORAGE_BASE}${encodeURIComponent(normalized)}?alt=media${version}`;
+        const match = /(?:^|\/)([1-9]\d{0,9}_[1-9]\d{0,3})\.webp$/.exec(String(path || ''));
+        return match ? `${ILLUSTRATION_BASE_URL}/api/illustrations/${match[1]}.webp` : null;
     }
 
     function momobakoUrl(source) {
@@ -48,19 +47,21 @@
         return `${MOMOBAKO_BASE}/${encodeURIComponent(source.sourceImageId)}.jpg${suffix}`;
     }
 
-    async function loadIndex(fetchImpl = fetch) {
-        if (!indexPromise) {
+    async function loadIndex(fetchImpl = fetch, cid) {
+        if (!/^[1-9]\d{0,9}$/.test(String(cid || ''))) return { files: {} };
+        if (!indexPromises.has(String(cid))) {
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), 5000);
-            indexPromise = fetchImpl(INDEX_URL, { cache: 'no-cache', signal: controller.signal }).then(response => {
+            const promise = fetchImpl(`${INDEX_URL}${cid}.json`, { cache: 'no-store', signal: controller.signal }).then(response => {
                 if (!response.ok) throw new Error(`일러스트 소스 인덱스 요청 실패: HTTP ${response.status}`);
                 return response.json();
             }).catch(error => {
-                indexPromise = null;
+                indexPromises.delete(String(cid));
                 throw error;
             }).finally(() => clearTimeout(timer));
+            indexPromises.set(String(cid), promise);
         }
-        return indexPromise;
+        return indexPromises.get(String(cid));
     }
 
     function resolveFromIndex(index, cid, ciid) {
@@ -77,7 +78,7 @@
     }
 
     async function resolve(cid, ciid = 1) {
-        return resolveFromIndex(await loadIndex().catch(() => null), cid, ciid);
+        return resolveFromIndex(await loadIndex(fetch, cid).catch(() => null), cid, ciid);
     }
 
     // Keep the Image alive as well as its promise so opening a picker reuses a
@@ -120,7 +121,7 @@
         // Start known IDs immediately; the index also covers name-only selection
         // where the card number and its options have not been selected yet.
         const pending = ids.map(id => preload(cid, id));
-        const index = await loadIndex().catch(() => null);
+        const index = await loadIndex(fetch, cid).catch(() => null);
         const prefix = `${cid}_`;
         for (const key of Object.keys(index?.files || {})) {
             if (key.startsWith(prefix)) pending.push(preload(cid, key.slice(prefix.length)));
@@ -161,7 +162,7 @@
     }
 
     function resetIndexCache() {
-        indexPromise = null;
+        indexPromises.clear();
         preloads.clear();
     }
 

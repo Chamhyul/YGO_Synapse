@@ -34,11 +34,36 @@ const HTTP_FUNCTION_NAMES = [
     "manageNotice",
     "manageAdminRole"
 ];
-const FUNCTION_BASE_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-    ? 'http://127.0.0.1:5001/ygo-synapse/asia-northeast3'
-    : 'https://asia-northeast3-ygo-synapse.cloudfunctions.net';
+const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '192.168.0.22']);
+const IS_LOCAL_DEV = LOCAL_DEV_HOSTS.has(location.hostname);
+const LOCAL_EMULATOR_HOST = location.hostname === 'localhost' ? '127.0.0.1' : location.hostname;
+const LOCAL_FUNCTION_BASE_URL = `http://${LOCAL_EMULATOR_HOST}:5001/ygo-synapse/asia-northeast3`;
+const PRODUCTION_FUNCTION_BASE_URL = 'https://asia-northeast3-ygo-synapse.cloudfunctions.net';
+// 로컬 UI에서도 공용 카드 카탈로그는 운영 데이터를 사용합니다. 사용자 데이터 변경,
+// 크롤링/마이그레이션/관리 기능은 에뮬레이터에 남겨 운영 데이터의 변경을 막습니다.
+const PRODUCTION_READ_FUNCTIONS = new Set([
+    'getInitialData',
+    'searchCardByNo',
+    'searchCardByName',
+    'searchCard',
+    'resolveCardNames',
+    'suggestCardNames',
+    'getCardMetadata',
+    'getCardsMetaBatch',
+    'searchCardByImage',
+    'searchPack',
+    'getPackCids',
+    'searchDeck',
+    'getDeckCards',
+    'getRamMemoryStats'
+]);
+function getFunctionBaseUrl(name) {
+    return IS_LOCAL_DEV && !PRODUCTION_READ_FUNCTIONS.has(name)
+        ? LOCAL_FUNCTION_BASE_URL
+        : PRODUCTION_FUNCTION_BASE_URL;
+}
 const FIREBASE_CONFIG = {
-    ENDPOINTS: Object.fromEntries(HTTP_FUNCTION_NAMES.map(name => [name, `${FUNCTION_BASE_URL}/${name}`]))
+    ENDPOINTS: Object.fromEntries(HTTP_FUNCTION_NAMES.map(name => [name, `${getFunctionBaseUrl(name)}/${name}`]))
 };
 // Safari 최적화: callApi에서 await 없이 토큰을 동기적으로 사용하기 위한 캐시
 // AppCheck onTokenChanged가 즉시 호출될 수 있으므로 TDZ 방지를 위해 선언을 본 블록 앞에 위치
@@ -46,8 +71,10 @@ let _cachedAuthToken = null;
 let _cachedAppCheckToken = null;
 
 // Firebase App Check 즉시 초기화
-if (typeof firebase !== 'undefined' && firebase.appCheck &&
-    location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+if (typeof firebase !== 'undefined' && firebase.appCheck) {
+    // localhost에서 운영의 App Check 보호 API를 호출할 수 있도록 debug token을 발급합니다.
+    // 콘솔에 출력된 토큰은 Firebase Console > App Check에서 한 번 등록해야 합니다.
+    if (IS_LOCAL_DEV) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
     const appCheck = firebase.appCheck();
     const provider = new firebase.appCheck.ReCaptchaEnterpriseProvider('6Le3FaksAAAAAFE9lMsuyGfgTkvNaVzrThMUthe3');
     appCheck.activate(provider, true);
@@ -3096,8 +3123,19 @@ function toggleSearchWrapper(isOpen) {
     const wrapper = document.getElementById('search-wrapper');
     const list = document.getElementById('custom-dropdown');
     if (wrapper && list) {
+        if (isOpen && Number(wrapper.dataset.suppressDropdownUntil || 0) > Date.now()) {
+            wrapper.classList.remove('active', 'photo-search-open');
+            wrapper.style.setProperty('--dropdown-height', '0px');
+            list.classList.remove('active');
+            list.style.display = 'none';
+            return;
+        }
         if (isOpen) {
             wrapper.classList.add('active');
+            if (wrapper.classList.contains('photo-search-open')) {
+                list.classList.remove('active'); list.style.display = 'none';
+                return;
+            }
             // DOM 업데이트 후 높이 측정
             setTimeout(() => {
                 const scrollHeight = list.scrollHeight;
@@ -3107,7 +3145,15 @@ function toggleSearchWrapper(isOpen) {
                 wrapper.style.setProperty('--dropdown-height', finalHeight + 'px');
             }, 50); // 약간의 지연으로 레이아웃 안정화 보장
         } else {
+            if (window.PhotoCardSearch?.hasDesktopPhoto?.()) {
+                list.classList.remove('active'); list.style.display = 'none';
+                wrapper.classList.add('active', 'photo-search-open');
+                return;
+            }
             wrapper.classList.remove('active');
+            wrapper.classList.remove('photo-search-open');
+            const photoPanel = document.getElementById('desktop-photo-search-panel');
+            if (photoPanel) photoPanel.hidden = true;
             wrapper.style.setProperty('--dropdown-height', '0px');
         }
     }
@@ -6200,6 +6246,7 @@ async function requestApi(action, params = {}, postData = null) {
             'Content-Type': 'application/json'
         }
     };
+    if (action === 'searchCardByImage') options.signal = AbortSignal.timeout(45000);
 
     // 최신 Firebase ID Token을 즉시 가져와 Authorization 헤더에 설정 (오래된 캐시 토큰으로 인한 403 거부 방지)
     if (UserStore.user) {
@@ -6212,7 +6259,7 @@ async function requestApi(action, params = {}, postData = null) {
         }
     }
 
-    if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    if (!IS_LOCAL_DEV || PRODUCTION_READ_FUNCTIONS.has(action)) {
         if (_cachedAppCheckToken) {
             options.headers['X-Firebase-AppCheck'] = _cachedAppCheckToken;
         } else if (typeof firebase !== 'undefined' && firebase.appCheck) {
@@ -11262,9 +11309,8 @@ function initFirebaseAuth() {
 
     // 리다이렉트 로그인 시 타사 쿠키 차단(세션 끊김)을 막기 위해 authDomain을 동적 변경 (로컬 환경 제외)
     if (firebase.app && firebase.app().options) {
-        const hostname = window.location.hostname;
-        if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-            firebase.app().options.authDomain = hostname;
+        if (!IS_LOCAL_DEV) {
+            firebase.app().options.authDomain = window.location.hostname;
         }
     }
 
@@ -12140,9 +12186,8 @@ function signInWithProvider(providerName) {
     const provider = getProviderInstance(providerName);
     if (!provider) return;
 
-    const hostname = window.location.hostname;
     // 로컬 환경인 경우 세션 연동을 위해 signInWithPopup을 사용하고, 실서버 환경인 경우 COOP 경고 방지를 위해 signInWithRedirect를 사용
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    if (IS_LOCAL_DEV) {
         firebase.auth().signInWithPopup(provider).then(async (result) => {
             // 로컬 팝업 로그인 성공 시 로그인 모달/바텀시트 자동 종료
             const modalId = isMobileDevice ? 'mobile-auth-modal' : 'auth-modal';
@@ -12536,9 +12581,7 @@ function signOutCurrentUser() {
 
 let notices = []; // Storage(notices.json)에서 로드된 공지사항 데이터
 const READ_NOTICES_KEY = 'ygo_synapse_read_notices';
-const NOTICE_STORAGE_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-    ? 'http://127.0.0.1:9199/v0/b/ygo-synapse.firebasestorage.app/o/public%2Fnotices.json?alt=media'
-    : 'https://storage.googleapis.com/ygo-synapse.firebasestorage.app/public/notices.json';
+const NOTICE_STORAGE_URL = 'https://storage.googleapis.com/ygo-synapse.firebasestorage.app/public/notices.json';
 
 function applyNotices(nextNotices) {
     // id 형식: "YYYY.MM.DDTHH:MM" (KST). 과도기 하이픈 형식도 함께 읽습니다.
@@ -13035,7 +13078,7 @@ function validateMigrationLink() {
     }
 
     // 로컬 에뮬레이터 개발 환경 차단 및 안내 처리
-    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    if (IS_LOCAL_DEV) {
         mark.innerHTML = '<i class="material-icons" style="color: var(--warning-yellow)">warning</i>';
         msg.innerHTML = '로컬 환경에선 구글 시트에 접속할 수 없습니다.';
         msg.style.color = 'var(--warning-yellow)';
@@ -13504,7 +13547,7 @@ function switchManageTab(tab) {
     switchToMode(tab);
 }
 
-let addSubMode = 'general'; // 등록 탭 내부 서브 모드 상태 (general, pack, deck)
+let addSubMode = 'general'; // 등록 탭 내부 서브 모드 상태 (general, pack, deck, photo)
 let isRenameMode = false; // 보관 위치 이름 변경 모드 상태
 let isDeleteLocationMode = false; // 보관 위치 삭제 모드 상태
 let isDeleteLocationConfirmPending = false; // 보관 위치 삭제 복구 불가 확인 대기 상태
@@ -13523,6 +13566,7 @@ function handleManageUI(mode) {
         document.getElementById('general-mode-wrapper'),
         document.getElementById('form-pack-add'),
         document.getElementById('form-deck-add'),
+        document.getElementById('form-photo-add'),
         document.getElementById('manage-move-wrapper'),
         document.getElementById('manage-discard-wrapper')
     ];
@@ -13538,6 +13582,13 @@ function handleManageUI(mode) {
         if (addSubMode === 'general') targetId = 'general-mode-wrapper';
         else if (addSubMode === 'pack') targetId = 'form-pack-add';
         else if (addSubMode === 'deck') targetId = 'form-deck-add';
+        else if (addSubMode === 'photo') {
+            targetId = 'form-photo-add';
+            if (window.PhotoCardSearch) {
+                if (document.documentElement.classList.contains('is-mobile-device')) PhotoCardSearch.openRegistrationSheet();
+                else PhotoCardSearch.openPicker('register', document.getElementById('photo-registration-root'));
+            }
+        }
     } else if (mode === 'move') {
         if (autoLocInfo) {
             autoLocInfo.classList.remove('anim-active');
@@ -13629,17 +13680,26 @@ function updateManageFooter(mode, subModeOverride) {
         if (currentSubMode === 'general') {
             leftButtons = [
                 { text: '팩 추가', onclick: "switchAddSubMode('pack')" },
-                { text: '덱 불러오기', onclick: "switchAddSubMode('deck')" }
+                { text: '덱 불러오기', onclick: "switchAddSubMode('deck')" },
+                { text: '사진 검색', onclick: "switchAddSubMode('photo')" }
             ];
         } else if (currentSubMode === 'pack') {
             leftButtons = [
                 { text: '일반', onclick: "switchAddSubMode('general')" },
-                { text: '덱 불러오기', onclick: "switchAddSubMode('deck')" }
+                { text: '덱 불러오기', onclick: "switchAddSubMode('deck')" },
+                { text: '사진 검색', onclick: "switchAddSubMode('photo')" }
             ];
         } else if (currentSubMode === 'deck') {
             leftButtons = [
                 { text: '일반', onclick: "switchAddSubMode('general')" },
-                { text: '팩 추가', onclick: "switchAddSubMode('pack')" }
+                { text: '팩 추가', onclick: "switchAddSubMode('pack')" },
+                { text: '사진 검색', onclick: "switchAddSubMode('photo')" }
+            ];
+        } else if (currentSubMode === 'photo') {
+            leftButtons = [
+                { text: '일반', onclick: "switchAddSubMode('general')" },
+                { text: '팩 추가', onclick: "switchAddSubMode('pack')" },
+                { text: '덱 불러오기', onclick: "switchAddSubMode('deck')" }
             ];
         }
     } else if (mode === 'move') {
@@ -13680,7 +13740,7 @@ function updateManageFooter(mode, subModeOverride) {
             btnWrapper.className = 'manage-footer-btn-group';
             btnWrapper.style.display = 'flex';
             btnWrapper.style.gap = '8px';
-            btnWrapper.style.width = '160px'; // 고정폭 설정하여 레이아웃 시프트 전파 방지 (160px로 조정)
+            btnWrapper.style.width = 'auto';
             btnWrapper.style.flexShrink = '0';
             // leftEl의 맨 앞에 삽입
             leftEl.insertBefore(btnWrapper, leftEl.firstChild);
@@ -13690,12 +13750,17 @@ function updateManageFooter(mode, subModeOverride) {
 
         // 버튼이 없으면 초기 생성
         if (currentBtns.length === 0) {
-            btnWrapper.innerHTML = `
-                <button class="btn-manage-action waves-effect"><span class="btn-text-content"></span></button>
-                <button class="btn-manage-action waves-effect"><span class="btn-text-content"></span></button>
-            `;
+            btnWrapper.innerHTML = Array.from({ length: 3 }, () => '<button class="btn-manage-action waves-effect"><span class="btn-text-content"></span></button>').join('');
             currentBtns = btnWrapper.querySelectorAll('.btn-manage-action');
         }
+
+        currentBtns.forEach((btn, idx) => {
+            if (idx >= leftButtons.length) {
+                btn.classList.add('btn-hidden');
+                btn.setAttribute('aria-hidden', 'true');
+                btn.setAttribute('tabindex', '-1');
+            }
+        });
 
         leftButtons.forEach((btnInfo, idx) => {
             const btn = currentBtns[idx];

@@ -16,7 +16,7 @@ test('Momobako 일반·펜듈럼 URL과 Storage 대체 URL을 만든다', () => 
     'https://cdn.233.momobako.com/ygopro/pics/16178681.jpg!artp');
   assert.equal(images.momobakoUrl({ sourceImageId: null, cdnAvailable: false }), null);
   assert.match(images.storageUrl('public/resources/illustrations/4007_1.webp', 'abcdef1234567890'),
-    /4007_1\.webp\?alt=media&v=abcdef123456/);
+    /\/api\/illustrations\/4007_1\.webp$/);
 });
 
 test('표시 해석 결과는 CDN 우선과 Storage 대체 URL을 함께 제공한다', () => {
@@ -27,7 +27,7 @@ test('표시 해석 결과는 CDN 우선과 Storage 대체 URL을 함께 제공�
     },
   } }, '4007', 1);
   assert.match(result.primaryUrl, /89631139\.jpg!art$/);
-  assert.match(result.fallbackUrl, /4007_1\.webp\?alt=media&v=abcdef123456$/);
+  assert.match(result.fallbackUrl, /\/api\/illustrations\/4007_1\.webp$/);
 });
 
 test('CDN 오류 시 Storage URL로 교체한다', () => {
@@ -62,7 +62,7 @@ test('미리 로딩은 모모바코 실패 후 Storage를 사용하고 중복 �
     '4007_9': { sourceImageId: '89631139', transform: 'art' },
   } }) }));
   const requests = [];
-  const options = { createImage: () => fakeImage(requests, url => url.includes('firebasestorage.googleapis.com')) };
+  const options = { createImage: () => fakeImage(requests, url => url.startsWith('/api/illustrations/')) };
   const first = images.preload('4007', '9', options);
   const second = images.preload('4007', '9th', options);
   assert.equal(first, second);
@@ -106,7 +106,7 @@ test('모모바코 응답이 멈추면 제한 시간 후 서버 이미지로 전
   const result = await images.preload('4007', 1, { timeoutMs: 5, createImage: () => ({
     set src(url) {
       requests.push(url);
-      if (url.includes('firebasestorage.googleapis.com')) queueMicrotask(() => this.onload?.());
+      if (url.startsWith('/api/illustrations/')) queueMicrotask(() => this.onload?.());
     }
   }) });
   assert.equal(result.status, 'loaded');

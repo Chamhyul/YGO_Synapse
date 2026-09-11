@@ -77,7 +77,8 @@ function setCors(res, req) {
   const origin = (req && req.headers.origin) || "";
   const allowed = [
     "https://ygo-synapse.web.app",
-    "https://ygo-synapse.firebaseapp.com"
+    "https://ygo-synapse.firebaseapp.com",
+    "http://192.168.0.22:5005"
   ];
   // localhost 또는 127.0.0.1 (포트 번호 선택 허용) 정규식 검사
   const localOriginRegex = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;

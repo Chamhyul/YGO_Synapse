@@ -158,6 +158,11 @@ test('운영·로컬 주소 목록이 서버 등록과 일치하고 레거시 �
       assert.equal(typeof functions[name],'function',name);assert.ok(url.endsWith('/'+name));
     }
     assert.ok(sandbox.endpoints.updateNickname);
+    if(hostname==='localhost'){
+      assert.ok(sandbox.endpoints.searchCard.startsWith('https://asia-northeast3-ygo-synapse.cloudfunctions.net/'));
+      assert.ok(sandbox.endpoints.addCards.startsWith('http://127.0.0.1:5001/'));
+      assert.ok(sandbox.endpoints.crawlPackCardsBatch.startsWith('http://127.0.0.1:5001/'));
+    }
     for(const match of source.matchAll(/callApi\(['"]([^'"]+)['"]/g))assert.ok(sandbox.endpoints[match[1]],match[1]);
     for(const name of ['keepAlivePing','checkMembership','cleanNumbersCollection','buildIndex'])assert.equal(sandbox.endpoints[name],undefined);
   }

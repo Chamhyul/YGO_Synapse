@@ -79,7 +79,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.2.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=27-search-art-fixed-controls">
+    <link rel="stylesheet" href="style.css?v=77-mobile-photo-options">
 </head>
 
 <body class="no-transition">
@@ -258,6 +258,7 @@
                         placeholder="카드 이름 검색" enterkeyhint="search" autocomplete="off">
                     <i id="mobile-search-clear-btn" class="material-icons clear-btn" style="display: none;">cancel</i>
                 </div>
+                <button id="mobile-photo-search-btn" class="mobile-photo-search-entry" type="button" aria-label="사진으로 카드 검색"><i class="material-icons">photo_camera</i></button>
                 <button class="mobile-search-back-btn" onclick="closeMobileSearch()"><i
                         class="material-icons">arrow_back</i></button>
             </div>
@@ -295,6 +296,7 @@
                             <ul id="custom-dropdown" class="custom-dropdown"></ul>
                         </div>
                         <input type="text" id="card-search" autocomplete="off" placeholder="">
+                        <button id="desktop-photo-search-btn" class="photo-search-icon-btn" type="button" aria-label="사진으로 카드 검색"><i class="material-icons">photo_camera</i></button>
                         <i id="clear-btn" class="material-icons clear-search-btn"
                             onmousedown="event.preventDefault()">cancel</i>
                     </div>
@@ -1722,7 +1724,7 @@
                         <div id="form-pack-add" class="mode-form anim-hidden">
                             <div class="mode-form-content">
                                 <div id="pack-search-box"
-                                    style="background: var(--bg-surface); border-radius: 12px; padding: 20px; border: 1px solid var(--border-color); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); display: flex; flex-direction: column; gap: 12px; transition: all 0.3s ease;">
+                                    style="background: var(--bg-surface); border-radius: 12px; padding: 20px; border: none; box-shadow: none; display: flex; flex-direction: column; gap: 12px; transition: all 0.3s ease;">
                                     <div id="pack-search-content"
                                         style="display: flex; flex-direction: column; gap: 0px; overflow: hidden; transition: max-height 0.3s ease, margin 0.3s ease, opacity 0.3s ease;">
                                         <div class="form-row">
@@ -1745,7 +1747,7 @@
                         <div id="form-deck-add" class="mode-form anim-hidden">
                             <div class="mode-form-content">
                                 <div id="deck-search-box"
-                                    style="background: var(--bg-surface); border-radius: 12px; padding: 20px; border: 1px solid var(--border-color); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); display: flex; flex-direction: column; gap: 12px; transition: all 0.3s ease;">
+                                    style="background: var(--bg-surface); border-radius: 12px; padding: 20px; border: none; box-shadow: none; display: flex; flex-direction: column; gap: 12px; transition: all 0.3s ease;">
                                     <div id="deck-search-content"
                                         style="display: flex; flex-direction: column; gap: 0px; overflow: hidden; transition: max-height 0.3s ease, margin 0.3s ease, opacity 0.3s ease;">
                                         <div class="form-row">
@@ -1770,6 +1772,12 @@
                                 </div>
 
 
+                            </div>
+                        </div>
+
+                        <div id="form-photo-add" class="mode-form anim-hidden">
+                            <div class="mode-form-content">
+                                <div id="photo-registration-root" class="photo-analysis-root"></div>
                             </div>
                         </div>
 
@@ -2112,6 +2120,8 @@
                     <a href="terms.html" class="footer-link-item" onclick="openTermsModal(event)">이용약관</a>
                     <span class="footer-link-separator">•</span>
                     <a href="privacy.html" class="footer-link-item" onclick="openPrivacyModal(event)">개인정보 처리방침</a>
+                    <span class="footer-link-separator">•</span>
+                    <a href="licenses.html" class="footer-link-item">라이선스 및 출처</a>
                 </div>
             </footer>
         </div>
@@ -2609,15 +2619,15 @@
                 </div>
                 <i class="material-icons modal-close">close</i>
             </div>
+            <div id="mobile-notice-content-body" class="mobile-notice-content-body">
+                <!-- JS에서 동적 삽입 -->
+            </div>
             <div class="mobile-detail-controls">
                 <button class="detail-ctrl-btn" onclick="navigateNotice(-1)"><i
                         class="material-icons">chevron_left</i></button>
                 <button class="detail-ctrl-list-btn" onclick="openNoticeListMode()">목록</button>
                 <button class="detail-ctrl-btn" onclick="navigateNotice(1)"><i
                         class="material-icons">chevron_right</i></button>
-            </div>
-            <div id="mobile-notice-content-body" class="mobile-notice-content-body">
-                <!-- JS에서 동적 삽입 -->
             </div>
         </div>
     </div>
@@ -2752,10 +2762,12 @@
 
 
     <script src="onboarding.js" defer></script>
-    <script src="illustration-images.js?v=2" defer></script>
+    <script src="illustration-images.js?v=3-private-storage" defer></script>
     <script src="illustration-picker.js?v=1" defer></script>
-    <script src="search-illustrations.js?v=6-height-transition-cleanup" defer></script>
-    <script src="script.js?v=0.33.0-notice-date-2" defer></script>
+    <script src="photo-card-geometry.js?v=1" defer></script>
+    <script src="photo-card-search.js?v=74-mobile-registration-sheet" defer></script>
+    <script src="search-illustrations.js?v=7-private-storage" defer></script>
+    <script src="script.js?v=0.33.0-mobile-registration-sheet" defer></script>
     <!-- 인벤토리 필터 팝업 -->
     <div id="inventory-filter-popup" class="filter-popup">
         <!-- JS에서 동적 렌더링 -->

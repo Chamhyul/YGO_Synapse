@@ -8,6 +8,8 @@ const upload = require('./upload_card_illustrations');
 
 test('업로드 CLI는 기본적으로 dry-run이며 --apply를 명시해야 쓴다', () => {
   assert.equal(upload.parseArgs([]).apply, false);
+  assert.equal(upload.parseArgs([]).publicPrefix, 'private/illustrations');
+  assert.equal(upload.parseArgs([]).indexPath, 'private/illustrations-index.json');
   const options = upload.parseArgs(['--apply', '--limit', '3', '--concurrency', '2']);
   assert.equal(options.apply, true);
   assert.equal(options.limit, 3);

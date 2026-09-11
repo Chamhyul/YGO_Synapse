@@ -9,8 +9,8 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 const DEFAULT_IMAGE_DIR = path.join(ROOT_DIR, 'resources', 'illustrations');
 const DEFAULT_MANIFEST_PATH = path.join(ROOT_DIR, 'data', 'illustration-sync', 'manifest.json');
 const DEFAULT_BUCKET = 'ygo-synapse.firebasestorage.app';
-const DEFAULT_PUBLIC_PREFIX = 'public/resources/illustrations';
-const DEFAULT_INDEX_PATH = 'public/indexes/illustration_sources.json';
+const DEFAULT_PUBLIC_PREFIX = 'private/illustrations';
+const DEFAULT_INDEX_PATH = 'private/illustrations-index.json';
 const DEFAULT_STATE_PATH = 'system/illustration-sync/manifest.json';
 const DEFAULT_SEARCH_INDEX_PATH = path.join(path.dirname(DEFAULT_MANIFEST_PATH), 'phash-index.json');
 const DEFAULT_REMOTE_SEARCH_INDEX_PATH = 'system/illustration-search/phash.json';
@@ -77,7 +77,7 @@ function printHelp() {
   --image-dir <경로>    로컬 이미지 디렉터리
   --manifest <경로>     로컬 동기화 매니페스트
   --bucket <이름>       Firebase Storage 버킷
-  --public-prefix <경로> 공개 이미지 객체 접두 경로
+  --public-prefix <경로> 이미지 객체 접두 경로 (호환 옵션명, 기본 private/illustrations)
   --index-path <경로>   표시용 소스 인덱스 객체 경로
   --state-path <경로>   비공개 동기화 상태 객체 경로
   --search-index <경로> 로컬 pHash 검색 인덱스
@@ -234,7 +234,7 @@ async function uploadOne(bucket, candidate) {
     resumable: false,
     contentType: 'image/webp',
     metadata: {
-      cacheControl: 'public, max-age=31536000, immutable',
+      cacheControl: 'private, no-store',
       metadata: {
         sourceImageId: candidate.item.sourceImageId,
         contentSha256: digest,
@@ -281,7 +281,7 @@ async function run(options) {
 
     const remoteSearch = await readJsonObject(bucket, options.remoteSearchIndexPath, null);
     await saveJsonObject(bucket, options.remoteSearchIndexPath, searchIndex, remoteSearch.generation, 'private, no-store');
-    await saveJsonObject(bucket, options.indexPath, sourceIndex, remote.generation, 'public, max-age=300');
+    await saveJsonObject(bucket, options.indexPath, sourceIndex, remote.generation, 'private, no-store');
     const state = await readJsonObject(bucket, options.statePath, null);
     await saveJsonObject(bucket, options.statePath, manifest, state.generation, 'no-store');
     console.log(JSON.stringify(summary, null, 2));
