@@ -37,20 +37,25 @@ async function ensureAsset(localName, objectPath) {
 }
 
 async function loadRuntime() {
-  if (!runtimePromise) runtimePromise = (async () => {
-    const [modelPath, configPath, cardnamesPath] = await Promise.all([
-      ensureAsset('draw2-int8.onnx', MODEL_OBJECT_PATH),
-      ensureAsset('draw2-config.json', CONFIG_OBJECT_PATH),
-      ensureAsset('draw2-cardnames.json', CARDNAMES_OBJECT_PATH),
-    ]);
-    const options = { intraOpNumThreads: 2, interOpNumThreads: 1, executionMode: 'sequential' };
-    const [session, config, cardnames] = await Promise.all([
-      ort.InferenceSession.create(modelPath, options),
-      fsp.readFile(configPath, 'utf8').then(JSON.parse),
-      fsp.readFile(cardnamesPath, 'utf8').then(JSON.parse),
-    ]);
-    return { session, labels: config.id2label, cardnames };
-  })();
+  if (!runtimePromise) {
+    runtimePromise = (async () => {
+      const [modelPath, configPath, cardnamesPath] = await Promise.all([
+        ensureAsset('draw2-int8.onnx', MODEL_OBJECT_PATH),
+        ensureAsset('draw2-config.json', CONFIG_OBJECT_PATH),
+        ensureAsset('draw2-cardnames.json', CARDNAMES_OBJECT_PATH),
+      ]);
+      const options = { intraOpNumThreads: 2, interOpNumThreads: 1, executionMode: 'sequential' };
+      const [session, config, cardnames] = await Promise.all([
+        ort.InferenceSession.create(modelPath, options),
+        fsp.readFile(configPath, 'utf8').then(JSON.parse),
+        fsp.readFile(cardnamesPath, 'utf8').then(JSON.parse),
+      ]);
+      return { session, labels: config.id2label, cardnames };
+    })().catch(error => {
+      runtimePromise = null;
+      throw error;
+    });
+  }
   return runtimePromise;
 }
 
@@ -67,14 +72,19 @@ function buildPasscodeIndex(value, manifest = false) {
 }
 
 async function loadPasscodeIndex() {
-  if (!passcodeIndexPromise) passcodeIndexPromise = (async () => {
-    const localManifest = path.resolve(__dirname, '../../data/illustration-sync/manifest.json');
-    if (fs.existsSync(localManifest)) {
-      return buildPasscodeIndex(JSON.parse(await fsp.readFile(localManifest, 'utf8')), true);
-    }
-    const index = JSON.parse((await downloadProductionFile(ILLUSTRATION_INDEX_OBJECT_PATH)).toString('utf8'));
-    return buildPasscodeIndex(index);
-  })();
+  if (!passcodeIndexPromise) {
+    passcodeIndexPromise = (async () => {
+      const localManifest = path.resolve(__dirname, '../../data/illustration-sync/manifest.json');
+      if (fs.existsSync(localManifest)) {
+        return buildPasscodeIndex(JSON.parse(await fsp.readFile(localManifest, 'utf8')), true);
+      }
+      const index = JSON.parse((await downloadProductionFile(ILLUSTRATION_INDEX_OBJECT_PATH)).toString('utf8'));
+      return buildPasscodeIndex(index);
+    })().catch(error => {
+      passcodeIndexPromise = null;
+      throw error;
+    });
+  }
   return passcodeIndexPromise;
 }
 
