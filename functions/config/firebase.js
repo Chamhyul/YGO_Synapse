@@ -70,6 +70,35 @@ function getProductionCredential() {
   return productionApp.options.credential;
 }
 
+function getProductionDb() {
+  const isEmulator = process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_EMULATOR_HUB;
+  if (!isEmulator) return db;
+
+  const appName = "production-firestore-v1";
+  let productionApp = admin.apps.find(app => app.name === appName);
+  if (!productionApp) {
+    const keyPath = path.resolve(__dirname, "../serviceAccountKey.json");
+    if (!fs.existsSync(keyPath)) {
+      throw new Error("로컬에서 운영 Firestore를 조회하기 위한 서비스 계정이 없습니다.");
+    }
+    const serviceAccount = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+    productionApp = admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      projectId: serviceAccount.project_id || process.env.GCLOUD_PROJECT || "ygo-synapse",
+    }, appName);
+  }
+
+  // firebase-tools가 설정한 전역 에뮬레이터 주소가 보조 앱에도 적용되지 않도록
+  // 운영 Firestore 클라이언트를 만드는 동안에만 제거합니다.
+  const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
+  delete process.env.FIRESTORE_EMULATOR_HOST;
+  try {
+    return admin.firestore(productionApp);
+  } finally {
+    if (emulatorHost) process.env.FIRESTORE_EMULATOR_HOST = emulatorHost;
+  }
+}
+
 async function downloadProductionFile(objectPath) {
   const bucketName = process.env.STORAGE_BUCKET || "ygo-synapse.firebasestorage.app";
   const token = await getProductionCredential().getAccessToken();
@@ -84,6 +113,7 @@ module.exports = {
   db,
   getBucket,
   getProductionBucket,
+  getProductionDb,
   downloadProductionFile,
   FieldValue,
   FieldPath,

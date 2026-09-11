@@ -788,17 +788,24 @@
         const resolved = state.regions.map(region => region.selected || (region.manualName.trim() ? { cardName: region.manualName.trim(), ciid: 1 } : null));
         if (resolved.some(item => !item)) { showToast('모든 영역의 카드 이름을 확정해주세요.', 'toast-warn'); return; }
         const mobile = document.documentElement.classList.contains('is-mobile-device');
-        const list = document.getElementById(mobile ? 'mobile-cards-list-general' : 'desktop-cards-list-general');
+        const subMode = ['general', 'pack', 'deck'].includes(state.targetSubMode) ? state.targetSubMode : 'general';
+        const list = document.getElementById(`${mobile ? 'mobile' : 'desktop'}-cards-list-${subMode}`);
         if (!list) return;
-        list.innerHTML = '';
-        const prepared = resolved.map(item => {
-            const row = mobile ? mobileAddEntry('add', 'general') : desktopAddEntry('add', 'general');
+        const cardClass = mobile ? '.mobile-info-card' : '.desktop-info-card';
+        const lastRow = list.querySelector(`${cardClass}:last-child`);
+        const lastRowIsEmpty = lastRow && Array.from(lastRow.querySelectorAll('[data-field]')).every(input => {
+            const value = input.dataset.raw || input.value;
+            return !String(value || '').trim();
+        });
+        const prepared = resolved.map((item, index) => {
+            const row = index === 0 && lastRowIsEmpty
+                ? lastRow
+                : (mobile ? mobileAddEntry('add', subMode) : desktopAddEntry('add', subMode));
             const nameInput = row?.querySelector('[data-field="name"]');
             if (nameInput) nameInput.value = item.cardName;
             return { item, row, nameInput };
         });
-        if (mobile) closeRegistrationSheet(false);
-        switchAddSubMode('general');
+        closeRegistrationSheet();
         await Promise.allSettled(prepared.map(async ({ item, row, nameInput }) => {
             if (!row || !nameInput) return;
             await fetchCardByName(nameInput, true);
@@ -808,6 +815,7 @@
                 illustration.dataset.raw = String(item.ciid);
             }
         }));
+        if (mobile && typeof root.renderMobileCards === 'function') root.renderMobileCards();
     }
 
     function render() {
@@ -1089,17 +1097,17 @@
         requestAnimationFrame(() => sheet.classList.add('visible'));
     }
 
-    function closeRegistrationSheet(returnToGeneral = true) {
+    function closeRegistrationSheet() {
         state = states.register;
         resetPhoto();
         closeManualNameSheet();
         const sheet = document.getElementById('photo-registration-sheet');
         sheet?.classList.remove('visible');
         if (sheet) setTimeout(() => sheet.classList.remove('open'), 350);
-        if (returnToGeneral && typeof root.switchAddSubMode === 'function') root.switchAddSubMode('general');
     }
 
-    function openRegistrationSheet() {
+    function openRegistrationSheet(targetSubMode = 'general') {
+        states.register.targetSubMode = targetSubMode;
         let sheet = document.getElementById('photo-registration-sheet');
         if (!sheet) {
             sheet = document.createElement('div');

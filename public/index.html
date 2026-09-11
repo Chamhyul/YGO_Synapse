@@ -79,7 +79,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.2.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=77-mobile-photo-options">
+    <link rel="stylesheet" href="style.css?v=79-split-divider">
 </head>
 
 <body class="no-transition">
@@ -1775,12 +1775,6 @@
                             </div>
                         </div>
 
-                        <div id="form-photo-add" class="mode-form anim-hidden">
-                            <div class="mode-form-content">
-                                <div id="photo-registration-root" class="photo-analysis-root"></div>
-                            </div>
-                        </div>
-
                         <div id="general-mode-wrapper" class="mode-form anim-hidden">
                             <div class="mode-form-content">
 
@@ -1788,10 +1782,13 @@
                                     <div class="desktop-cards-list-container">
                                         <div class="desktop-cards-list" id="desktop-cards-list-general"></div>
                                     </div>
-                                    <div class="desktop-add-dashed-card-container">
+                                    <div class="desktop-add-dashed-card-container card-add-split">
+                                        <button class="add-page-row-btn photo-register-trigger" onclick="openPhotoRegistration()" tabindex="0">
+                                            <i class="material-icons">photo_camera</i><span style="font-weight: 700;">사진으로 등록</span>
+                                        </button>
                                         <button class="add-page-row-btn" onclick="addMultipleRows(event)" tabindex="0"
                                             onkeydown="handleAddButtonKey(event, 'add')">
-                                            <span style="font-weight: 700;">등록할 카드 추가</span>
+                                            <span style="font-weight: 700;">입력란 추가</span>
                                             <div class="qty-control-box" onclick="event.stopPropagation()">
                                                 <span class="ctrl-btn" onclick="adjustAddCount(-1)">-</span>
                                                 <span id="add-count-desktop" class="ctrl-val">1장</span>
@@ -1805,9 +1802,9 @@
                                         <div class="mobile-cards-list" id="mobile-cards-list-general"
                                             style="display: none;"></div>
                                     </div>
-                                    <div class="mobile-add-dashed-card" onclick="handleMobileAddCardClick()">
-                                        <i class="material-icons">add</i>
-                                        <span>카드 추가</span>
+                                    <div class="mobile-add-dashed-card card-add-split">
+                                        <button type="button" onclick="openPhotoRegistration()"><i class="material-icons">photo_camera</i><span>사진으로 등록</span></button>
+                                        <button type="button" onclick="handleMobileAddCardClick()"><i class="material-icons">add</i><span>입력란 추가</span></button>
                                     </div>
                                 </div>
                             </div>
@@ -1898,10 +1895,13 @@
                                     <div class="desktop-cards-list-container">
                                         <div class="desktop-cards-list" id="desktop-cards-list-pack"></div>
                                     </div>
-                                    <div class="desktop-add-dashed-card-container">
+                                    <div class="desktop-add-dashed-card-container card-add-split">
+                                        <button class="add-page-row-btn photo-register-trigger" onclick="openPhotoRegistration()" tabindex="0">
+                                            <i class="material-icons">photo_camera</i><span style="font-weight: 700;">사진으로 등록</span>
+                                        </button>
                                         <button class="add-page-row-btn" onclick="addMultipleRows(event)" tabindex="0"
                                             onkeydown="handleAddButtonKey(event, 'pack-add')">
-                                            <span style="font-weight: 700;">등록할 카드 추가</span>
+                                            <span style="font-weight: 700;">입력란 추가</span>
                                             <div class="qty-control-box" onclick="event.stopPropagation()">
                                                 <span class="ctrl-btn" onclick="adjustAddCount(-1)">-</span>
                                                 <span id="pack-add-count-desktop" class="ctrl-val">1장</span>
@@ -1915,9 +1915,9 @@
                                         <div class="mobile-cards-list" id="mobile-cards-list-pack"
                                             style="display: none;"></div>
                                     </div>
-                                    <div class="mobile-add-dashed-card" onclick="handleMobileAddCardClick()">
-                                        <i class="material-icons">add</i>
-                                        <span>카드 추가</span>
+                                    <div class="mobile-add-dashed-card card-add-split">
+                                        <button type="button" onclick="openPhotoRegistration()"><i class="material-icons">photo_camera</i><span>사진으로 등록</span></button>
+                                        <button type="button" onclick="handleMobileAddCardClick()"><i class="material-icons">add</i><span>입력란 추가</span></button>
                                     </div>
                                 </div>
                                 <div class="page-btn-container">
@@ -1932,10 +1932,13 @@
                                     <div class="desktop-cards-list-container">
                                         <div class="desktop-cards-list" id="desktop-cards-list-deck"></div>
                                     </div>
-                                    <div class="desktop-add-dashed-card-container">
+                                    <div class="desktop-add-dashed-card-container card-add-split">
+                                        <button class="add-page-row-btn photo-register-trigger" onclick="openPhotoRegistration()" tabindex="0">
+                                            <i class="material-icons">photo_camera</i><span style="font-weight: 700;">사진으로 등록</span>
+                                        </button>
                                         <button class="add-page-row-btn" onclick="addMultipleRows(event)" tabindex="0"
                                             onkeydown="handleAddButtonKey(event, 'deck-add')">
-                                            <span style="font-weight: 700;">등록할 카드 추가</span>
+                                            <span style="font-weight: 700;">입력란 추가</span>
                                             <div class="qty-control-box" onclick="event.stopPropagation()">
                                                 <span class="ctrl-btn" onclick="adjustAddCount(-1)">-</span>
                                                 <span id="deck-add-count-desktop" class="ctrl-val">1장</span>
@@ -1949,9 +1952,9 @@
                                         <div class="mobile-cards-list" id="mobile-cards-list-deck"
                                             style="display: none;"></div>
                                     </div>
-                                    <div class="mobile-add-dashed-card" onclick="handleMobileAddCardClick()">
-                                        <i class="material-icons">add</i>
-                                        <span>카드 추가</span>
+                                    <div class="mobile-add-dashed-card card-add-split">
+                                        <button type="button" onclick="openPhotoRegistration()"><i class="material-icons">photo_camera</i><span>사진으로 등록</span></button>
+                                        <button type="button" onclick="handleMobileAddCardClick()"><i class="material-icons">add</i><span>입력란 추가</span></button>
                                     </div>
                                 </div>
                                 <div class="page-btn-container">
@@ -2765,9 +2768,9 @@
     <script src="illustration-images.js?v=3-private-storage" defer></script>
     <script src="illustration-picker.js?v=1" defer></script>
     <script src="photo-card-geometry.js?v=1" defer></script>
-    <script src="photo-card-search.js?v=74-mobile-registration-sheet" defer></script>
+    <script src="photo-card-search.js?v=76-shared-photo-registration" defer></script>
     <script src="search-illustrations.js?v=7-private-storage" defer></script>
-    <script src="script.js?v=0.33.0-mobile-registration-sheet" defer></script>
+    <script src="script.js?v=0.33.1-shared-photo-registration" defer></script>
     <!-- 인벤토리 필터 팝업 -->
     <div id="inventory-filter-popup" class="filter-popup">
         <!-- JS에서 동적 렌더링 -->

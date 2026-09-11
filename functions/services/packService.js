@@ -1,5 +1,5 @@
 const { requestCardIndexWork } = require('./cardIndexDispatchService');
-const { db } = require("../config/firebase");
+const { db, getProductionDb } = require("../config/firebase");
 const { normalizeText } = require("../utils/common");
 const { searchPack, crawlCardInPack, getPackCids, LOCALE_TO_INDEX } = require("../scrapers/cardScraper");
 const { saveCardToFirestore } = require("./cardService");
@@ -77,9 +77,11 @@ async function crawlPackCardsBatch(options) {
     }
 
     const results = [];
-    // Firestore 일괄 조회 (순차 루프 → 1회 일괄 조회로 비용 및 지연 절감)
-    const docRefs = cids.map(cid => db.collection("cards").doc(cid));
-    const existingDocs = await db.getAll(...docRefs);
+    // 로컬 개발에서도 크롤링 필요 여부는 운영 카드 DB를 기준으로 판단합니다.
+    // saveCardToFirestore는 기본 앱을 유지하므로 새로 크롤링한 결과만 로컬 DB에 기록됩니다.
+    const lookupDb = getProductionDb();
+    const docRefs = cids.map(cid => lookupDb.collection("cards").doc(cid));
+    const existingDocs = await lookupDb.getAll(...docRefs);
     const existingMap = new Map(existingDocs.map(doc => [doc.id, doc]));
 
     for (let i = 0; i < cids.length; i++) {

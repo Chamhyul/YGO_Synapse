@@ -5,10 +5,9 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
     'use strict';
 
-    const isLocalDev = typeof location !== 'undefined'
-        && ['localhost', '127.0.0.1', '192.168.0.22'].includes(location.hostname);
-    const ILLUSTRATION_BASE_URL = isLocalDev ? 'https://ygo-synapse.web.app' : '';
-    const INDEX_URL = `${ILLUSTRATION_BASE_URL}/api/illustrations/`;
+    // Hosting rewrite를 통해 같은 출처의 getIllustration 함수를 호출합니다.
+    // 로컬 함수도 운영 Storage를 읽으므로 브라우저의 교차 출처 요청이 필요 없습니다.
+    const INDEX_URL = '/api/illustrations/';
     const MOMOBAKO_BASE = 'https://cdn.233.momobako.com/ygopro/pics';
     const indexPromises = new Map();
     const preloads = new Map();
@@ -38,7 +37,7 @@
 
     function storageUrl(path, contentSha256) {
         const match = /(?:^|\/)([1-9]\d{0,9}_[1-9]\d{0,3})\.webp$/.exec(String(path || ''));
-        return match ? `${ILLUSTRATION_BASE_URL}/api/illustrations/${match[1]}.webp` : null;
+        return match ? `/api/illustrations/${match[1]}.webp` : null;
     }
 
     function momobakoUrl(source) {

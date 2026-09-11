@@ -35,7 +35,7 @@ const HTTP_FUNCTION_NAMES = [
     "manageAdminRole"
 ];
 const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '192.168.0.22']);
-const IS_LOCAL_DEV = LOCAL_DEV_HOSTS.has(location.hostname);
+const IS_LOCAL_DEV = LOCAL_DEV_HOSTS.has(location.hostname) || location.hostname.toLowerCase().endsWith('.local');
 const LOCAL_EMULATOR_HOST = location.hostname === 'localhost' ? '127.0.0.1' : location.hostname;
 const LOCAL_FUNCTION_BASE_URL = `http://${LOCAL_EMULATOR_HOST}:5001/ygo-synapse/asia-northeast3`;
 const PRODUCTION_FUNCTION_BASE_URL = 'https://asia-northeast3-ygo-synapse.cloudfunctions.net';
@@ -50,7 +50,6 @@ const PRODUCTION_READ_FUNCTIONS = new Set([
     'suggestCardNames',
     'getCardMetadata',
     'getCardsMetaBatch',
-    'searchCardByImage',
     'searchPack',
     'getPackCids',
     'searchDeck',
@@ -84,7 +83,7 @@ if (typeof firebase !== 'undefined' && firebase.appCheck) {
     });
 }
 
-const CLIENT_VERSION = "ver. 0.33.0";
+const CLIENT_VERSION = "ver. 0.33.1";
 
 const STORAGE_KEY = 'yugioh_spreadsheet_id';
 const RECENT_KEY = 'recent_card_searches';
@@ -2889,6 +2888,7 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     if (mode === 'add' && !subMode) {
         subMode = UIStore.chipState.add || 'general';
     }
+    if (mode === 'add' && subMode === 'photo') subMode = 'general';
 
     // [중요] 가드 로직 고도화: 메인 모드, 세부 모드, 그리고 쿼리 파라미터가 모두 현재와 동일하면 중단 (무한 루프 방지)
     const isSameMode = (UIStore.mode === mode);
@@ -11119,7 +11119,7 @@ async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam 
     const key = packId + "_" + locale;
     if (_silentCrawls[key]) _silentCrawls[key] = false;
 
-    const total = (PackDeckStore.currentPackInfo && PackDeckStore.currentPackInfo.totalCards) ? PackDeckStore.currentPackInfo.totalCards : 0;
+    let total = (PackDeckStore.currentPackInfo && PackDeckStore.currentPackInfo.totalCards) ? PackDeckStore.currentPackInfo.totalCards : 0;
     const packName = packNameParam || (PackDeckStore.currentPackInfo ? PackDeckStore.currentPackInfo.packName : null);
 
     // 로컬 캐시 확인: 이미 이 팩의 크롤링이 완료된 경우 서버 호출 생략
@@ -11136,6 +11136,26 @@ async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam 
     _packCrawlNewRunning = true;
     PackDeckStore.isPackCrawlDone = false;
 
+    // 팩 목록은 운영 API에서 읽고, 실제 카드 수집/저장은 로컬 함수가 담당합니다.
+    // 운영 Storage에만 존재하는 팩 ID를 로컬 함수가 다시 해석하지 않도록 CID를 명시적으로 전달합니다.
+    let packCids;
+    try {
+        const cidResult = await callApi('getPackCids', { packId, locale });
+        if (cidResult?.isError || !Array.isArray(cidResult?.cids)) {
+            throw new Error(cidResult?.message || '팩 CID 목록을 가져오지 못했습니다.');
+        }
+        packCids = cidResult.cids;
+        total = packCids.length;
+        if (PackDeckStore.currentPackInfo) PackDeckStore.currentPackInfo.totalCards = total;
+    } catch (error) {
+        _packCrawlNewRunning = false;
+        PackDeckStore.isPackCrawlDone = false;
+        showLoading(false);
+        displayPackSearchStatus(error.message || '팩 CID 목록을 가져오지 못했습니다.', 'error');
+        console.error('[Pack Crawl New] CID 조회 오류:', error);
+        return;
+    }
+
     let offset = startOffset;
     if (!CardDataStore.crawledPacksCache[key]) CardDataStore.crawledPacksCache[key] = { cards: [], isDone: false };
 
@@ -11149,7 +11169,8 @@ async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam 
         }
 
         try {
-            const res = await callApi('crawlPackCardsBatch', { packId, locale, offset, packName });
+            const cids = packCids.slice(offset, offset + 20);
+            const res = await callApi('crawlPackCardsBatch', { packId, locale, offset, packName }, { cids });
             if (!_packCrawlNewRunning) break;
 
             if (res.isQuotaError) {
@@ -13547,7 +13568,7 @@ function switchManageTab(tab) {
     switchToMode(tab);
 }
 
-let addSubMode = 'general'; // 등록 탭 내부 서브 모드 상태 (general, pack, deck, photo)
+let addSubMode = 'general'; // 등록 탭 내부 서브 모드 상태 (general, pack, deck)
 let isRenameMode = false; // 보관 위치 이름 변경 모드 상태
 let isDeleteLocationMode = false; // 보관 위치 삭제 모드 상태
 let isDeleteLocationConfirmPending = false; // 보관 위치 삭제 복구 불가 확인 대기 상태
@@ -13558,6 +13579,11 @@ function switchAddSubMode(subMode) {
     switchToMode('add', true, subMode);
 }
 
+function openPhotoRegistration() {
+    if (!window.PhotoCardSearch) return;
+    PhotoCardSearch.openRegistrationSheet(addSubMode || 'general');
+}
+
 function handleManageUI(mode) {
     const radioEl = document.getElementById('tab-mode-' + mode);
     if (radioEl) radioEl.checked = true;
@@ -13566,7 +13592,6 @@ function handleManageUI(mode) {
         document.getElementById('general-mode-wrapper'),
         document.getElementById('form-pack-add'),
         document.getElementById('form-deck-add'),
-        document.getElementById('form-photo-add'),
         document.getElementById('manage-move-wrapper'),
         document.getElementById('manage-discard-wrapper')
     ];
@@ -13582,13 +13607,6 @@ function handleManageUI(mode) {
         if (addSubMode === 'general') targetId = 'general-mode-wrapper';
         else if (addSubMode === 'pack') targetId = 'form-pack-add';
         else if (addSubMode === 'deck') targetId = 'form-deck-add';
-        else if (addSubMode === 'photo') {
-            targetId = 'form-photo-add';
-            if (window.PhotoCardSearch) {
-                if (document.documentElement.classList.contains('is-mobile-device')) PhotoCardSearch.openRegistrationSheet();
-                else PhotoCardSearch.openPicker('register', document.getElementById('photo-registration-root'));
-            }
-        }
     } else if (mode === 'move') {
         if (autoLocInfo) {
             autoLocInfo.classList.remove('anim-active');
@@ -13680,26 +13698,17 @@ function updateManageFooter(mode, subModeOverride) {
         if (currentSubMode === 'general') {
             leftButtons = [
                 { text: '팩 추가', onclick: "switchAddSubMode('pack')" },
-                { text: '덱 불러오기', onclick: "switchAddSubMode('deck')" },
-                { text: '사진 검색', onclick: "switchAddSubMode('photo')" }
+                { text: '덱 불러오기', onclick: "switchAddSubMode('deck')" }
             ];
         } else if (currentSubMode === 'pack') {
             leftButtons = [
                 { text: '일반', onclick: "switchAddSubMode('general')" },
-                { text: '덱 불러오기', onclick: "switchAddSubMode('deck')" },
-                { text: '사진 검색', onclick: "switchAddSubMode('photo')" }
+                { text: '덱 불러오기', onclick: "switchAddSubMode('deck')" }
             ];
         } else if (currentSubMode === 'deck') {
             leftButtons = [
                 { text: '일반', onclick: "switchAddSubMode('general')" },
-                { text: '팩 추가', onclick: "switchAddSubMode('pack')" },
-                { text: '사진 검색', onclick: "switchAddSubMode('photo')" }
-            ];
-        } else if (currentSubMode === 'photo') {
-            leftButtons = [
-                { text: '일반', onclick: "switchAddSubMode('general')" },
-                { text: '팩 추가', onclick: "switchAddSubMode('pack')" },
-                { text: '덱 불러오기', onclick: "switchAddSubMode('deck')" }
+                { text: '팩 추가', onclick: "switchAddSubMode('pack')" }
             ];
         }
     } else if (mode === 'move') {

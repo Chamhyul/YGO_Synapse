@@ -7336,6 +7336,48 @@ html.dark-mode .card-info-badge.qty {
   color: var(--primary-color);
 }
 
+.mobile-add-dashed-card.card-add-split {
+  padding: 0;
+  gap: 0;
+  cursor: default;
+  overflow: hidden;
+  position: relative;
+}
+
+.mobile-add-dashed-card.card-add-split > button {
+  display: flex;
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 54px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mobile-add-dashed-card.card-add-split > button + button {
+  position: relative;
+}
+
+.mobile-add-dashed-card.card-add-split > button + button::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: var(--border-color);
+}
+
+.mobile-add-dashed-card.card-add-split > button:active {
+  background: rgba(0, 150, 136, 0.05);
+  color: var(--primary-color);
+}
+
 /* =========================================
    [모바일 개편] 바텀 시트 스타일
    ========================================= */
@@ -7454,6 +7496,12 @@ html.dark-mode .card-info-badge.qty {
 .sheet-input-box:focus-within {
   border-color: var(--primary-color) !important;
   box-shadow: 0 0 0 2px rgba(128, 203, 196, 0.25) !important;
+}
+
+#wrap-sheet-illust:focus-within {
+  border-color: var(--border-color) !important;
+  background-color: var(--bg-sub) !important;
+  box-shadow: none !important;
 }
 
 .sheet-input-box input {
@@ -7974,6 +8022,23 @@ html.dark-mode .mobile-info-card .loc-arrow {
   margin-bottom: 24px;
 }
 
+.desktop-add-dashed-card-container.card-add-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  position: relative;
+  overflow: hidden;
+  border: 2px dashed var(--border-color);
+  border-radius: 12px;
+}
+
+.desktop-add-dashed-card-container.card-add-split .photo-register-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
 .desktop-add-dashed-card-container .add-page-row-btn {
   border: 2px dashed var(--border-color) !important;
   border-radius: 12px !important;
@@ -7987,6 +8052,25 @@ html.dark-mode .mobile-info-card .loc-arrow {
   background-color: var(--bg-sub) !important;
   border-color: var(--primary-color) !important;
   color: var(--primary-color) !important;
+}
+
+.desktop-add-dashed-card-container.card-add-split .add-page-row-btn {
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+.desktop-add-dashed-card-container.card-add-split .add-page-row-btn + .add-page-row-btn {
+  position: relative;
+}
+
+.desktop-add-dashed-card-container.card-add-split .add-page-row-btn + .add-page-row-btn::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: var(--border-color);
 }
 
 /* 5. 인라인 편집 입력 필드 스타일 */
@@ -8958,7 +9042,6 @@ input#card-search:disabled { cursor: default; opacity: 1; }
 .photo-search-sheet-title { color: var(--text-primary); font-size: 1.15rem; font-weight: 700; }
 .photo-sheet-close { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-secondary); cursor: pointer; }
 .photo-analysis-root { min-height: 230px; background: transparent; }
-#form-photo-add { background: transparent; }
 .photo-upload-panel { min-height: 230px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 30px; border: 2px dashed var(--border-color); border-radius: 14px; background: transparent; color: var(--text-secondary); text-align: center; }
 .photo-upload-panel > i { font-size: 44px; color: var(--primary-color); }
 .photo-upload-panel strong { color: var(--text-primary); }

@@ -150,18 +150,24 @@ test('운영·로컬 주소 목록이 서버 등록과 일치하고 레거시 �
   const config=source.slice(0,source.indexOf('// Safari 최적화: callApi'));
   const functions=require('../index');
   assert.equal(typeof functions.rebuildCardNames,'function');
+  assert.equal(require.cache[require.resolve('../services/draw2CardClassifierService')],undefined,
+    '공통 함수 진입점은 이미지 분석 서비스를 미리 로드하지 않아야 합니다.');
   for(const name of ['rebuildAllCardIndexes','buildIndex','syncCardManifestToStorage'])assert.equal(functions[name],undefined);
-  for(const hostname of ['localhost','ygo-synapse.web.app']){
+  for(const hostname of ['localhost','ch97-macbookair.local','ygo-synapse.web.app']){
     const sandbox={location:{hostname}};vm.createContext(sandbox);
     vm.runInContext(config+'\nthis.endpoints=FIREBASE_CONFIG.ENDPOINTS;',sandbox);
     for(const [name,url] of Object.entries(sandbox.endpoints)){
       assert.equal(typeof functions[name],'function',name);assert.ok(url.endsWith('/'+name));
     }
     assert.ok(sandbox.endpoints.updateNickname);
-    if(hostname==='localhost'){
+    if(hostname==='localhost' || hostname.endsWith('.local')){
       assert.ok(sandbox.endpoints.searchCard.startsWith('https://asia-northeast3-ygo-synapse.cloudfunctions.net/'));
-      assert.ok(sandbox.endpoints.addCards.startsWith('http://127.0.0.1:5001/'));
-      assert.ok(sandbox.endpoints.crawlPackCardsBatch.startsWith('http://127.0.0.1:5001/'));
+      assert.ok(sandbox.endpoints.getPackCids.startsWith('https://asia-northeast3-ygo-synapse.cloudfunctions.net/'));
+      const localHost = hostname === 'localhost' ? '127.0.0.1' : hostname;
+      assert.ok(sandbox.endpoints.addCards.startsWith(`http://${localHost}:5001/`));
+      assert.ok(sandbox.endpoints.searchCardByImage.startsWith(`http://${localHost}:5001/`));
+      assert.ok(sandbox.endpoints.crawlPackCardsBatch.startsWith(`http://${localHost}:5001/`));
+      assert.match(source,/callApi\('crawlPackCardsBatch',[\s\S]*?\{ cids \}\)/);
     }
     for(const match of source.matchAll(/callApi\(['"]([^'"]+)['"]/g))assert.ok(sandbox.endpoints[match[1]],match[1]);
     for(const name of ['keepAlivePing','checkMembership','cleanNumbersCollection','buildIndex'])assert.equal(sandbox.endpoints[name],undefined);

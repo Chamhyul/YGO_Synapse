@@ -1,6 +1,5 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const { setCors, verifyAppCheck } = require('../utils/auth');
-const { classifyImages } = require('../services/draw2CardClassifierService');
 
 exports.searchCardByImage = onRequest({
   invoker: 'public',
@@ -15,6 +14,9 @@ exports.searchCardByImage = onRequest({
 
   const maxResults = Math.min(10, Math.max(1, Number(req.body?.maxResults) || 5));
   try {
+    // 다른 함수가 공통 index.js를 로드할 때 ONNX Runtime과 Sharp까지
+    // 초기화하지 않도록 실제 이미지 검색 요청에서만 분석 서비스를 불러옵니다.
+    const { classifyImages } = require('../services/draw2CardClassifierService');
     const images = Array.isArray(req.body?.images) ? req.body.images : [req.body?.image];
     const result = { regions: await classifyImages(images, { maxResults }) };
     res.setHeader('Cache-Control', 'private, no-store');

@@ -34,11 +34,48 @@ test('사용자가 확인한 미연결 268개를 토큰 원본으로 제외한�
   assert.equal(sync.TOKEN_SOURCE_IDS.has('77571455'), true);
 });
 
-test('기본 및 연속 대체 일러스트의 CIID를 계산한다', () => {
-  assert.equal(sync.resolveCiid({ id: 46986414 }), 1);
-  assert.equal(sync.resolveCiid({ id: 46986414, altart: 46986415 }), 2);
-  assert.equal(sync.resolveCiid({ id: 46986414, altart: 46986431 }), 18);
-  assert.throws(() => sync.resolveCiid({ id: 46986414, altart: 36996508 }), /INVALID_CIID_MAPPING/);
+test('같은 CID의 원본 이미지 ID를 작은 순서대로 연속 CIID로 계산한다', () => {
+  const mappings = new Map([
+    ['27204314', { id: 27204311, cid: 14741, altart: 27204314 }],
+    ['27204311', { id: 27204311, cid: 14741 }],
+    ['27204313', { id: 27204311, cid: 14741, altart: 27204313 }],
+  ]);
+  assert.deepEqual([...sync.resolveCiids(mappings)], [
+    ['27204311', 1], ['27204313', 2], ['27204314', 3],
+  ]);
+});
+
+test('증분 매핑은 기존 매니페스트의 같은 CID 원본도 순서 계산에 포함한다', () => {
+  const mappings = new Map([
+    ['27204314', { id: 27204311, cid: 14741, altart: 27204314 }],
+  ]);
+  const manifest = { files: {
+    27204311: { cid: '14741', ciid: 1, status: 'ready' },
+    27204313: { cid: '14741', ciid: 2, status: 'ready' },
+  } };
+  assert.equal(sync.resolveCiids(mappings, manifest).get('27204314'), 3);
+});
+
+test('같은 CID에는 기존 최대값보다 큰 신규 원본만 추가할 수 있다', () => {
+  const manifest = { files: {
+    27204311: { cid: '14741', ciid: 1, status: 'ready' },
+    27204313: { cid: '14741', ciid: 2, status: 'ready' },
+  } };
+  assert.doesNotThrow(() => sync.assertAppendOnlyCiidSources(new Map([
+    ['27204314', { cid: 14741 }],
+  ]), manifest));
+  assert.throws(() => sync.assertAppendOnlyCiidSources(new Map([
+    ['27204312', { cid: 14741 }],
+  ]), manifest), /NON_APPEND_CIID_SOURCE.*27204312.*27204313/);
+});
+
+test('기존 원본의 CID 매핑이 달라지면 동기화를 중단한다', () => {
+  const manifest = { files: {
+    27204311: { cid: '14741', ciid: 1, status: 'ready' },
+  } };
+  assert.throws(() => sync.assertAppendOnlyCiidSources(new Map([
+    ['27204311', { cid: 99999 }],
+  ]), manifest), /NON_APPEND_CIID_SOURCE.*14741.*99999/);
 });
 
 test('프로젝트 카드 문서에서 펜듈럼 속성을 판별한다', () => {

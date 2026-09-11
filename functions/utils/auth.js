@@ -78,10 +78,11 @@ function setCors(res, req) {
   const allowed = [
     "https://ygo-synapse.web.app",
     "https://ygo-synapse.firebaseapp.com",
-    "http://192.168.0.22:5005"
+    "http://192.168.0.22:5005",
+    "http://ch97-macbookair.local:5005"
   ];
-  // localhost 또는 127.0.0.1 (포트 번호 선택 허용) 정규식 검사
-  const localOriginRegex = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+  // localhost와 127.0.0.1은 임의의 개발 포트를 허용하고, mDNS 주소는 위 목록에서 명시적으로만 허용합니다.
+  const localOriginRegex = /^https?:\/\/(?:localhost|127\.0\.0\.1)(:\d+)?$/i;
   const isAllowed = allowed.includes(origin) || localOriginRegex.test(origin);
 
   res.set("Access-Control-Allow-Origin", isAllowed ? origin : "https://ygo-synapse.web.app");

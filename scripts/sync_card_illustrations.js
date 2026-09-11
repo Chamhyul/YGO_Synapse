@@ -110,12 +110,61 @@ function isTemporaryPasscode(value) {
   return /^\d{9}$/.test(String(value));
 }
 
-function resolveCiid(record) {
-  if (!record || !record.id) throw new Error('MISSING_BASE_PASSCODE');
-  if (record.altart === undefined || record.altart === null) return 1;
-  const ciid = Number(record.altart) - Number(record.id) + 1;
-  if (!Number.isInteger(ciid) || ciid < 2 || ciid > MAX_CIID) throw new Error('INVALID_CIID_MAPPING');
-  return ciid;
+function assertAppendOnlyCiidSources(mappings, manifest = { files: {} }) {
+  const files = manifest.files || {};
+  const existingByCid = new Map();
+  for (const [sourceImageId, item] of Object.entries(files)) {
+    const source = String(sourceImageId || '');
+    const cid = String(item?.cid || '');
+    if (!isOfficialPasscode(source) || !/^\d+$/.test(cid)) continue;
+    if (!existingByCid.has(cid)) existingByCid.set(cid, []);
+    existingByCid.get(cid).push(source);
+  }
+
+  for (const [sourceImageId, record] of mappings) {
+    const source = String(sourceImageId || '');
+    const cid = String(record?.cid || '');
+    if (!isOfficialPasscode(source) || !/^\d+$/.test(cid)) continue;
+
+    const previousCid = files[source]?.cid;
+    if (previousCid !== undefined && previousCid !== null && String(previousCid) !== cid) {
+      throw new Error(`NON_APPEND_CIID_SOURCE: 원본 ${source}의 CID가 ${previousCid}에서 ${cid}(으)로 변경되었습니다.`);
+    }
+    if (String(previousCid || '') === cid) continue;
+
+    const existing = existingByCid.get(cid) || [];
+    if (!existing.length) continue;
+    const maxExisting = existing.reduce((max, value) => BigInt(value) > max ? BigInt(value) : max, 0n);
+    if (BigInt(source) <= maxExisting) {
+      throw new Error(`NON_APPEND_CIID_SOURCE: CID ${cid}의 신규 원본 ${source}가 기존 최대 원본 ${maxExisting}보다 크지 않아 CIID 재배정이 필요합니다.`);
+    }
+  }
+}
+
+function resolveCiids(mappings, manifest = { files: {} }) {
+  const groups = new Map();
+  const add = (sourceImageId, cid) => {
+    const source = String(sourceImageId || '');
+    const card = String(cid || '');
+    if (!isOfficialPasscode(source) || !/^\d+$/.test(card)) return;
+    if (!groups.has(card)) groups.set(card, new Set());
+    groups.get(card).add(source);
+  };
+
+  for (const [sourceImageId, item] of Object.entries(manifest.files || {})) add(sourceImageId, item.cid);
+  for (const [sourceImageId, record] of mappings) add(sourceImageId, record?.cid);
+
+  const result = new Map();
+  for (const sources of groups.values()) {
+    const ordered = [...sources].sort((left, right) => {
+      const a = BigInt(left);
+      const b = BigInt(right);
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
+    if (ordered.length > MAX_CIID) throw new Error('INVALID_CIID_MAPPING');
+    ordered.forEach((sourceImageId, index) => result.set(sourceImageId, index + 1));
+  }
+  return result;
 }
 
 function isPendulumDocument(data) {
@@ -327,7 +376,7 @@ function sha256(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
-async function downloadArtwork(job, outputDir, manifest, dryRun) {
+async function downloadArtwork(job, outputDir, manifest, dryRun, reassignedOwners = new Map()) {
   const targetName = `${job.cid}_${job.ciid}.webp`;
   const targetPath = path.join(outputDir, targetName);
   const transform = job.isPendulum ? 'artp' : 'art';
@@ -350,7 +399,7 @@ async function downloadArtwork(job, outputDir, manifest, dryRun) {
     const existingDigest = sha256(existing);
     const priorOwner = Object.entries(manifest.files || {}).find(([, item]) => item.target === targetName)?.[0];
     if (existingDigest === digest) return { status: 'ready', targetName, transform, localSha256: digest, duplicate: true };
-    if (priorOwner && priorOwner !== job.sourceImageId) {
+    if (priorOwner && priorOwner !== job.sourceImageId && reassignedOwners.get(targetName) !== job.sourceImageId) {
       return { status: 'conflict', reason: 'TARGET_CONTENT_MISMATCH', targetName, transform, localSha256: digest };
     }
   } catch (error) {
@@ -450,6 +499,8 @@ async function run(options) {
 
   log(`[매핑] YGOCDB에서 ${candidates.length}개 이미지 확인 중`);
   const mappings = await mapImageIds(candidates);
+  assertAppendOnlyCiidSources(mappings, manifest);
+  const ciids = resolveCiids(mappings, manifest);
   const jobs = [];
   for (const entry of candidates) {
     const record = mappings.get(entry.sourceImageId);
@@ -469,7 +520,9 @@ async function run(options) {
       continue;
     }
     try {
-      jobs.push({ ...entry, record, cid: String(record.cid), ciid: resolveCiid(record) });
+      const ciid = ciids.get(entry.sourceImageId);
+      if (!ciid) throw new Error('INVALID_CIID_MAPPING');
+      jobs.push({ ...entry, record, cid: String(record.cid), ciid });
     } catch {
       manifest.files[entry.sourceImageId] = {
         ...baseManifestEntry(entry), cid: record.cid ? String(record.cid) : null,
@@ -499,6 +552,15 @@ async function run(options) {
       }
       downloadable.push({ ...job, isPendulum: projectCard.isPendulum });
     }
+    const desiredTargets = new Map(downloadable.map(job => [job.sourceImageId, `${job.cid}_${job.ciid}.webp`]));
+    const reassignedOwners = new Map();
+    for (const job of downloadable) {
+      const targetName = desiredTargets.get(job.sourceImageId);
+      const priorOwner = Object.entries(manifest.files || {}).find(([, item]) => item.target === targetName)?.[0];
+      if (priorOwner && priorOwner !== job.sourceImageId && desiredTargets.get(priorOwner) !== targetName) {
+        reassignedOwners.set(targetName, job.sourceImageId);
+      }
+    }
 
     let processedSinceCheckpoint = 0;
     let checkpointQueue = Promise.resolve();
@@ -515,7 +577,7 @@ async function run(options) {
     await mapLimited(downloadable, options.concurrency, async job => {
       const old = manifest.files[job.sourceImageId];
       try {
-        const result = await downloadArtwork(job, options.outputDir, manifest, options.dryRun);
+        const result = await downloadArtwork(job, options.outputDir, manifest, options.dryRun, reassignedOwners);
         manifest.files[job.sourceImageId] = {
           ...baseManifestEntry(job), cid: job.cid, ciid: job.ciid,
           target: result.targetName, transform: result.transform,
@@ -576,7 +638,7 @@ async function main() {
 if (require.main === module) main();
 
 module.exports = {
-  parseArgs, parseMetadata, isOfficialPasscode, isTemporaryPasscode, resolveCiid, isPendulumDocument,
+  parseArgs, parseMetadata, isOfficialPasscode, isTemporaryPasscode, assertAppendOnlyCiidSources, resolveCiids, isPendulumDocument,
   buildArtworkUrl, selectCandidates, imageDimensions, createManifest, chunk, fetchMetadata, run,
   TOKEN_SOURCE_IDS,
 };
