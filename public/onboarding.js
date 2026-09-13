@@ -69,7 +69,7 @@ function getOnboardingTarget(type, index = 0) {
 /* ─── 페이지별 온보딩 시나리오 데이터 ─── */
 
 function getMobileSearchBtn() {
-    return document.querySelector('.mobile-nav-item[data-mode="search"]');
+    return document.querySelector('.app-navi-item--mobile[data-mode="search"]');
 }
 
 const ONBOARDING_STEPS = {
@@ -244,15 +244,15 @@ const ONBOARDING_STEPS = {
                         <div id="pack-lang-options" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: 8px; margin-top: 0px;">
                             <label style="cursor: pointer; display: inline-flex; align-items: center; margin: 0; padding: 0; height: 20px;">
                                 <input class="with-gap small-radio" name="ob-lang" type="radio" value="ko" checked />
-                                <span style="font-size: 0.85rem; color: var(--text-primary); white-space: nowrap;">한국</span>
+                                <span style="font-size: 0.85rem; color: var(--text-000); white-space: nowrap;">한국</span>
                             </label>
                             <label style="cursor: pointer; display: inline-flex; align-items: center; margin: 0; padding: 0; height: 20px;">
                                 <input class="with-gap small-radio" name="ob-lang" type="radio" value="en" />
-                                <span style="font-size: 0.85rem; color: var(--text-primary); white-space: nowrap;">영미</span>
+                                <span style="font-size: 0.85rem; color: var(--text-000); white-space: nowrap;">영미</span>
                             </label>
                             <label style="cursor: pointer; display: inline-flex; align-items: center; margin: 0; padding: 0; height: 20px;">
                                 <input class="with-gap small-radio" name="ob-lang" type="radio" value="de" />
-                                <span style="font-size: 0.85rem; color: var(--text-primary); white-space: nowrap;">독일</span>
+                                <span style="font-size: 0.85rem; color: var(--text-000); white-space: nowrap;">독일</span>
                             </label>
                         </div>
                     `;

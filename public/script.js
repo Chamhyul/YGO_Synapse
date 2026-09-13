@@ -1896,17 +1896,25 @@ document.addEventListener('DOMContentLoaded', initApp);
 
 
 function updateActiveNav(mode) {
-    document.querySelectorAll('.nav-item, .mobile-nav-item').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.app-navi-item').forEach(el => {
+        el.classList.remove('active');
+        el.removeAttribute('aria-current');
+    });
+    const searchNavItem = document.querySelector('.app-navi-item--mobile[data-mode="search"]');
+    if (searchNavItem) searchNavItem.setAttribute('aria-expanded', 'false');
     let searchMode = mode;
     if (['add', 'move', 'discard'].includes(mode)) searchMode = 'manage';
     const targets = document.querySelectorAll(`[data-mode="${searchMode}"]`);
-    targets.forEach(el => el.classList.add('active'));
+    targets.forEach(el => {
+        el.classList.add('active');
+        el.setAttribute('aria-current', 'page');
+    });
 }
 
 function updateMetaThemeColor(mode) {
     const meta = document.getElementById('meta-theme-color');
     if (meta) {
-        if (mode === 'light') { meta.setAttribute('content', '#F0F0F0'); } else { meta.setAttribute('content', '#000000'); }
+        if (mode === 'light') { meta.setAttribute('content', '#f0f0f0'); } else { meta.setAttribute('content', '#1e1e1e'); }
     }
 }
 
@@ -2727,7 +2735,7 @@ function renderMobileFilterSheetBody(colIdx) {
 
             html += `
                 <input type="text" class="filter-input-field filter-search-box" placeholder="내부 검색..." oninput="searchMobileFilterOptions(this)" style="width: 100%; box-sizing: border-box; margin-bottom: 8px;">
-                <div class="filter-select-toggle" onclick="toggleAllMobileFilterCheckboxes(this)" style="margin-bottom: 12px; font-weight: 600; color: var(--primary-color); cursor: pointer; text-align: right; font-size: 0.9rem;">${toggleLabel}</div>
+                <div class="filter-select-toggle" onclick="toggleAllMobileFilterCheckboxes(this)" style="margin-bottom: 12px; font-weight: 600; color: var(--theme-000); cursor: pointer; text-align: right; font-size: 0.9rem;">${toggleLabel}</div>
                 <div class="filter-option-list" style="max-height: 200px; overflow-y: auto;">
                     ${optionsHtml}
                 </div>
@@ -5811,8 +5819,17 @@ async function saveUserSetting(field, value) {
  * 저장된 설정을 로드하여 UI에 적용
  */
 function loadUserSettings(settingsFromServer) {
-    // 1. 초기값 설정 (DB 우선, 없으면 LocalStorage)
-    const savedTheme = (settingsFromServer && settingsFromServer.theme) || localStorage.getItem(THEME_KEY) || 'light';
+    // 초기 HTML에서 시스템 테마를 먼저 그린 뒤,
+    // DB > LocalStorage > 시스템 순으로 사용자 설정을 적용한다.
+    const serverTheme = settingsFromServer && ['light', 'dark'].includes(settingsFromServer.theme)
+        ? settingsFromServer.theme
+        : null;
+    const localThemeValue = localStorage.getItem(THEME_KEY);
+    const localTheme = ['light', 'dark'].includes(localThemeValue) ? localThemeValue : null;
+    const systemTheme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
+    const savedTheme = serverTheme || localTheme || systemTheme;
     const savedDetailMode = (settingsFromServer && settingsFromServer.isDetailMode !== undefined)
         ? settingsFromServer.isDetailMode
         : (localStorage.getItem(IS_DETAIL_MODE_KEY) === 'true');
@@ -7203,7 +7220,7 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
         lastSearchState = { ...lastSearchState, targetRows, targetCid };
         existingBottomSec.innerHTML = '';
         if (targetRows.length === 0) {
-            existingBottomSec.innerHTML = `<p class="center" style="padding: 20px 0; color: var(--text-secondary);">등록되지 않은 카드입니다.</p>`;
+            existingBottomSec.innerHTML = `<p class="center" style="padding: 20px 0; color: var(--text-001);">등록되지 않은 카드입니다.</p>`;
         } else {
             renderTableToContainer(targetRows, existingBottomSec);
         }
@@ -7221,7 +7238,7 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
     bottomSec.className = 'target-inventory-section';
 
     if (targetRows.length === 0) {
-        bottomSec.innerHTML = `<p class="center" style="padding: 20px 0; color: var(--text-secondary);">등록되지 않은 카드입니다.</p>`;
+        bottomSec.innerHTML = `<p class="center" style="padding: 20px 0; color: var(--text-001);">등록되지 않은 카드입니다.</p>`;
     } else {
         renderTableToContainer(targetRows, bottomSec);
     }
@@ -7671,7 +7688,7 @@ function renderMembershipSettings(membership) {
     let html = `
         <div class="management-row" style="margin-top: 15px; padding-top: 15px; border-top: 1px dotted var(--border-color);">
             <div class="management-desc">
-                <div style="font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                <div style="font-weight: 700; color: var(--text-000); display: flex; align-items: center; gap: 6px;">
                     멤버십 상태: ${isPremium ? '<span style="color: #00bcd4;">프리미엄 (💎)</span>' : '일반'}
                 </div>
                 <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
@@ -7682,7 +7699,7 @@ function renderMembershipSettings(membership) {
             <button class="btn waves-effect management-btn" 
                     id="sync-membership-btn"
                     onclick="syncYoutubeMembership()"
-                    style="background-color: var(--bg-header); color: var(--text-primary); border: 1px solid var(--border-color); box-shadow: none;">
+                    style="background-color: var(--bg-header); color: var(--text-000); border: 1px solid var(--border-color); box-shadow: none;">
                 상태 갱신
             </button>
         </div>
@@ -9554,7 +9571,7 @@ function showMoveResultModal(moves, isFullSynced) {
 
     modal.dataset.hasSuccess = (successCount > 0) ? "true" : "false";
 
-    if (failCount === 0 && successCount > 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--success-green);">check_circle</i>'; successText.innerHTML = `<span style="color:var(--text-primary);">${successQty}장 성공, ${failCount}건 실패</span>`; }
+    if (failCount === 0 && successCount > 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--success-green);">check_circle</i>'; successText.innerHTML = `<span style="color:var(--text-000);">${successQty}장 성공, ${failCount}건 실패</span>`; }
     else if (successCount === 0 && failCount > 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--error-red);">cancel</i>'; successText.innerHTML = `<span style="color:var(--error-red);">${successQty}장 성공, ${failCount}건 실패</span>`; }
     else if (successCount > 0 && failCount > 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--warning-yellow);">warning</i>'; successText.innerHTML = `<span>${successQty}장 성공, ${failCount}건 실패</span>`; }
 
@@ -10429,7 +10446,7 @@ function resetDeckMode(clearInput = false) {
         const statusMsg = document.getElementById('deck-status-msg');
         if (statusMsg) {
             statusMsg.classList.remove('status-error', 'status-success');
-            statusMsg.innerHTML = `<span style="font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); line-height: 1.4; text-align: center;">덱 코드를 입력하여 뉴런에 등록된 덱 리스트를 가져옵니다.<br><a href="#" class="fna-link" style="color: var(--primary-color); text-decoration: underline;">덱 코드는 어떻게 확인하나요?</a></span>`;
+            statusMsg.innerHTML = `<span style="font-size: 0.85rem; font-weight: 500; color: var(--text-001); line-height: 1.4; text-align: center;">덱 코드를 입력하여 뉴런에 등록된 덱 리스트를 가져옵니다.<br><a href="#" class="fna-link" style="color: var(--theme-000); text-decoration: underline;">덱 코드는 어떻게 확인하나요?</a></span>`;
         }
     }
 
@@ -10466,7 +10483,7 @@ function handleDeckSearch() {
         statusMsg.style.alignItems = 'center';
         statusMsg.style.justifyContent = 'center';
         statusMsg.style.marginTop = '4px';
-        statusMsg.innerHTML = `<span style="font-size: 0.85rem; font-weight: 500; color: var(--text-secondary);">확인 중...</span>`;
+        statusMsg.innerHTML = `<span style="font-size: 0.85rem; font-weight: 500; color: var(--text-001);">확인 중...</span>`;
     }
     if (genBtn) genBtn.classList.add('disabled');
 
@@ -10912,7 +10929,7 @@ async function handlePackSearch(isInstant = false, targetName = null, targetLoca
                 optionsHtml += `
                     <label style="cursor: pointer; display: inline-flex; align-items: center; margin: 0; padding: 0; height: 20px;">
                         <input class="with-gap small-radio" name="packLangSelect" type="radio" value="${locInfo.locale}" data-url="${locInfo.targetUrl}" data-total="${locInfo.totalCards || 0}" ${isChecked} />
-                        <span style="font-size: 0.85rem; color: var(--text-primary); white-space: nowrap;">${locName}</span>
+                        <span style="font-size: 0.85rem; color: var(--text-000); white-space: nowrap;">${locName}</span>
                     </label>
                 `;
             });
@@ -10992,7 +11009,7 @@ function displayPackSearchStatus(msg, type) {
         el.classList.add('status-success');
         el.style.color = "var(--success-green)";
     } else {
-        el.style.color = "var(--text-secondary)";
+        el.style.color = "var(--text-001)";
     }
 
     // [추가] 상태 메시지 변화에 따른 높이 재동기화
@@ -11776,7 +11793,7 @@ function updateMobileNoticeList() {
         const item = document.createElement('div');
         item.className = 'mobile-noti-item';
         const isNew = isNoticeNew(noti);
-        const pinIcon = noti.isPinned > 0 ? '<i class="material-icons" style="font-size:1rem; color:var(--primary-color); margin-right:4px;">push_pin</i>' : '';
+        const pinIcon = noti.isPinned > 0 ? '<i class="material-icons" style="font-size:1rem; color:var(--theme-000); margin-right:4px;">push_pin</i>' : '';
 
         item.innerHTML = `
             <div class="mobile-noti-item-date">${noti.date}</div>
@@ -11890,8 +11907,8 @@ function renderLinkedAccounts(user) {
         if (info) {
             let identifier = pData[info.idField] || pData.displayName || pData.uid;
             htmlStr += `<div style="display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px dotted rgba(0,0,0,0.1); padding-bottom: 4px;">
-                <span style="font-weight: 700; color: var(--text-secondary); width: 80px;">${info.name}</span>
-                <span style="color: var(--text-primary); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${identifier}</span>
+                <span style="font-weight: 700; color: var(--text-001); width: 80px;">${info.name}</span>
+                <span style="color: var(--text-000); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${identifier}</span>
             </div>`;
         }
     });
@@ -12112,7 +12129,7 @@ function renderMobileLinkedAccounts(user) {
         },
         'twitter.com': { 
             name: 'X (Twitter) 계정', 
-            htmlIcon: `<i class="fa-brands fa-x-twitter" style="font-size: 1.5rem; color: var(--text-primary);"></i>`,
+            htmlIcon: `<i class="fa-brands fa-x-twitter" style="font-size: 1.5rem; color: var(--text-000);"></i>`,
             idField: 'displayName' 
         }
     };
@@ -12252,7 +12269,7 @@ function openMembershipAuthModal() {
         const typeName = membership.type === 'discord' ? '멤버십 인증 완료' : '유튜브 채널 (CSV)';
 
         if (badgeContainer) {
-            badgeContainer.innerHTML = `<span style="background: rgba(0,188,212,0.12); color: var(--primary-color); border: 1px solid var(--primary-color); padding: 4px 12px; border-radius: 20px; font-weight: 700; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px;">
+            badgeContainer.innerHTML = `<span style="background: rgba(0,188,212,0.12); color: var(--theme-000); border: 1px solid var(--theme-000); padding: 4px 12px; border-radius: 20px; font-weight: 700; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px;">
                 <i class="material-icons" style="font-size: 1rem;">check_circle</i> ${typeName}
             </span>`;
         }
@@ -12374,7 +12391,7 @@ async function handleNeverShowMembership() {
         // 1단계 클릭: 문구 변경
         membershipHideClickCount = 1;
         btn.innerHTML = '환경 설정에서도 멤버십 인증을 할 수 있습니다.<br>(진행하려면 한 번 더 눌러주세요.)';
-        btn.style.color = 'var(--text-secondary)';
+        btn.style.color = 'var(--text-001)';
         btn.style.fontSize = '0.8rem';
         btn.style.lineHeight = '1.4';
     } else {
@@ -12415,7 +12432,7 @@ async function handleNeverShowMembershipMobile() {
     if (mobileMembershipHideClickCount === 0) {
         mobileMembershipHideClickCount = 1;
         btn.innerHTML = '환경 설정에서도 멤버십 인증을 할 수 있습니다.<br>(진행하려면 한 번 더 눌러주세요.)';
-        btn.style.color = 'var(--text-secondary)';
+        btn.style.color = 'var(--text-001)';
     } else {
         if (!UserStore.user) return;
         try {
@@ -12428,7 +12445,7 @@ async function handleNeverShowMembershipMobile() {
             
             mobileMembershipHideClickCount = 0;
             btn.textContent = '다시 표시하지 않음';
-            btn.style.color = 'var(--text-secondary)';
+            btn.style.color = 'var(--text-001)';
         } catch (err) {
             showToast('설정 저장에 실패했습니다.', 'toast-error');
         }
@@ -13121,7 +13138,7 @@ function validateMigrationLink() {
     // 검증 중 상태 (스피너 노출)
     mark.innerHTML = '<div class="loading-spinner"></div>';
     msg.innerHTML = '시트 정보 조회 중...';
-    msg.style.color = 'var(--text-secondary)';
+    msg.style.color = 'var(--text-001)';
 
     migrationValidationTimeout = setTimeout(async () => {
         try {
@@ -13245,7 +13262,7 @@ function showMigrationResultModal(result) {
     displayItems.forEach(item => {
         const row = `<tr>
             <td style="width:70%; text-align:left; padding:12px 15px; border-bottom:1px solid var(--border-color);">${item.name}</td>
-            <td style="width:30%; text-align:right; padding:12px 15px; border-bottom:1px solid var(--border-color); color:var(--primary-color); font-weight:700;">+${item.qty}장</td>
+            <td style="width:30%; text-align:right; padding:12px 15px; border-bottom:1px solid var(--border-color); color:var(--theme-000); font-weight:700;">+${item.qty}장</td>
         </tr>`;
         summaryBody.insertAdjacentHTML('beforeend', row);
     });
@@ -13257,7 +13274,7 @@ function showMigrationResultModal(result) {
         const remainingQty = remainingItems.reduce((acc, curr) => acc + (curr.qty || 0), 0);
 
         const summaryRow = `<tr class="summary-extra-row">
-            <td colspan="2" style="text-align:center; padding:15px; color:var(--text-secondary); font-size:0.9rem; background:rgba(var(--primary-rgb), 0.05); border-top:1px solid var(--border-color);">
+            <td colspan="2" style="text-align:center; padding:15px; color:var(--text-001); font-size:0.9rem; background:color-mix(in srgb, var(--theme-000) 5%, transparent); border-top:1px solid var(--border-color);">
                 그 외 <strong>${remainingKinds}종</strong> | <strong>${remainingQty}장</strong>
             </td>
         </tr>`;
@@ -13862,7 +13879,7 @@ function updateManageFooter(mode, subModeOverride) {
                 } else if (btnInfo.type === 'flat') {
                     btn.classList.add('btn-flat');
                     btn.classList.remove('btn', 'cyan-theme', 'red-theme', 'waves-light');
-                    btn.style.color = 'var(--text-primary)';
+                    btn.style.color = 'var(--text-000)';
                     btn.style.border = 'none';
                     btn.style.background = 'transparent';
                 } else {
@@ -14626,9 +14643,15 @@ function openMobileSearch() {
     showMobileRecentInDropdown();
     
     // 하단 탭바 하이라이트 변경
-    document.querySelectorAll('.mobile-nav-item').forEach(el => el.classList.remove('active'));
-    const searchNavItem = document.querySelector('.mobile-nav-item[data-mode="search"]');
-    if (searchNavItem) searchNavItem.classList.add('active');
+    document.querySelectorAll('.app-navi-item--mobile').forEach(el => {
+        el.classList.remove('active');
+        el.removeAttribute('aria-current');
+    });
+    const searchNavItem = document.querySelector('.app-navi-item--mobile[data-mode="search"]');
+    if (searchNavItem) {
+        searchNavItem.classList.add('active');
+        searchNavItem.setAttribute('aria-expanded', 'true');
+    }
     
     input.focus();
 }
