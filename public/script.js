@@ -5929,13 +5929,25 @@ function toggleTheme() {
     }, 350); // 안전 마진 50ms 추가
 }
 const regionMap = { 'ko': '한국', 'ja': '일본', 'ae': '아시아', 'cn': '중국', 'en': '영미', 'de': '독일', 'fr': '프랑스', 'it': '이탈리아', 'es': '스페인', 'pt': '포르투갈' };
-function loadRegion() { const savedRegion = localStorage.getItem(REGION_KEY) || 'ko'; UIStore.currentRegion = savedRegion; document.getElementById('region-text').innerText = regionMap[savedRegion]; document.documentElement.setAttribute('data-region', savedRegion); }
+function syncRegionOptionSelection(code) {
+    document.querySelectorAll('#region-dropdown [role="option"]').forEach(option => {
+        option.setAttribute('aria-selected', String(option.dataset.region === code));
+    });
+}
+function loadRegion() {
+    const savedRegion = localStorage.getItem(REGION_KEY) || 'ko';
+    UIStore.currentRegion = savedRegion;
+    document.getElementById('region-text').innerText = regionMap[savedRegion];
+    document.documentElement.setAttribute('data-region', savedRegion);
+    syncRegionOptionSelection(savedRegion);
+}
 // 모든 드롭다운 닫기 (현재는 지역 설정만 및 검색바 등)
 function closeDropdowns() {
     // 지역 설정 닫기
     const regionWrapper = document.getElementById('region-wrapper');
     if (regionWrapper && regionWrapper.classList.contains('active')) {
         regionWrapper.classList.remove('active');
+        document.getElementById('region-capsule')?.setAttribute('aria-expanded', 'false');
         // 높이 변수 초기화 (애니메이션 종료 후 자연스럽게 무시되지만 명시적 초기화)
         regionWrapper.style.setProperty('--region-dropdown-height', '0px');
     }
@@ -5957,6 +5969,7 @@ function toggleRegionDropdown(event) {
 
     if (!isActive) {
         wrapper.classList.add('active');
+        document.getElementById('region-capsule')?.setAttribute('aria-expanded', 'true');
 
         // 높이 계산 및 애니메이션 시작
         requestAnimationFrame(() => {
@@ -5965,6 +5978,55 @@ function toggleRegionDropdown(event) {
             wrapper.style.setProperty('--region-dropdown-height', scrollHeight + 'px');
         });
     }
+}
+
+function handleRegionButtonKeydown(event) {
+    if (event.key === 'Escape') {
+        closeDropdowns();
+        return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+
+    event.preventDefault();
+    const wrapper = document.getElementById('region-wrapper');
+    if (!wrapper.classList.contains('active')) toggleRegionDropdown(event);
+
+    const options = [...document.querySelectorAll('#region-dropdown [role="option"]')];
+    const target = event.key === 'ArrowUp' ? options.at(-1) : options[0];
+    target?.focus();
+}
+
+function handleRegionOptionKeydown(event) {
+    const option = event.target.closest('[role="option"]');
+    if (!option) return;
+
+    const options = [...document.querySelectorAll('#region-dropdown [role="option"]')];
+    const currentIndex = options.indexOf(option);
+    let nextIndex = currentIndex;
+
+    if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % options.length;
+    else if (event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + options.length) % options.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = options.length - 1;
+    else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        option.click();
+        document.getElementById('region-capsule')?.focus();
+        return;
+    } else if (event.key === 'Escape') {
+        event.preventDefault();
+        closeDropdowns();
+        document.getElementById('region-capsule')?.focus();
+        return;
+    } else if (event.key === 'Tab') {
+        closeDropdowns();
+        return;
+    } else {
+        return;
+    }
+
+    event.preventDefault();
+    options[nextIndex]?.focus();
 }
 
 let lastSearchState = null;
@@ -6013,6 +6075,7 @@ function selectRegion(code, text) {
     localStorage.setItem(REGION_KEY, code);
     document.getElementById('region-text').innerText = text;
     document.documentElement.setAttribute('data-region', code);
+    syncRegionOptionSelection(code);
 
     closeDropdowns();
 
