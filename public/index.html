@@ -151,7 +151,7 @@
     <div class="app-main-shell">
 
     <!-- 전역 상단 헤더 컨테이너: 사이드바 우측 전체 너비 차지 -->
-    <header class="global-top-nav">
+    <header class="global-top-nav app-content-frame">
         <div class="header-left-container">
             <!-- 로그인/로그아웃 캡슐 버튼 -->
             <button type="button" id="auth-capsule-btn" class="app-header-control app-header-button ui-capsule auth-capsule" onclick="toggleAuthModal()">
@@ -2104,19 +2104,19 @@
         </div>
     </main>
 
-    <footer id="main-footer" class="global-footer">
+    <footer id="main-footer" class="global-footer app-content-frame">
         <div class="footer-disclaimer">
-            YGO Synapse는 비공식 팬 사이트이며, 코나미(KONAMI)와 제휴하거나 보증받지 않았습니다.<br>
-            유희왕(Yu-Gi-Oh!) 관련 모든 카드 이미지, 텍스트 및 상표권은 © 2020 Studio Dice/SHUEISHA, TV TOKYO, KONAMI의 자산입니다.
+            YGO Synapse는 비공식 팬 사이트이며,<wbr> 코나미(KONAMI)와 제휴하거나 보증받지 않았습니다.<br>
+            유희왕(Yu-Gi-Oh!) 관련 모든 카드 이미지, 텍스트 및 상표권은<wbr> © 2020 Studio Dice/SHUEISHA, TV TOKYO, KONAMI의 자산입니다.
         </div>
         <div class="footer-info-box">
             <span class="footer-item" id="footer-version"></span>
             <span class="footer-separator">|</span>
-            <span class="footer-item">Made by <a href="https://www.youtube.com/@참혈" target="_blank"
+            <span class="footer-item">Made by <a href="https://www.youtube.com/@참혈" target="_blank" rel="noopener noreferrer"
                     class="maker-link"><i class="fa-brands fa-youtube"></i> <span
                         class="maker-text">참혈</span></a></span>
-            <span class="footer-separator mobile-hide">|</span>
-            <span class="footer-item copyright">© 2026 YGO Synapse.</span>
+            <span class="footer-separator">|</span>
+            <span class="footer-item">© 2026 YGO Synapse.</span>
         </div>
         <div class="footer-links-box">
             <a href="terms.html" class="footer-link-item" onclick="openTermsModal(event)">이용약관</a>

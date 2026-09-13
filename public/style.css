@@ -45,6 +45,7 @@ body {
   --text-navi: #666666;
   --text-000: #333333;
   --text-001: #666666;
+  --text-007: #5e6969;
 
   /* 테두리 색상 */
   --border-navi: #d4d8d8;
@@ -114,6 +115,7 @@ html.dark-mode {
   --text-navi: #7e7e7e;
   --text-000: #e0e0e0;
   --text-001: #b0b0b0;
+  --text-007: #3d4545;
 
   /* 테두리 색상 */
   --border-navi: #262626;
@@ -1648,6 +1650,10 @@ html.is-mobile-device .container {
 }
 
 /* 전역 상단 헤더 스타일 */
+.app-content-frame {
+  padding-inline: var(--app-content-gutter);
+}
+
 .global-top-nav {
   position: fixed;
   top: 0;
@@ -1658,7 +1664,6 @@ html.is-mobile-device .container {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-inline: var(--app-content-gutter);
   background-color: var(--surface-000);
   z-index: 950;
   transition: left 0.4s cubic-bezier(0.25, 0.8, 0.25, 1),
@@ -1681,7 +1686,6 @@ html.is-mobile-device .global-top-nav {
 @media only screen and (max-width: 992px) {
   html:not(.is-mobile-device) .global-top-nav {
     left: var(--navi-sidebar-compact-width);
-    padding-inline: var(--app-content-gutter);
     height: 50px;
   }
 }
@@ -3392,30 +3396,24 @@ html.dark-mode #loading-text {
   margin-bottom: 20px;
 }
 
-#main-footer {
+.global-footer {
   text-align: center;
-  color: var(--text-muted);
+  color: var(--text-007);
   font-size: 0.8rem;
-  padding-left: var(--app-content-gutter);
-  padding-right: var(--app-content-gutter);
-  box-sizing: border-box;
-  margin-bottom: 30px;
   padding-bottom: 30px;
 }
 
-#main-footer a {
-  color: var(--text-muted);
+.global-footer a {
+  color: inherit;
 }
 
-.footer-disclaimer {
+.global-footer .footer-disclaimer {
   margin-bottom: 12px;
-  color: var(--text-muted);
-  font-size: 0.8rem;
   line-height: 1.5;
   word-break: keep-all;
 }
 
-.footer-info-box {
+.global-footer .footer-info-box {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -3423,18 +3421,17 @@ html.dark-mode #loading-text {
   line-height: 1.5;
 }
 
-.footer-item {
+.global-footer .footer-item {
   white-space: nowrap;
 }
 
-.footer-separator {
+.global-footer .footer-separator {
   margin: 0 8px;
   user-select: none;
   opacity: 0.5;
 }
 
-#main-footer a.maker-link {
-  color: var(--text-muted);
+.global-footer .maker-link {
   text-decoration: none;
   display: inline-flex;
   align-items: center;
@@ -3444,36 +3441,21 @@ html.dark-mode #loading-text {
 }
 
 
-#main-footer a.maker-link i {
+.global-footer .maker-link i {
   transform: translate(1.6px, 0.4px);
 }
 
-#main-footer a.maker-link .maker-text {
+.global-footer .maker-link .maker-text {
   transform: translateY(1px);
 }
 
-#main-footer a.maker-link:hover {
+.global-footer .maker-link:hover,
+.global-footer .maker-link:focus-visible {
   color: var(--link-hover-color);
+  outline: none;
 }
 
-@media (hover: hover) {
-  #main-footer a.maker-link:hover {
-    color: var(--link-hover-color);
-  }
-}
-
-@media only screen and (max-width: 600px) {
-  .footer-separator.mobile-hide {
-    display: none;
-  }
-
-  .footer-item.copyright {
-    width: 100%;
-    margin-top: 4px;
-  }
-}
-
-.footer-links-box {
+.global-footer .footer-links-box {
   display: flex;
   justify-content: center;
   align-items: center;
@@ -3482,39 +3464,35 @@ html.dark-mode #loading-text {
   flex-wrap: wrap;
 }
 
-.footer-link-item {
-  color: var(--text-muted);
+.global-footer .footer-link-item {
   text-decoration: none;
   font-size: 0.75rem;
   font-weight: 500;
-  transition: all 0.3s ease;
+  transition: color 0.3s ease, background-color 0.3s ease;
   padding: 4px 8px;
   border-radius: 4px;
 }
 
-.footer-link-item:hover {
+.global-footer .footer-link-item:hover,
+.global-footer .footer-link-item:focus-visible {
   color: var(--theme-000);
-  background-color: rgba(0, 0, 0, 0.03);
+  background-color: var(--surface-003);
+  outline: none;
 }
 
-html.dark-mode .footer-link-item:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-}
-
-.footer-link-separator {
-  color: var(--border-color);
+.global-footer .footer-link-separator {
   font-size: 0.6rem;
   user-select: none;
   opacity: 0.7;
 }
 
 @media only screen and (max-width: 600px) {
-  .footer-links-box {
+  .global-footer .footer-links-box {
     gap: 4px;
     margin-top: 12px;
   }
 
-  .footer-link-item {
+  .global-footer .footer-link-item {
     font-size: 0.7rem;
   }
 }
