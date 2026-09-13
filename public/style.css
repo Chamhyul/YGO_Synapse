@@ -8997,13 +8997,15 @@ html.is-mobile-device #home-faq-section .faq-segment-control input[type="radio"]
 .search-art-picture { width: min(100%, 360px); aspect-ratio: 1; display: grid; place-items: center; min-width: 0; }
 .search-art-picture img { width: 100%; height: 100%; object-fit: contain; border-radius: 8px; }
 .search-art-caption { display: grid; grid-template-columns: 34px 78px 34px; align-items: center; justify-content: center; column-gap: 15px; margin: 12px 0; }
-.search-art-caption-meta { display: grid; grid-template-columns: 44px 28px; align-items: center; justify-content: center; gap: 6px; width: 78px; }
+.search-art-caption-meta { grid-column: 2; display: grid; grid-template-columns: 44px 28px; align-items: center; justify-content: center; gap: 6px; width: 78px; }
 .search-art-caption-label { display: grid; place-items: center; width: 44px; min-width: 0; height: 28px; padding: 0 6px; line-height: 20px; white-space: nowrap; }
 .search-art-caption > .search-art-prev, .search-art-caption > .search-art-next { width: 34px; min-width: 34px; min-height: 26px; height: 26px; padding: 0 9px; border-radius: 999px; line-height: 1; }
+.search-art-caption > .search-art-prev { grid-column: 1; grid-row: 1; }
+.search-art-caption > .search-art-next { grid-column: 3; grid-row: 1; }
 .search-art-region { position: relative; width: 28px; height: 28px; }
 .search-art-region > button { display: grid; place-items: center; width: 28px; height: 28px; padding: 4px; }
 .search-art-region > button svg { display: block; }
-.search-art-popup { position: absolute; top: 100%; right: 0; width: max-content; max-width: min(260px, 70vw); padding: 12px; border: 1px solid var(--border-color, #8885); border-radius: 8px; background: var(--popup-bg); color: var(--text-primary); box-shadow: 0 4px 16px #0003; z-index: 10; text-align: left; }
+.search-art-popup { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); width: max-content; max-width: min(260px, 70vw); padding: 12px; border: 1px solid var(--border-color, #8885); border-radius: 8px; background: var(--popup-bg); color: var(--text-primary); box-shadow: 0 4px 16px #0003; z-index: 10; text-align: left; }
 .search-card-details { display: flex; flex-direction: column; gap: 16px; }
 .search-art-strip-row { display: flex; align-items: flex-start; gap: 8px; }
 .search-art-strip-row > button { flex: 0 0 24px; width: 24px; min-width: 24px; height: 64px; min-height: 64px; margin-top: 6px; padding: 0; }
@@ -9052,6 +9054,15 @@ input#card-search:disabled { cursor: default; opacity: 1; }
 @keyframes photo-detection-spin { to { transform: rotate(360deg); } }
 .photo-analysis-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr); gap: 20px; height: 100%; padding-top: 4px; box-sizing: border-box; }
 .photo-analysis-left { min-width: 0; }
+.photo-analysis-left:has(.photo-region-edit-overlay-actions) { position: relative; }
+.photo-region-edit-overlay-actions { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.photo-region-edit-overlay-actions button { position: absolute; right: 12px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent); border-radius: 50%; background: color-mix(in srgb, var(--bg-surface) 88%, transparent); color: var(--text-primary); box-shadow: 0 2px 8px rgba(0,0,0,.3); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); cursor: pointer; pointer-events: auto; }
+.photo-region-edit-overlay-actions button:first-child { top: 12px; }
+.photo-region-edit-overlay-actions button:nth-child(2) { bottom: 64px; }
+.photo-region-edit-overlay-actions button:nth-child(3) { bottom: 12px; }
+.photo-region-edit-overlay-actions button:last-child { background: var(--primary-color); color: #fff; }
+.photo-region-edit-overlay-actions button:disabled { background: color-mix(in srgb, var(--bg-surface) 72%, transparent); color: var(--disabled-text); box-shadow: none; opacity: .65; }
+.photo-region-edit-overlay-actions i { font-size: 24px; }
 .photo-preview { position: relative; width: 100%; aspect-ratio: 1; overflow: hidden; border-radius: 12px; background: #000000; }
 .photo-image-layer { position: absolute; transform-origin: 0 0; transition: left .2s ease, top .2s ease, width .2s ease, height .2s ease; }
 .photo-image-layer > img { display: block; width: 100%; height: 100%; }
@@ -9135,7 +9146,12 @@ input#card-search:disabled { cursor: default; opacity: 1; }
 .photo-analysis-actions { flex: 0 0 42px; min-height: 42px; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 0; padding: 6px 5px 0 0; box-sizing: border-box; background: transparent; }
 .photo-analysis-actions .btn-flat { color: var(--text-primary); }
 .photo-analysis-actions .btn:disabled { background-color: var(--disabled-bg) !important; color: var(--disabled-text) !important; cursor: default; opacity: .6; }
+.desktop-photo-full-footer { grid-template-rows: minmax(0, 1fr) auto; }
+.desktop-photo-full-footer > .photo-analysis-left,
+.desktop-photo-full-footer > .photo-candidate-panel { grid-row: 1; }
+.desktop-photo-full-footer > .photo-analysis-actions { grid-column: 1 / -1; grid-row: 2; }
 @media (max-width: 700px) {
+  .photo-region-handle { width: 32px; height: 32px; }
   .photo-search-sheet-panel { left: 0; right: 0; top: auto; bottom: 0; width: 100%; max-height: 92%; box-sizing: border-box; transform: translateY(100%); transition: transform .35s cubic-bezier(.15,.85,.35,1), height .3s ease; padding: 12px 14px calc(18px + env(safe-area-inset-bottom)); border-radius: 20px 20px 0 0; }
   .photo-search-sheet.visible .photo-search-sheet-panel { transform: translateY(0); }
   .photo-analysis-layout { grid-template-columns: 1fr; }
@@ -9152,15 +9168,6 @@ input#card-search:disabled { cursor: default; opacity: 1; }
   .photo-search-sheet .photo-region-grid-scroll.is-scrolling::-webkit-scrollbar-thumb { background: rgba(128,128,128,.48); }
   .photo-search-sheet .photo-region-grid { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 76px; grid-template-rows: 76px; gap: 8px; }
   .photo-search-sheet .photo-region-thumb-remove { opacity: 1; }
-  .mobile-photo-region-setup .photo-analysis-left { position: relative; }
-  .mobile-photo-region-edit-actions { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
-  .mobile-photo-region-edit-actions button { position: absolute; right: 12px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent); border-radius: 50%; background: color-mix(in srgb, var(--bg-surface) 88%, transparent); color: var(--text-primary); box-shadow: 0 2px 8px rgba(0,0,0,.3); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); cursor: pointer; pointer-events: auto; }
-  .mobile-photo-region-edit-actions button:first-child { top: 12px; }
-  .mobile-photo-region-edit-actions button:nth-child(2) { bottom: 64px; }
-  .mobile-photo-region-edit-actions button:nth-child(3) { bottom: 12px; }
-  .mobile-photo-region-edit-actions button:last-child { background: var(--primary-color); color: #fff; }
-  .mobile-photo-region-edit-actions button:disabled { background: color-mix(in srgb, var(--bg-surface) 72%, transparent); color: var(--disabled-text); box-shadow: none; opacity: .65; }
-  .mobile-photo-region-edit-actions i { font-size: 24px; }
   .photo-search-sheet .photo-analysis-actions { position: sticky; bottom: 0; z-index: 3; min-height: 54px; padding: 8px 0 calc(4px + env(safe-area-inset-bottom)); background: var(--bg-surface); }
   .photo-search-sheet .photo-analysis-actions .photo-image-select { margin-right: auto; }
   .photo-search-sheet .photo-analysis-actions .btn,

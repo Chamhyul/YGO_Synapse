@@ -446,7 +446,8 @@
         if (Number.isFinite(maximumWidth)) width = Math.min(width, maximumWidth);
         const height = width / aspect;
         const centerX = bounds.x + bounds.width / 2, centerY = bounds.y + bounds.height / 2;
-        return `left:${50 - width * centerX}%;top:${50 - height * centerY}%;width:${width}%;height:${height}%;`;
+        const editCenterX = document.documentElement.classList.contains('is-mobile-device') ? 37 : 39;
+        return `left:${editCenterX - width * centerX}%;top:${50 - height * centerY}%;width:${width}%;height:${height}%;`;
     }
 
     function renderPreview(editing, showAllFrames = true) {
@@ -762,7 +763,7 @@
                     host.querySelector('[data-confirm-edit]')?.removeAttribute('disabled');
                     host.querySelector('[data-analyze]')?.setAttribute('disabled', '');
                     const previewRect = layer.closest('.photo-preview')?.getBoundingClientRect();
-                    const safeZone = 28;
+                    const safeZone = document.documentElement.classList.contains('is-mobile-device') ? 40 : 28;
                     if (previewRect && (moveEvent.clientX <= previewRect.left + safeZone
                         || moveEvent.clientX >= previewRect.right - safeZone
                         || moveEvent.clientY <= previewRect.top + safeZone
@@ -837,13 +838,12 @@
             const editing = state.viewMode === 'edit' && Boolean(state.regions.find(region => region.id === state.selectedId));
             const thumbnails = state.regions.map((region, index) => `<div class="photo-region-thumb-item${region.id === state.selectedId ? ' selected' : ''}"><button type="button" class="photo-region-thumb" data-edit-region="${region.id}" aria-label="${index + 1}번 영역 편집"><img src="${regionThumbnail(region)}" alt=""></button><button type="button" class="photo-region-thumb-remove" data-remove-region-id="${region.id}" aria-label="${index + 1}번 영역 제거"><i class="material-icons">close</i></button></div>`).join('');
             const preview = renderPreview(editing);
-            const showAllAction = editing ? '<button type="button" class="photo-show-all" data-show-all>전체 보기</button>' : '';
-            const editActions = editing ? `<div class="photo-region-edit-actions"><button type="button" class="photo-region-cancel" data-cancel-edit ${state.editDirty ? '' : 'disabled'}>취소</button><button type="button" class="photo-region-save" data-confirm-edit ${state.editDirty ? '' : 'disabled'}>저장</button></div>` : '';
-            const mobileEditActions = editing ? `<div class="mobile-photo-region-edit-actions"><button type="button" data-show-all aria-label="전체 보기"><i class="material-icons">fullscreen</i></button><button type="button" data-cancel-edit aria-label="되돌리기" ${state.editDirty ? '' : 'disabled'}><i class="material-icons">undo</i></button><button type="button" data-confirm-edit aria-label="저장" ${state.editDirty ? '' : 'disabled'}><i class="material-icons">check</i></button></div>` : '';
+            const editOverlayActions = editing ? `<div class="photo-region-edit-overlay-actions"><button type="button" data-show-all aria-label="전체 보기"><i class="material-icons">fullscreen</i></button><button type="button" data-cancel-edit aria-label="되돌리기" ${state.editDirty ? '' : 'disabled'}><i class="material-icons">undo</i></button><button type="button" data-confirm-edit aria-label="저장" ${state.editDirty ? '' : 'disabled'}><i class="material-icons">check</i></button></div>` : '';
             const addRegionButton = `<button type="button" class="photo-region-add" data-add-region ${state.regions.length >= MAX_REGIONS ? 'disabled' : ''}><i class="material-icons">add</i><span>추가하기</span></button>`;
             const regionSetup = `<div class="photo-region-setup"><div class="photo-region-grid-scroll"><div class="photo-region-grid">${addRegionButton}${thumbnails}</div></div></div>`;
-            const desktopSetupMarkup = `<div class="photo-analysis-layout photo-region-setup-layout"><div class="photo-analysis-left">${preview}<div class="photo-region-meta-row">${showAllAction}${editActions}</div></div><section class="photo-candidate-panel">${regionSetup}<div class="photo-analysis-actions"><button type="button" class="btn-flat photo-image-select" data-replace>이미지 변경</button><button type="button" class="btn cyan-theme" data-analyze ${state.regions.length && !state.editDirty ? '' : 'disabled'}>분석 시작</button></div></section></div>`;
-            const mobileSetupMarkup = `<div class="photo-analysis-layout photo-region-setup-layout mobile-photo-region-setup"><div class="photo-analysis-left">${preview}${mobileEditActions}</div><section class="photo-candidate-panel">${regionSetup}<div class="photo-analysis-actions"><button type="button" class="btn-flat photo-image-select" data-replace>이미지 변경</button><button type="button" class="btn cyan-theme" data-analyze ${state.regions.length && !state.editDirty ? '' : 'disabled'}>분석 시작</button></div></section></div>`;
+            const setupActions = `<div class="photo-analysis-actions"><button type="button" class="btn-flat photo-image-select" data-replace>이미지 변경</button><button type="button" class="btn cyan-theme" data-analyze ${state.regions.length && !state.editDirty ? '' : 'disabled'}>분석 시작</button></div>`;
+            const desktopSetupMarkup = `<div class="photo-analysis-layout photo-region-setup-layout desktop-photo-full-footer"><div class="photo-analysis-left">${preview}${editOverlayActions}</div><section class="photo-candidate-panel">${regionSetup}</section>${setupActions}</div>`;
+            const mobileSetupMarkup = `<div class="photo-analysis-layout photo-region-setup-layout mobile-photo-region-setup"><div class="photo-analysis-left">${preview}${editOverlayActions}</div><section class="photo-candidate-panel">${regionSetup}${setupActions}</section></div>`;
             host.innerHTML = mobileLayout ? mobileSetupMarkup : desktopSetupMarkup;
             host.querySelector('[data-show-all]')?.addEventListener('click', showAllRegions);
             host.querySelectorAll('[data-region-id]').forEach(button => button.onclick = () => {
@@ -895,7 +895,7 @@
         const editor = mobileLayout
             ? mobileCandidateList
             : desktopCandidateList;
-        const desktopLeftContent = `${renderPreview(false)}<div class="photo-region-meta-row"></div>`;
+        const desktopLeftContent = renderPreview(false);
         const mobileLeftContent = `<div class="mobile-photo-preview-wrap">${renderPreview(false)}</div>`;
         const leftContent = mobileLayout ? mobileLeftContent : desktopLeftContent;
         const allRegionsResolved = state.regions.every(region => region.selected || region.manualName.trim());
@@ -908,7 +908,9 @@
         const mobileRegionNavigation = `<div class="mobile-photo-footer-navigation"><button type="button" data-region-previous aria-label="이전 카드" ${state.regions.length > 1 ? '' : 'disabled'}><i class="material-icons">chevron_left</i></button><span>${selectedRegionNumber} / ${state.regions.length}</span><button type="button" data-region-next aria-label="다음 카드" ${state.regions.length > 1 ? '' : 'disabled'}><i class="material-icons">chevron_right</i></button></div>`;
         const mobileSelectionActions = `<button type="button" class="btn-flat mobile-photo-previous" data-previous>이전</button>${mobileRegionNavigation}<div class="mobile-photo-primary-action">${selectionPrimary}</div>`;
         const selectionActions = mobileLayout ? mobileSelectionActions : desktopSelectionActions;
-        host.innerHTML = `<div class="photo-analysis-layout${mobileLayout ? ' mobile-photo-candidate-layout' : ''}"><div class="photo-analysis-left">${leftContent}</div><section class="photo-candidate-panel">${editor}<div class="photo-analysis-actions">${selectionActions}</div></section></div>`;
+        const desktopSelectionMarkup = `<div class="photo-analysis-layout desktop-photo-full-footer"><div class="photo-analysis-left">${leftContent}</div><section class="photo-candidate-panel">${editor}</section><div class="photo-analysis-actions">${selectionActions}</div></div>`;
+        const mobileSelectionMarkup = `<div class="photo-analysis-layout mobile-photo-candidate-layout"><div class="photo-analysis-left">${leftContent}</div><section class="photo-candidate-panel">${editor}<div class="photo-analysis-actions">${selectionActions}</div></section></div>`;
+        host.innerHTML = mobileLayout ? mobileSelectionMarkup : desktopSelectionMarkup;
         host.querySelectorAll('[data-region-id]').forEach(button => button.onclick = () => { state.selectedId = button.dataset.regionId; render(); });
         host.querySelector('[data-add-region]')?.addEventListener('click', addRegion);
         host.querySelector('[data-remove-region]')?.addEventListener('click', removeSelected);

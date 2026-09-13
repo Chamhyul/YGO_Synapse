@@ -1,7 +1,7 @@
 /* Individual card search artwork viewer. */
 (function (root) {
     'use strict';
-    const regions = ['한국', '일본', '아시아 영어', '중국', '영어권', '독일', '프랑스', '이탈리아', '스페인', '포르투갈'];
+    const regions = ['한국', '일본', '아시아', '중국', '영어권', '독일', '프랑스', '이탈리아', '스페인', '포르투갈'];
     // These are the DB's locale ciid lists already included in the detail response.
     // Never infer release regions from an image source or an illustration count.
     function entries(info, index, cid) {

@@ -13,3 +13,6 @@ test('인덱스 실패 시에도 DB 일러스트 목록을 유지한다', () => 
     assert.deepEqual(entries({0: ['카드', [1]]}, null, '123').map(([id]) => id), [1]);
     assert.deepEqual(entries(null, null, '123'), []);
 });
+test('아시아 영어권 발매 지역은 아시아로 표시한다', () => {
+    assert.deepEqual(entries({ae: {ciid: [1]}}, null, '123').map(([id, regions]) => [id, [...regions]]), [[1, ['아시아']]]);
+});
