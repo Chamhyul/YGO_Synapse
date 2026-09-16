@@ -22,7 +22,7 @@ Copyright (C) 2026 참혈 (Chamhyul).
 
 배포 소스 다운로드: https://ygo-synapse.web.app/legal/ygo-source-20260908.tar.gz — 함수별 실제 소스 대응표와 인증 비밀값 제외 기록을 포함합니다. [구성 및 실행 안내](DEPLOYED_SOURCE.md)를 참조하십시오. 개발 작업 트리와 운영 배포 소스는 다를 수 있습니다.
 
-Node.js 24와 Firebase CLI가 필요합니다. 저장소 루트와 functions에서 각각 `npm ci`를 실행합니다. Firebase 프로젝트 및 필요한 인증 정보를 자신의 환경에 설정한 뒤 루트에서 `npm run dev`로 에뮬레이터를 실행합니다. Hosting의 설정 포트는 **5005**입니다. 실제 외부 서비스/API는 별도 계정·설정·이용 조건이 필요하며, 에뮬레이터 실행이 외부 서비스 연결을 자동으로 격리하지는 않습니다.
+Node.js 24와 Firebase CLI가 필요합니다. 저장소 루트와 functions에서 각각 `npm ci`를 실행합니다. Firebase 프로젝트 및 필요한 인증 정보를 자신의 환경에 설정한 뒤 루트에서 `npm run dev`로 에뮬레이터를 실행합니다. 로컬 에뮬레이터는 Functions **5001**, UI **5002**, Firestore **5003**, Storage **5004**, Hosting **5005**, Tasks **5006**, Hub **5007**, Logging **5008** 포트를 사용합니다. 실제 외부 서비스/API는 별도 계정·설정·이용 조건이 필요하며, 에뮬레이터 실행이 외부 서비스 연결을 자동으로 격리하지는 않습니다.
 
 프런트엔드는 public, 서버는 functions, 데이터 처리·검증 도구는 scripts에 있습니다. `npm run test:illustrations`와 functions의 `npm test`로 관련 테스트를 실행할 수 있습니다. `node scripts/build_license_inventory.js`는 두 lockfile과 현재 설치된 패키지의 고지를 읽어 공개용 목록을 재생성합니다. 누락된 플랫폼별 패키지 고지는 설치 환경에 따라 달라집니다.
 

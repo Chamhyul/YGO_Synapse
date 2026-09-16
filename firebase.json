@@ -90,7 +90,7 @@
     },
     "firestore": {
       "host": "0.0.0.0",
-      "port": 8080
+      "port": 5003
     },
     "hosting": {
       "host": "0.0.0.0",
@@ -98,7 +98,7 @@
     },
     "storage": {
       "host": "0.0.0.0",
-      "port": 9199
+      "port": 5004
     },
     "ui": {
       "enabled": true,
@@ -108,7 +108,15 @@
     "singleProjectMode": true,
     "tasks": {
       "host": "127.0.0.1",
-      "port": 9499
+      "port": 5006
+    },
+    "hub": {
+      "host": "127.0.0.1",
+      "port": 5007
+    },
+    "logging": {
+      "host": "127.0.0.1",
+      "port": 5008
     }
   }
 }

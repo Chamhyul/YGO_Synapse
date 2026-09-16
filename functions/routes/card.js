@@ -151,16 +151,26 @@ exports.resolveCardNames = onRequest({ invoker: 'public', timeoutSeconds: 60 }, 
   setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).send('');
   if (!(await verifyAppCheck(req, res))) return;
-  const names = req.body?.names;
-  if (!Array.isArray(names) || names.length > 40 || names.some(n => typeof n !== 'string' || n.length > 300)) {
-    return res.status(400).json({ success: false, message: '이름은 최대 40개까지 조회할 수 있습니다.' });
+  const names = req.body?.names || [];
+  const numbers = req.body?.numbers || [];
+  if (!Array.isArray(names) || !Array.isArray(numbers) || names.length + numbers.length > 40
+      || [...names, ...numbers].some(n => typeof n !== 'string' || !n.trim() || n.length > 300)) {
+    return res.status(400).json({ success: false, message: '이름과 번호는 합계 40개까지 조회할 수 있습니다.' });
   }
   try {
+    const metadata = {};
     const results = Object.fromEntries(await mapLimited([...new Set(names)], async name => {
       const cards = await findCards('names', name);
+      for (const card of cards) metadata[card.cid] = card.info;
       return [name, cards.map(card => card.cid)];
     }));
-    return res.json({ success: true, results });
+    const numberResults = Object.fromEntries(await mapLimited([...new Set(numbers)], async number => {
+      const cards = await findCards('numbers', number);
+      for (const card of cards) metadata[card.cid] = card.info;
+      return [number, cards.map(card => ({ cid: card.cid,
+        name: card.info[0]?.[0] || card.info[4]?.[0] || card.data.names?.[0] || number }))];
+    }));
+    return res.json({ success: true, results, numberResults, metadata });
   } catch (error) {
     return res.status(500).json({ success: false, message: '카드 연결 정보를 조회하지 못했습니다.' });
   }

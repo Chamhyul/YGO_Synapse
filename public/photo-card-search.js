@@ -991,6 +991,9 @@
         const mobileButton = document.getElementById('mobile-photo-search-btn');
         const wrapper = document.getElementById('search-wrapper');
         if (desktopInput) desktopInput.disabled = active;
+        // 검색바 버튼의 표시 상태만 동기화한다. 사진 검색 패널은 변경하지 않는다.
+        const clearButton = document.getElementById('clear-btn');
+        if (clearButton) clearButton.hidden = active || !desktopInput?.value;
         if (mobileInput) mobileInput.disabled = active;
         wrapper?.classList.toggle('photo-image-active', active);
         for (const button of [desktopButton, mobileButton]) {
@@ -1183,7 +1186,7 @@
         syncCamera();
     }
 
-    root.PhotoCardSearch = { init, openPicker, openRegistrationSheet, detectRegionsFromImageData, normalizeRegions, sortRegionsReadingOrder, orderQuad, regionFromQuad, getDetectorStatus: () => detectorStatus, isDesktopBusy: () => (states.search.phase === 'detecting' || states.search.busy) && states.search.root?.id === 'desktop-photo-search-panel', hasDesktopPhoto: () => hasSearchPhoto() && states.search.root?.id === 'desktop-photo-search-panel', CARD_ART_CROPS, MAX_REGIONS, ANALYSIS_BATCH_SIZE };
+    root.PhotoCardSearch = { init, refreshSearchControls: syncSearchControls, openPicker, openRegistrationSheet, detectRegionsFromImageData, normalizeRegions, sortRegionsReadingOrder, orderQuad, regionFromQuad, getDetectorStatus: () => detectorStatus, isDesktopBusy: () => (states.search.phase === 'detecting' || states.search.busy) && states.search.root?.id === 'desktop-photo-search-panel', hasDesktopPhoto: () => hasSearchPhoto() && states.search.root?.id === 'desktop-photo-search-panel', CARD_ART_CROPS, MAX_REGIONS, ANALYSIS_BATCH_SIZE };
     if (typeof module === 'object' && module.exports) module.exports = { detectRegionsFromImageData, normalizeRegions, sortRegionsReadingOrder, orderQuad, regionFromQuad, iou, CARD_ART_CROPS, MAX_REGIONS, ANALYSIS_BATCH_SIZE };
     else document.addEventListener('DOMContentLoaded', init);
 })(typeof window !== 'undefined' ? window : globalThis);

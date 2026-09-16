@@ -369,7 +369,7 @@ const ONBOARDING_STEPS = {
     ],
     inventory: [
         {
-            target: '#inventory-content-area .segment-control',
+            target: '#app-page-inventory .segment-control',
             title: '보유 현황 페이지',
             content: '카드 보관 현황을 확인할 수 있는 페이지입니다. 대시보드에서는 요약된 정보를 확인할 수 있으며, 전체 목록 역시 확인 가능합니다.',
             position: 'bottom',

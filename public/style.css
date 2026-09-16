@@ -1,6 +1,6 @@
+-webkit-tap-highlight-color: transparent;
+touch-action: manipulation;
 * {
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
   box-sizing: border-box;
 }
 
@@ -35,30 +35,41 @@ body {
 }
 
 :root {
-  /* 배경색상 */
-  --surface-navi: #dde4e3;
-  --surface-000: #f0f5f4;
-  --surface-001: #f9fbfb;
-  --surface-003: #dde4e3;
+  /* 테마 색상 */
+  --theme-000: hsl(174, 100%, 30%);
+  --theme-001: hsl(174, 50%, 70%);
+  --theme-002: hsl(174, 40%, 25%);
+  --theme-003: hsl(174, 40%, 85%);
+  --theme-004: hsl(174, 20%, 20%);
 
-  /* 텍스트 색상 */
-  --text-navi: #666666;
-  --text-000: #333333;
-  --text-001: #666666;
-  --text-007: #5e6969;
+  /* 배경색상 */
+  --surface-navi: hsl(174, 10%, 90%);
+  --surface-000: hsl(174, 15%, 95%);
+  --surface-001: hsl(174, 15%, 100%);  
+  --surface-002: hsl(174, 10%, 90%);
+  --surface-003: hsl(174, 5%, 88%);
 
   /* 테두리 색상 */
-  --border-navi: #d4d8d8;
-  --border-000: #d4d8d8;
+  --border-navi: hsl(174, 5%, 84%);
+  --border-000: hsl(174, 5%, 84%);
+  --border-001: hsl(174, 5%, 70%);
+  --border-002: hsl(174, 5%, 58%);
+  --border-003: hsl(174, 5%, 45%);
 
-  /* 테마 색상 */
-  --theme-000: #009688;
-  --theme-001: #92dcd5;
-  --theme-002: #009688;
+  /* 텍스트 색상 */
+  --text-navi: hsl(174, 0%, 40%);
+  --text-000: hsl(174, 0%, 20%);
+  --text-001: hsl(174, 1%, 40%);
+  --text-002: hsl(174, 2%, 55%);
+  --text-003: hsl(174, 3%, 70%);
+
+  /* 그림자 색상 */
+  --shadow: hsl(174, 0%, 30%);
+
 
   /* 슬라이더 색상 */
-  --slider-bg: #cad3d2;
-  --slider-bg-hover: #aeb9b8;
+  --slider-bg: var(--surface-003); hsl(173, 9%, 81%);
+  --slider-bg-hover: hsl(175, 7%, 70%);
   --slider-on: var(--theme-000);
   --slider-on-hover: var(--theme-002);
 
@@ -84,12 +95,12 @@ body {
   --bg-fail: #ffebee;
   --input-bg: #ffffff;
   --disabled-bg: #e0e0e0;
-  --disabled-text: #9e9e9e;
   --overlay-bg: rgba(255, 255, 255, 0.95);
   --bg-odd-row: #80cbc4;
   --text-table: #424242;
   --table-border-specific: rgb(200, 240, 240);
   --logo-text-color: #000000;
+  --disabled-text: #9e9e9e;
   --qty-box-bg: rgba(0, 0, 0, 0.05);
   --spinner-track: rgba(0, 0, 0, 0.1);
   --link-hover-color: #f44336;
@@ -105,26 +116,36 @@ body {
 }
 
 html.dark-mode {
-  /* 배경색상 */
-  --surface-navi: #0b0b0b;
-  --surface-000: #121212;
-  --surface-001: #1e1e1e;
-  --surface-003: #333333;
+  /* 테마 색상 */
+  --theme-000: hsl(174, 42%, 51%);
+  --theme-001: hsl(174, 60%, 21%);
+  --theme-002: hsl(174, 60%, 54%);
+  --theme-003: hsl(174, 20%, 23%);
+  --theme-004: hsl(174, 30%, 60%);
 
-  /* 텍스트 색상 */
-  --text-navi: #7e7e7e;
-  --text-000: #e0e0e0;
-  --text-001: #b0b0b0;
-  --text-007: #3d4545;
+  /* 배경색상 */
+  --surface-navi: hsl(174, 0%, 4%);
+  --surface-000: hsl(174, 0%, 7%);
+  --surface-001: hsl(174, 0%, 15%);
+  --surface-002: hsl(174, 0%, 20%);
+  --surface-003: hsl(174, 0%, 20%);
 
   /* 테두리 색상 */
-  --border-navi: #262626;
-  --border-000: #262626;
+  --border-navi: hsl(174, 0%, 15%);
+  --border-000: hsl(174, 0%, 28%);
+  --border-001: hsl(174, 0%, 40%);
+  --border-002: hsl(174, 0%, 52%);
+  --border-003: hsl(174, 0%, 60%);
 
-  /* 테마 색상 */
-  --theme-000: #4db6ac;
-  --theme-001: #155851;
-  --theme-002: #43d1c4;
+  /* 텍스트 색상 */
+  --text-navi: hsl(174, 0%, 49%);
+  --text-000: hsl(174, 0%, 90%);
+  --text-001: hsl(174, 1%, 70%);
+  --text-002: hsl(174, 2%, 45%);
+  --text-003: hsl(174, 3%, 25%);
+
+  /* 그림자 색상 */
+  --shadow: hsl(174, 0%, 25%);
 
   /* 기존 테마 색상 */
   --bg-surface: #1e1e1e;
@@ -164,6 +185,7 @@ html.dark-mode {
 /* 공통 앱 셸: 내비게이션과 페이지 콘텐츠의 레이아웃 책임을 분리한다. */
 .app-main-shell {
   --app-content-gutter: 16px;
+  padding-top: var(--app-header-growth, 0px);
   width: calc(100% - var(--navi-sidebar-width));
   min-height: 100dvh;
   margin-left: var(--navi-sidebar-width);
@@ -470,18 +492,33 @@ select {
   font-family: 'Pretendard', sans-serif !important;
 }
 
-#dynamic-header-wrapper {
+#app-search-masthead {
   position: relative;
   width: 100%;
   max-width: 700px;
   margin: 20px auto;
-  height: 220px;
+  height: max(220px, calc(150px + var(--search-controls-height, 69px)));
   transition: height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), margin-top 0.4s ease, background-color 0.3s ease;
   z-index: 100;
   overflow: visible;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .app-title-container {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
   position: absolute;
   display: flex;
   justify-content: center;
@@ -525,7 +562,7 @@ select {
 
 .search-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: flex-start;
   width: 100%;
   gap: 8px;
@@ -534,8 +571,8 @@ select {
   transition: margin 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), max-width 0.4s;
 }
 
-body.mode-compact #dynamic-header-wrapper {
-  height: 70px;
+body.mode-compact #app-search-masthead {
+  height: max(70px, calc(24px + var(--search-controls-height, 46px)));
   margin-top: 0;
 }
 
@@ -958,14 +995,12 @@ input::-webkit-calendar-picker-indicator {
 
 
 
-input#card-search::placeholder,
 #sheet-url::placeholder,
 .capsule-input::placeholder {
   color: var(--text-placeholder) !important;
   opacity: 1 !important;
 }
 
-html.dark-mode input#card-search::placeholder,
 html.dark-mode #sheet-url::placeholder,
 html.dark-mode .capsule-input::placeholder {
   color: var(--text-placeholder) !important;
@@ -1460,6 +1495,9 @@ html.dark-mode .global-dropdown {
 .app-navi-item {
   display: flex;
   align-items: center;
+  flex-direction: var(--navi-item-direction, row);
+  justify-content: var(--navi-item-alignment, flex-start);
+  gap: var(--navi-item-gap, 0px);
   position: relative;
   color: var(--text-navi);
   cursor: pointer;
@@ -1484,6 +1522,9 @@ html.dark-mode .global-dropdown {
 }
 
 .app-navi-item--sidebar {
+  --navi-item-direction: row;
+  --navi-item-alignment: flex-start;
+  --navi-item-gap: 16px;
   padding: 16px 24px;
 }
 
@@ -1506,8 +1547,7 @@ html.dark-mode .global-dropdown {
   background-color: var(--theme-000);
 }
 
-.app-navi-item--sidebar i {
-  margin-right: 16px;
+.app-navi-item--sidebar .app-navi-icon {
   font-size: 24px;
 }
 
@@ -1518,6 +1558,7 @@ html.dark-mode .global-dropdown {
 }
 
 .mobile-nav-container {
+  --mobile-nav-bottom-padding: calc(var(--navi-mobile-height) - var(--navi-mobile-content-height) + env(safe-area-inset-bottom) + var(--navi-mobile-overdraw));
   display: none;
   position: fixed;
   /* Safari 동적 툴바와의 반올림 틈을 가리도록 하단으로 2px 연장한다. */
@@ -1528,30 +1569,43 @@ html.dark-mode .global-dropdown {
   height: calc(var(--navi-mobile-height) + env(safe-area-inset-bottom) + var(--navi-mobile-overdraw));
   box-sizing: border-box;
   z-index: 1100;
-  justify-content: space-around;
   align-items: stretch;
+  /* nav 기본 스타일의 글자색·행 높이가 버튼에 상속되지 않도록 지정 */
+  color: var(--text-navi);
+  line-height: 1;
   background-color: var(--surface-navi);
+  box-shadow: 0px 25px 15px 20px var(--shadow);
   border-top: 1px solid var(--border-navi);
   overflow: hidden;
   transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s ease;
-  transform: translateY(100%);
-  /* 기본은 숨김 */
+}
+
+/* 너비가 아닌 기기 판별 결과로 표시 */
+html.is-mobile-device .mobile-nav-container {
+  display: flex;
+}
+
+html.nav-hidden .mobile-nav-container,
+html.modal-open .mobile-nav-container {
+  transform: translateY(150%);
   pointer-events: none;
+  opacity: 0;
 }
 
 .app-navi-item--mobile {
-  flex-direction: column;
-  justify-content: center;
-  font-size: 0.65rem;
+  --navi-item-direction: column;
+  --navi-item-alignment: center;
+  --navi-item-gap: 4px;
+  font-size: 12px;
   flex: 1;
   height: 100%;
   font-weight: 500;
   min-width: 48px;
-  padding: 0 0 calc(var(--navi-mobile-height) - var(--navi-mobile-content-height) + env(safe-area-inset-bottom) + var(--navi-mobile-overdraw));
+  padding: 0 0 var(--mobile-nav-bottom-padding);
   box-sizing: border-box;
 }
 
-.mobile-nav-container .app-navi-item--mobile i {
+.mobile-nav-container .app-navi-icon {
   font-size: 26px;
   height: 26px;
   line-height: 26px;
@@ -1560,15 +1614,12 @@ html.dark-mode .global-dropdown {
   align-items: center;
   width: 100%;
   text-align: center;
-  margin-bottom: 4px;
 }
 
-.mobile-nav-container .app-navi-item--mobile span {
+.mobile-nav-container .app-navi-label {
   display: block;
   width: 100%;
   text-align: center;
-  font-size: 12px;
-  line-height: 1;
 }
 
 @media only screen and (min-width: 993px) {
@@ -1593,12 +1644,7 @@ html.dark-mode .global-dropdown {
   }
 
   html:not(.is-mobile-device) .app-navi-item--sidebar {
-    justify-content: flex-start;
     padding: 16px 0 16px 24px;
-  }
-
-  html:not(.is-mobile-device) .app-navi-item--sidebar i {
-    margin-right: 0;
   }
 
 }
@@ -1613,20 +1659,6 @@ html.is-mobile-device .app-sidebar {
   display: none;
 }
 
-html.is-mobile-device .mobile-nav-container {
-  display: flex;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
-/* 입력창 포커스/바텀시트/모달 시 하단 요소 숨김 (모바일 전용) */
-html.nav-hidden .mobile-nav-container,
-html.modal-open .mobile-nav-container {
-  transform: translateY(150%);
-  pointer-events: none;
-  opacity: 0;
-}
-
 html.nav-hidden .mobile-ad-anchor,
 html.modal-open .mobile-ad-anchor,
 html.is-mobile-device.nav-hidden .mobile-ad-anchor,
@@ -1634,10 +1666,6 @@ html.is-mobile-device.modal-open .mobile-ad-anchor {
   transform: translateY(150%) !important;
   pointer-events: none !important;
   opacity: 0 !important;
-}
-
-html.is-mobile-device .header-right-container {
-  top: 8px;
 }
 
 html.is-mobile-device .container {
@@ -1660,10 +1688,12 @@ html.is-mobile-device .container {
   left: var(--navi-sidebar-width);
   right: 0;
   width: auto;
-  height: 46px;
+  min-height: 46px;
+  padding-block: 8px;
+  box-sizing: border-box;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  gap: 8px;
+  align-items: stretch;
   background-color: var(--surface-000);
   z-index: 950;
   transition: left 0.4s cubic-bezier(0.25, 0.8, 0.25, 1),
@@ -1686,25 +1716,14 @@ html.is-mobile-device .global-top-nav {
 @media only screen and (max-width: 992px) {
   html:not(.is-mobile-device) .global-top-nav {
     left: var(--navi-sidebar-compact-width);
-    height: 50px;
+    min-height: 50px;
+    padding-block: 10px;
   }
 }
 
-.header-left-container,
-.header-right-container {
+#noti-btn-wrapper {
   display: flex;
-  align-items: center;
-  height: 100%;
-}
-
-.header-left-container {
   position: relative;
-  gap: 8px;
-}
-
-.header-right-container {
-  position: static;
-  gap: 12px;
 }
 
 /* 헤더에서 직접 조작하는 모든 컨트롤의 공통 기반 */
@@ -1718,43 +1737,82 @@ html.is-mobile-device .global-top-nav {
 }
 
 .app-header-button {
-  --capsule-radius: 15px;
   position: relative;
-  height: 30px;
-  color: var(--text-000);
-  background-color: var(--surface-001);
-  border: none;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  min-height: 30px;
+  flex-shrink: 0;
+  margin: 0;
   transition: background-color 0.3s ease;
 }
 
-.app-header-button:focus {
-  background-color: var(--surface-001);
-  outline: none;
-}
-
-.app-header-button:hover,
-.app-header-button:focus-visible {
-  background-color: var(--surface-003);
-}
-
 /* 캡슐형 요소의 공통 곡률 문법 */
-.ui-capsule {
-  border-radius: var(--capsule-radius);
+.ui-shape-capsule {
+  border-radius: 999px;
+}
+
+.ui-shape-rounded {
+  border-radius: 4px;
+}
+
+:where(.ui-chip, .ui-tag) {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background-color: var(--chip-bg);
+  color: var(--chip-text);
+}
+
+.ui-chip {
+  padding: 6px 12px;
+}
+
+.ui-chip:focus {
+  background-color: var(--chip-bg);
+}
+
+.ui-chip:focus-visible {
+  background-color: var(--surface-002);
+}
+
+.ui-tag {
+  padding: 2px 6px;
+}
+
+.ui-color--card-owned {
+  --chip-bg: var(--theme-003);
+  --chip-text: var(--theme-000);
+}
+
+.ui-color--card-unowned {
+  --chip-bg: var(--surface-003);
+  --chip-text: var(--text-002);
+}
+
+.ui-color--search-general {
+  --chip-bg: transparent;
+  --chip-text: var(--text-001);
 }
 
 /* 아래로 확장되는 캡슐형 드롭다운의 공통 시각 기반 */
 .dropdown-capsule {
   --capsule-height: 30px;
-  --capsule-radius: calc(var(--capsule-height) / 2);
-  --capsule-open-radius: 12px;
   --dropdown-height-duration: 0.15s;
   --capsule-radius-duration: 0.2s;
 }
 
-.dropdown-capsule > .dropdown-capsule__surface {
+.dropdown-capsule > .dropdown-capsule__surface,
+.ui-search-surface {
   background-color: var(--surface-001);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.ui-search-surface {
+  box-sizing: border-box;
+  border: 1px solid var(--border-000);
+}
+
+.dropdown-capsule > .dropdown-capsule__surface {
+  /* 확장 배경은 전체 높이가 아닌 닫힌 컨트롤 높이를 기준으로 한다. */
+  border-radius: calc(var(--measured-capsule-height, var(--capsule-height)) / 2);
   transition: height var(--dropdown-height-duration) cubic-bezier(0.4, 0, 1, 1),
     border-radius var(--capsule-radius-duration) ease,
     box-shadow 0.3s ease,
@@ -1762,8 +1820,8 @@ html.is-mobile-device .global-top-nav {
     border-color 0.3s ease;
 }
 
-.dropdown-capsule.active > .ui-capsule {
-  border-radius: var(--capsule-open-radius);
+.dropdown-capsule.active > .ui-shape-capsule {
+  border-radius: calc(var(--measured-capsule-height, var(--capsule-height)) * 0.4);
 }
 
 /* 인증 캡슐 버튼 스타일 (지역 설정과 통일) */
@@ -1788,19 +1846,6 @@ html.is-mobile-device .global-top-nav {
 
 html.is-mobile-device .auth-capsule.has-noti .auth-dot {
   display: block;
-}
-
-#membership-verify-btn {
-  border: 1px solid var(--theme-000);
-}
-
-#membership-verify-btn:hover,
-#membership-verify-btn:focus-visible {
-  background-color: var(--theme-001);
-}
-
-#membership-verify-btn .auth-icon {
-  color: var(--theme-000);
 }
 
 .auth-icon {
@@ -1859,7 +1904,10 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 18px;
+  min-height: 30px;
+  margin-inline-start: auto;
+  margin-inline-end: 4px;
+  flex-shrink: 0;
 }
 
 /* 테마 토글: 문구 대신 현재 테마 아이콘 표시 */
@@ -1878,11 +1926,14 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
 }
 
 .theme-switch {
+  --slider-height: max(18px, 1.2rem);
+  --slider-inset: max(2px, 0.13rem);
   display: inline-block;
   position: relative;
   margin-bottom: 0;
-  height: 18px;
-  width: 36px;
+  height: var(--slider-height);
+  width: calc(var(--slider-height) * 2);
+  flex-shrink: 0;
   line-height: 1;
   vertical-align: middle;
 }
@@ -1904,20 +1955,20 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
   cursor: pointer;
   top: 0;
   left: 0;
-  width: 36px;
-  height: 18px;
+  width: 100%;
+  height: 100%;
   transition: .3s;
-  border-radius: 34px;
+  border-radius: 999px;
 }
 
 .app-header-control__slider:before {
   background-color: white;
   content: "";
   position: absolute;
-  height: 14px;
-  width: 14px;
-  left: 2px;
-  bottom: 2px;
+  height: calc(var(--slider-height) - var(--slider-inset) * 2);
+  width: calc(var(--slider-height) - var(--slider-inset) * 2);
+  left: var(--slider-inset);
+  bottom: var(--slider-inset);
   transition: .3s;
   border-radius: 50%;
 }
@@ -1937,20 +1988,20 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
 }
 
 .theme-switch input:checked + .app-header-control__slider:before {
-  transform: translateX(18px);
+  transform: translateX(var(--slider-height));
 }
 
 /* 지역 선택 컨테이너 (확장 애니메이션 적용) */
 .region-container {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   position: relative;
   /* 드롭다운이 다른 요소(예: 검색바)보다 위에 오지 않도록 조정 */
   z-index: 1002;
   --region-dropdown-height: 0px;
   --capsule-height: 30px;
-  --capsule-open-radius: 12px;
-  width: 88px;
+  min-width: 88px;
+  flex-shrink: 0;
   /* 기존 너비 유지 */
 }
 
@@ -1985,14 +2036,14 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
   /* 배경과 테두리는 expansion-bg가 담당 */
   background: transparent;
   border: none;
-  border-radius: 15px;
+  border-radius: 999px;
   color: var(--text-000);
   font-size: 0.9rem;
   font-weight: 500;
   user-select: none;
   position: relative;
   width: 100%;
-  height: 30px;
+  min-height: 30px;
   z-index: 1010;
 }
 
@@ -2024,10 +2075,9 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
 }
 
 /* 드롭다운 리스트 (배경 내부) */
-#region-dropdown {
+.region-dropdown-list {
   /* position: absolute; 제거 -> 배경 내부 흐름 따름 */
-  margin-top: 30px;
-  /* 캡슐 높이(30px)만큼 밀어줌 */
+  margin-top: var(--measured-capsule-height, var(--capsule-height));
   list-style: none;
   padding: 5px 0 10px 0;
   /* 상단 여백 조금, 하단 여백 */
@@ -2043,7 +2093,7 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
 }
 
 /* 활성화 시 내용물 표시 */
-#region-wrapper.active #region-dropdown {
+.region-container.active .region-dropdown-list {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
@@ -2065,8 +2115,8 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
   /* 배경보다 위에 */
 }
 
-#region-dropdown > li:hover,
-#region-dropdown > li:focus-visible {
+.region-dropdown-list > li:hover,
+.region-dropdown-list > li:focus-visible {
   background-color: var(--region-hover-bg);
   outline: none;
 }
@@ -2084,7 +2134,7 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
   transform: translate3d(0, 0, 0);
 }
 
-#content-slider-wrapper {
+#app-page-stack {
   position: relative;
   width: 100%;
   max-width: 700px;
@@ -2118,7 +2168,7 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
   transition: grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s;
 }
 
-.content-section-inner {
+.page-transition-inner {
   min-height: 0;
   overflow: hidden;
   display: flex;
@@ -2353,14 +2403,14 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
 
 /* 환경 설정 페이지 하단 여백 (전역 푸터와의 간격 확보) */
 
-#settings-content-area .content-section-inner::after {
+#app-page-settings .page-transition-inner::after {
   content: "";
   display: block;
   height: 30px;
 }
 
 /* 환경 설정 페이지 레이아웃 (데스크톱 기반 가로 배치 유지) */
-#settings-content-area .management-row {
+#app-page-settings .management-row {
   display: flex;
   flex-direction: row;
   gap: 15px;
@@ -2393,17 +2443,92 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
   overflow: visible;
 }
 
+:where(.ui-button) {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ui-button--filled {
+  background-color: var(--button-bg);
+  color: var(--button-text);
+}
+
+.ui-button--filled:focus {
+  background-color: var(--button-bg);
+  outline: none;
+}
+
+.ui-button--filled.ui-button--hover-highlight:hover {
+  background-color: var(--button-focus-bg, var(--button-bg));
+}
+
+.ui-button--filled:focus-visible {
+  background-color: var(--button-focus-bg, var(--button-bg));
+  outline: none;
+}
+
+.ui-color--theme {
+  --button-bg: var(--theme-000);
+  --button-text: var(--surface-000);
+  --button-focus-bg: var(--theme-002);
+  box-shadow: none;
+}
+
+.ui-color--type000 {
+  --button-bg: var(--surface-001);
+  --button-text: var(--text-000);
+  --button-focus-bg: var(--surface-003);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.ui-button--membership {
+  --button-bg: var(--surface-001);
+  --button-text: var(--text-000);
+  --button-focus-bg: var(--theme-001);
+  border: 1px solid var(--theme-000);
+}
+
+.ui-button--membership .auth-icon {
+  color: var(--theme-000);
+}
+
+.ui-button--shadow {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.ui-button--text,
+.ui-button--text:hover,
+.ui-button--text:focus,
+.ui-button--text:active {
+  background: transparent;
+  box-shadow: none;
+  color: var(--button-text);
+}
+
+.ui-button--text-secondary {
+  --button-text: var(--text-002);
+}
+
+.ui-button--text {
+  line-height: 1.2;
+  padding: 0.2rem;
+}
+
 .help-trigger-btn {
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 4px;
   transition: color 0.3s ease;
-  height: 18px !important;
-  line-height: 1 !important;
+  padding: 0.04rem 0.2rem;
 }
 
 .url-input-container {
@@ -2414,6 +2539,9 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
 
 .search-input-wrapper {
   flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-height: 46px;
   min-width: 0;
   position: relative;
   /* 컨테이너 자체는 투명하게 유지, 배경 박스가 스타일 담당 */
@@ -2424,7 +2552,6 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
   z-index: 1001;
   --dropdown-height: 0px;
   --capsule-height: 46px;
-  --capsule-open-radius: 18.4px;
   --dropdown-height-duration: 0.3s;
   --capsule-radius-duration: 0.4s;
   /* JS에서 업데이트될 변수 */
@@ -2438,7 +2565,7 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
   right: 0;
   height: 100%;
   /* 기본은 검색바 높이와 동일 */
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-000);
   z-index: -1;
   /* 입력창 뒤로 배치 */
   pointer-events: none;
@@ -2456,43 +2583,104 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
 }
 
 #search-btn {
-  border-radius: 50px;
-  width: 80px;
-  height: 45px;
-  padding: 0;
+  min-width: 80px;
+  width: calc(65px + 1rem);
+  min-height: 46px;
+  padding: 0.6rem 0.4rem;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-input#card-search {
-  text-align: left !important;
-  font-size: 1.1rem;
-  padding-left: 20px !important;
-  padding-right: 40px !important;
+#search-btn .material-icons {
+  font-size: 1.3rem;
+}
+
+/* Materialize 입력 기본값은 검색 입력 공통 기반에서 재정의한다. */
+input.search-input[type]:not(.browser-default) {
+  appearance: none;
+  text-align: left;
+  font-size: var(--search-input-font-size);
+  padding: 0 var(--search-input-padding-end) 0 var(--search-input-padding-start);
   box-sizing: border-box;
   color: var(--text-000);
-  border-bottom: none !important;
-  box-shadow: none !important;
-  height: 46px !important;
-  margin: 0 !important;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  height: auto;
+  line-height: 1.2;
+  margin: 0;
+  min-width: 0;
   width: 100%;
   display: block;
-  /* 배경/드롭다운보다 위에 오도록 설정 */
   position: relative;
+  background: transparent;
+  cursor: text;
+}
+
+input.search-input[type]:not(.browser-default):focus:not([readonly]) {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.search-input::placeholder {
+  color: var(--search-input-placeholder, var(--text-003));
+  opacity: 1;
+}
+
+.search-input--desktop {
+  --search-input-font-size: 1.1rem;
+  --search-input-padding-start: 1.33rem;
+  --search-input-padding-end: 3rem;
+  /* 확장 배경 위에 입력란 배치 */
   z-index: 3;
-  background: transparent !important;
+}
+
+input.search-input--desktop[type]:not(.browser-default) {
+  min-height: 46px;
+  padding-block: 0.8rem;
+}
+
+.search-input--mobile {
+  --search-input-placeholder: var(--text-002);
+  /* 모바일 기본 루트 크기 14px에서 기존 16px·40px·35px에 대응한다. */
+  --search-input-font-size: 1.14rem;
+  --search-input-padding-start: 2.86rem;
+  --search-input-padding-end: 2.5rem;
+  /* 입력란 위의 검색·지우기 버튼에 클릭이 전달되도록 한다. */
+  z-index: 1;
+}
+
+input.search-input--mobile[type]:not(.browser-default) {
+  /* 패딩 합계를 유지하면서 공통 시각 보정값만큼 텍스트를 내린다. */
+  min-height: 40px;
+  padding-block: calc(0.74rem + var(--search-content-offset))
+    calc(0.74rem - var(--search-content-offset));
+}
+
+.search-input-action {
+  position: absolute;
+  right: 0.67rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+}
+
+.search-input-action .material-icons {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1em;
 }
 
 .clear-search-btn {
-  position: absolute;
-  right: 15px;
-  top: 50%;
-  transform: translateY(-50%);
-  cursor: pointer;
-  color: var(--icon-muted);
-  display: none;
+  font-size: 1.6rem;
   z-index: 5;
   transition: color 0.3s ease;
 }
@@ -2550,8 +2738,9 @@ input#card-search {
 }
 
 .custom-dropdown {
+  --dropdown-item-highlight: var(--surface-002);
   position: absolute;
-  top: 46px;
+  top: var(--measured-capsule-height, 46px);
   /* 입력창 아래 고정 */
   left: 0;
   right: 0;
@@ -2560,7 +2749,7 @@ input#card-search {
   z-index: 2;
   max-height: 250px;
   /* 고정값으로 하여 부모 박스 확장에 따라 서서히 드러나게 함 */
-  overflow-y: auto !important;
+  overflow-y: auto;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2583,11 +2772,7 @@ input#card-search {
   /* 하단 여백 확보 */
 }
 
-html.dark-mode .custom-dropdown {
-  border-top: 1px solid #444;
-}
-
-.custom-dropdown li {
+.custom-dropdown > :where(li) {
   padding: 8px 20px;
   cursor: pointer;
   border-bottom: none;
@@ -2597,105 +2782,63 @@ html.dark-mode .custom-dropdown {
   white-space: normal;
 }
 
-.custom-dropdown li:hover {
-  background-color: rgba(0, 0, 0, 0.1) !important;
-}
-
-html.dark-mode .custom-dropdown li:hover {
-  background-color: rgba(0, 0, 0, 0.4) !important;
-}
-
 /* 키보드 선택 시 호버와 동일하게 강조 + 비인터랙티브 항목 예외 처리 */
-.custom-dropdown li.selected {
-  background-color: rgba(0, 0, 0, 0.1) !important;
+.custom-dropdown > :is(.text-suggest, .recent-item-row):hover,
+.custom-dropdown > :is(.text-suggest, .recent-item-row).selected {
+  background-color: var(--dropdown-item-highlight);
 }
 
-html.dark-mode .custom-dropdown li.selected {
-  background-color: rgba(0, 0, 0, 0.4) !important;
+.clear-all-btn {
+  font-size: 0.95rem;
 }
 
-.custom-dropdown li.recent-header-item {
-  cursor: default !important;
-}
-
-.custom-dropdown li.recent-header-item:hover,
-.custom-dropdown li.no-result-item:hover,
-html body .custom-dropdown li.recent-header-item:hover,
-html body .custom-dropdown li.no-result-item:hover {
-  background-color: transparent !important;
-}
-
-.custom-dropdown li .clear-all-btn {
-  cursor: pointer !important;
+.recent-title {
+  color: var(--text-001);
 }
 
 .custom-dropdown li.text-suggest {
-  color: var(--theme-000) !important;
-  font-weight: 700 !important;
+  --suggestion-text: var(--theme-000);
+  --suggestion-match-text: var(--text-000);
+  color: var(--suggestion-text);
+  font-weight: 700;
 }
 
 .custom-dropdown li .text-match {
-  color: var(--text-000) !important;
-  font-weight: 400 !important;
-}
-
-.custom-dropdown li.text-suggest.not-owned,
-.custom-dropdown li.text-suggest.not-owned * {
-  color: var(--disabled-text) !important;
+  color: var(--suggestion-match-text, var(--text-000));
+  font-weight: 400;
 }
 
 .custom-dropdown li.text-suggest.not-owned {
-  opacity: 0.55;
+  --suggestion-text: var(--text-001);
+  --suggestion-match-text: var(--text-001);
 }
 
-.custom-dropdown li.text-suggest.not-owned .name-badge,
-.custom-dropdown li.text-suggest.not-owned .no-badge {
-  background-color: rgba(128, 128, 128, 0.08) !important;
+.name-badge,
+.no-badge {
+  font-size: 0.75rem;
+  margin-right: 8px;
+  font-weight: normal;
+  vertical-align: middle;
 }
 
 .custom-dropdown li.no-result-item {
   font-style: italic;
-  color: var(--text-muted) !important;
+  color: var(--text-002);
   cursor: default;
   pointer-events: none;
-  font-weight: 400 !important;
+  font-weight: 400;
   text-align: center;
   padding: 15px;
 }
 
-.dropdown-header {
-  display: flex !important;
-  align-items: center;
-  justify-content: space-between !important;
-  padding: 8px 15px !important;
-  background-color: var(--bg-header) !important;
-  cursor: default !important;
-}
-
 /* 모바일 전용 가로형 검색 기록 컨테이너 */
 .mobile-recent-container {
-  display: flex !important;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 20px !important;
-  background-color: transparent;
-  cursor: default !important;
-}
-
-.mobile-recent-container:hover {
-  background-color: transparent !important;
-}
-
-html.dark-mode .mobile-recent-container:hover {
-  background-color: transparent !important;
-}
-
-.recent-icon {
-  color: var(--text-001);
-  font-size: 1.2rem;
-  margin-right: 10px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background-color: transparent;
+  cursor: default;
 }
 
 .recent-chips-wrapper {
@@ -2714,26 +2857,17 @@ html.dark-mode .mobile-recent-container:hover {
 }
 
 .recent-chip {
-  background-color: var(--bg-sub);
-  color: var(--text-001);
-  padding: 6px 12px;
-  border-radius: 16px;
   font-size: 0.85rem;
   cursor: pointer;
-  border: 1px solid var(--border-color);
-  display: inline-flex;
-  align-items: center;
   white-space: nowrap;
   transition: background-color 0.2s, color 0.2s;
 }
 
 .recent-chip:hover {
-  background-color: var(--border-color);
-  color: var(--text-000);
+  background-color: var(--surface-002);
 }
 
 .clear-all-icon {
-  color: var(--text-001);
   font-size: 1.2rem;
   margin-left: 10px;
   cursor: pointer;
@@ -2742,33 +2876,33 @@ html.dark-mode .mobile-recent-container:hover {
   padding: 4px;
 }
 
-.clear-all-icon:hover {
-  color: var(--error-red);
-}
-
 .recent-header-item {
-  display: flex !important;
+  display: flex;
   align-items: center;
-  justify-content: space-between !important;
-  padding: 8px 20px !important;
-  cursor: default !important;
+  justify-content: space-between;
+  padding: 8px 20px;
+  cursor: default;
   margin-bottom: 5px;
 }
 
 .recent-item-row {
-  display: flex !important;
+  display: flex;
   align-items: center;
-  justify-content: space-between !important;
+  justify-content: space-between;
 }
 
 .item-delete-btn {
-  color: var(--text-muted);
   font-size: 1rem;
   padding: 4px;
   cursor: pointer;
   display: flex;
   align-items: center;
   transition: color 0.3s ease;
+}
+
+.item-delete-btn .material-icons,
+.clear-all-icon .material-icons {
+  font-size: inherit;
 }
 
 .input-control-row {
@@ -2786,7 +2920,7 @@ html.dark-mode .mobile-recent-container:hover {
 }
 
 /* 보유 현황 페이지 전용: 세그먼트 컨트롤 왼쪽 정렬 복구 및 마진 동기화 */
-#inventory-content-area .input-control-row {
+#app-page-inventory .input-control-row {
   justify-content: flex-start !important;
   margin: 20px auto 12px auto !important;
 }
@@ -3357,7 +3491,7 @@ html.dark-mode #loading-text {
   min-width: 80px;
 }
 
-#intro-area {
+#app-page-home {
   text-align: center;
   color: var(--text-001);
   margin: 0;
@@ -3365,15 +3499,30 @@ html.dark-mode #loading-text {
   font-size: 0.95rem;
 }
 
-#intro-area .content-section-inner>div:first-child {
-  margin-top: 10px;
+.home-intro {
+  color: var(--text-001);
+  text-align: center;
+  max-width: 800px;
+  margin: 10px auto 0;
+  line-height: 1.8;
 }
 
-#intro-area .content-section-inner>div:last-child {
-  margin-bottom: 40px;
+.home-resources {
+  width: 100%;
+  margin: 40px auto;
+  max-width: 850px;
+  text-align: left;
 }
 
-#intro-area a {
+.home-signin-title {
+  margin: 1em 0 20px;
+  color: var(--text-000);
+  font-size: inherit;
+  font-weight: 500;
+  line-height: inherit;
+}
+
+#app-page-home a {
   color: var(--theme-000);
   font-weight: 700;
   text-decoration: underline;
@@ -3398,7 +3547,7 @@ html.dark-mode #loading-text {
 
 .global-footer {
   text-align: center;
-  color: var(--text-007);
+  color: var(--text-003);
   font-size: 0.8rem;
   padding-bottom: 30px;
 }
@@ -3727,7 +3876,6 @@ input#sheet-url.state-success {
   z-index: 20;
   --dropdown-height: 0px;
   --capsule-height: 38px;
-  --capsule-open-radius: 15.2px;
 }
 
 #wrap-auto-loc .search-expansion-bg {
@@ -4313,7 +4461,7 @@ html.dark-mode .working-info-text {
 }
 
 /* [버그 수정] 팩/덱 등록 표 컨테이너는 manage-mode-forms 바깥에 위치하므로
-   anim-active의 order:-1이 전체 content-section-inner 내 최상단으로 올리는 문제 방지 */
+   anim-active의 order:-1이 전체 page-transition-inner 내 최상단으로 올리는 문제 방지 */
 #manage-table-container.anim-active {
   order: 0;
 }
@@ -4611,7 +4759,8 @@ html.route-add-deck #general-mode-wrapper {
 
 /* 대시보드 스타일 */
 #home-auth-section {
-  margin-bottom: 70px;
+  margin-top: 60px;
+  text-align: center;
 }
 
 .dashboard-grid {
@@ -4672,7 +4821,8 @@ html.route-add-deck #general-mode-wrapper {
 @media (max-width: 600px) {
 
   /* 부모 컨테이너 너비 제한 해제 */
-  #home-auth-section>div {
+  #home-auth-section > .home-section,
+  .home-resources {
     max-width: 100% !important;
   }
 
@@ -4687,7 +4837,7 @@ html.route-add-deck #general-mode-wrapper {
   }
 
   /* 환경 설정 모바일 대응 격리 */
-  #settings-content-area .management-row {
+  #app-page-settings .management-row {
     flex-direction: column;
     align-items: stretch;
     gap: 8px;
@@ -4876,14 +5026,13 @@ html.dark-mode .stat-cnt {
 
 .noti-btn-capsule {
   justify-content: center;
-  width: 30px;
   min-width: 30px;
-  padding: 0;
+  padding: 0.33rem;
   line-height: 0;
 }
 
 .noti-btn-capsule i {
-  font-size: 20px;
+  font-size: 1.33rem;
   margin: 0;
 }
 
@@ -6587,8 +6736,9 @@ html.is-mobile-device .search-box {
   top: 0;
   left: 0;
   right: 0;
-  bottom: calc(70px + env(safe-area-inset-bottom));
-  z-index: 999999;
+  bottom: calc(var(--navi-mobile-height) + env(safe-area-inset-bottom));
+  /* 헤더(950) 위, 내비게이션(1100) 아래 */
+  z-index: 1050;
   background-color: var(--surface-000);
   display: flex;
   flex-direction: column;
@@ -6635,15 +6785,10 @@ html.nav-hidden .mobile-search-overlay {
   left: 0;
   right: 0;
   bottom: auto;
-  border-radius: 0 0 8px 8px;
-  border-bottom: 1px solid var(--border-color);
-  border-top: none;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   max-height: 100%;
   overflow-y: auto;
-  background-color: var(--bg-surface);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -6660,17 +6805,16 @@ html.nav-hidden .mobile-search-overlay {
   pointer-events: auto;
 }
 
-html.dark-mode .mobile-dropdown {
-  background: #2c2c2c;
-  border-color: #444;
-}
-
 .mobile-search-bottom-bar {
+  /* 입력 텍스트와 검색·지우기·사진 아이콘이 공유하는 시각 보정값 */
+  --search-content-offset: 0.07rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: calc(60px + env(safe-area-inset-top));
-  padding-top: env(safe-area-inset-top);
+  min-height: calc(60px + env(safe-area-inset-top));
+  box-sizing: border-box;
+  padding-top: calc(0.54rem + env(safe-area-inset-top));
+  padding-bottom: 0.54rem;
   padding-left: 16px;
   padding-right: 16px;
   background-color: var(--surface-000);
@@ -6684,49 +6828,38 @@ html.dark-mode .mobile-dropdown {
 
 .mobile-search-input-wrapper {
   flex: 1;
-  height: 40px;
-  background-color: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: 20px;
+  min-width: 0;
+  min-height: 40px;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   position: relative;
 }
 
-.mobile-search-input-wrapper input {
-  width: 100%;
-  height: 100%;
-  border: none;
-  background: transparent;
-  padding: 0 35px 0 40px;
-  color: var(--text-000);
-  font-size: 16px;
-  /* iOS 자동 확대 방지 */
-  outline: none;
-  text-align: left !important;
+/* 데스크톱과 같이 배경을 분리해 테두리·패딩이 입력란 크기를 줄이지 않도록 한다. */
+.mobile-search-surface {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.mobile-search-submit-btn,
+.mobile-search-clear-btn {
+  --button-text: var(--text-003);
 }
 
 .mobile-search-submit-btn {
   position: absolute;
-  left: 8px;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
+  left: 0.57rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0.29rem;
   z-index: 2;
 }
 
 .mobile-search-submit-btn i {
-  font-size: 20px;
+  font-size: 1.43rem;
+  transform: translateY(var(--search-content-offset));
   transition: color 0.2s ease;
-}
-
-.mobile-search-submit-btn:active i {
-  color: var(--text-000);
 }
 
 @keyframes spin {
@@ -6739,24 +6872,27 @@ html.dark-mode .mobile-dropdown {
   color: var(--accent-cyan) !important;
 }
 
-#mobile-search-clear-btn {
+.mobile-search-clear-btn {
   position: absolute;
-  right: 10px;
-  color: var(--text-muted);
-  cursor: pointer;
+  right: 0.42rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.71rem;
+  padding: 0.29rem;
+  z-index: 2;
   display: none;
   /* JS에서 제어 */
 }
 
+.mobile-search-clear-btn .material-icons {
+  display: block;
+  font-size: 1em;
+  transform: translateY(var(--search-content-offset));
+}
+
 .mobile-search-back-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-000);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px;
-  cursor: pointer;
+  --button-text: var(--text-000);
+  padding: 8px 4px;
 }
 
 .mobile-search-back-btn i {
@@ -6764,12 +6900,12 @@ html.dark-mode .mobile-dropdown {
 }
 
 /* 모바일 환경 홈 화면 최적화: 검색바가 사라진 공간만큼 여백 축소 */
-html.is-mobile-device body:not(.mode-compact) #dynamic-header-wrapper {
+html.is-mobile-device body:not(.mode-compact) #app-search-masthead {
   height: 100px;
 }
 
 /* 모바일 환경 다른 탭(compact) 이동 시: 로고를 전역 헤더 좌측으로 이동 및 여백 제거 */
-html.is-mobile-device body.mode-compact #dynamic-header-wrapper {
+html.is-mobile-device body.mode-compact #app-search-masthead {
   height: 0;
   margin: 0;
   z-index: 1100;
@@ -6852,14 +6988,14 @@ html.is-mobile-device .title-beta {
 }
 
 /* 모바일 환경 다른 탭(compact) 이동 시: 로고 공간만큼 좌측 헤더 그룹을 우측으로 이동 */
-html.is-mobile-device body.mode-compact .header-left-container {
+html.is-mobile-device body.mode-compact #auth-capsule-btn {
   margin-left: 3.6rem !important;
   /* 확장된 로고 폭(3.0rem) + 간격(0.6rem) */
   transition: margin-left 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 /* 홈 화면 복귀 시 트랜지션 부드럽게 적용 */
-html.is-mobile-device body:not(.mode-compact) .header-left-container {
+html.is-mobile-device body:not(.mode-compact) #auth-capsule-btn {
   margin-left: 0;
   transition: margin-left 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
@@ -6946,107 +7082,6 @@ html.is-mobile-device body:not(.mode-compact) .header-left-container {
   background-color: transparent;
 }
 
-/* 자동완성 내 커스텀 검색 버튼 스타일 */
-.custom-dropdown li.dropdown-search-btn-row {
-  display: flex !important;
-  padding: 0;
-  gap: 0;
-  border-bottom: 1px solid var(--border-color);
-  background-color: var(--bg-surface);
-}
-
-.dropdown-search-btn {
-  flex: 1;
-  padding: 14px 6px;
-  border-radius: 0;
-  border: none;
-  border-right: 1px solid var(--border-color);
-  background-color: var(--bg-surface);
-  color: var(--text-000);
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  transition: background-color 0.2s ease, transform 0.1s ease;
-}
-
-.dropdown-search-btn:last-child {
-  border-right: none;
-}
-
-.dropdown-search-btn:hover {
-  background-color: var(--border-color);
-}
-
-.dropdown-search-btn:active {
-  transform: scale(0.98);
-}
-
-/* 다크모드 내 드롭다운 검색 버튼 보완 */
-html.dark-mode .dropdown-search-btn {
-  background-color: var(--bg-surface);
-  border-right: 1px solid var(--border-color);
-  color: var(--text-000);
-}
-
-html.dark-mode .dropdown-search-btn:last-child {
-  border-right: none;
-}
-
-html.dark-mode .dropdown-search-btn:hover {
-  background-color: var(--bg-sub);
-}
-
-/* 이름/번호 배지 공통 스타일 */
-.name-badge {
-  font-size: 0.75rem;
-  background-color: rgba(0, 150, 136, 0.12);
-  color: var(--primary-dark);
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-right: 8px;
-  font-weight: normal;
-  display: inline-block;
-  vertical-align: middle;
-}
-
-html.dark-mode .name-badge {
-  background-color: rgba(77, 182, 172, 0.15);
-  color: var(--theme-000);
-}
-
-.no-badge {
-  font-size: 0.75rem;
-  background-color: rgba(128, 128, 128, 0.15);
-  color: var(--text-001);
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-right: 8px;
-  font-weight: normal;
-  display: inline-block;
-  vertical-align: middle;
-}
-
-/* 모바일 드롭다운 하위 검색 옵션 버튼 배경색 통일 */
-.mobile-dropdown li.dropdown-search-btn-row {
-  background-color: inherit;
-  border-top: 1px solid var(--border-color);
-}
-
-.mobile-dropdown .dropdown-search-btn {
-  background-color: inherit;
-}
-
-html.dark-mode .mobile-dropdown .dropdown-search-btn {
-  background-color: inherit;
-}
 
 /* =========================================
    [모바일 개편] 세그먼트 컨트롤 너비 축소
@@ -8421,15 +8456,6 @@ html.dark-mode .desktop-qty-wrapper:hover {
   color: var(--text-muted);
 }
 
-/* 추천 검색어 카드명 이탈릭 표기 */
-.no-card-name-sub {
-  color: var(--text-muted);
-  font-style: italic;
-  margin-left: 8px;
-  font-size: 0.85rem;
-  font-weight: normal;
-}
-
 /* 포괄 검색 간소화 리스트 스타일 */
 .broad-search-list {
   display: flex;
@@ -8561,18 +8587,8 @@ html.dark-mode .desktop-qty-wrapper:hover {
   font-weight: 600;
   padding: 2px 6px;
   border-radius: 4px;
-  color: rgba(0, 0, 0, 0.5);
+  color: var(--text-002);
 }
-.broad-type-0 { background-color: LightSalmon; }
-.broad-type-1 { background-color: PaleGreen; }
-.broad-type-2 { background-color: LightPink; }
-
-html.dark-mode .broad-type-label {
-  color: rgba(255, 255, 255, 0.7);
-}
-html.dark-mode .broad-type-0 { background-color: SandyBrown; }
-html.dark-mode .broad-type-1 { background-color: SeaGreen; }
-html.dark-mode .broad-type-2 { background-color: MediumVioletRed; }
 
 .broad-divider {
   margin: 0 4px;
@@ -9005,23 +9021,52 @@ html.is-mobile-device #home-faq-section .faq-segment-control input[type="radio"]
 @media (max-width: 480px) { .search-art-stage { gap: 6px; } .search-art-gallery { padding-inline: 6px; } }
 
 /* Photo card search and multi-card analysis */
-.photo-search-icon-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; padding: 4px; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; z-index: 4; }
-.photo-search-icon-btn[hidden] { display: none; }
-.photo-search-icon-btn i { font-size: 22px; }
-.search-input-wrapper.photo-image-active #clear-btn { display: none !important; }
+.photo-search-icon-btn { font-size: 1.47rem; z-index: 4; }
+.search-input-action[hidden] { display: none; }
 input#card-search:disabled { cursor: default; opacity: 1; }
 .photo-search-results > p { color: var(--text-001); margin: 6px 0; }
 .photo-search-suggestion { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 6px; border: 0; background: transparent; color: var(--text-000); text-align: left; cursor: pointer; }
 .photo-search-suggestion:hover, .photo-search-suggestion:focus-visible { background: var(--bg-sub); }
 .photo-search-suggestion span { flex: 1; }
 .photo-search-suggestion small { color: var(--text-001); }
-.desktop-photo-search-panel { position: absolute; z-index: 4; left: 0; right: 0; top: 46px; height: 344px; overflow: hidden; padding: 16px 18px 18px; box-sizing: border-box; pointer-events: auto; }
+.desktop-photo-search-panel { position: absolute; z-index: 4; left: 0; right: 0; top: var(--measured-capsule-height, 46px); height: 344px; overflow: hidden; padding: 16px 18px 18px; box-sizing: border-box; pointer-events: auto; }
 .desktop-photo-search-panel[hidden], .search-input-wrapper:not(.active) .desktop-photo-search-panel { display: none !important; }
 .desktop-photo-search-panel .photo-upload-panel { height: 100%; min-height: 0; padding: 18px; border-width: 1px; box-sizing: border-box; }
 .search-input-wrapper.photo-search-open .custom-dropdown { display: none !important; }
-.mobile-photo-search-entry { flex: 0 0 52px; width: 52px; height: 40px; display: grid; place-items: center; padding: 0; border: 1px solid color-mix(in srgb, var(--theme-000) 45%, var(--border-color)); border-radius: 20px; background: color-mix(in srgb, var(--theme-000) 14%, var(--bg-surface)); color: var(--theme-000); cursor: pointer; }
-.mobile-photo-search-entry i { font-size: 21px; }
-.mobile-photo-search-entry:active { background: color-mix(in srgb, var(--theme-000) 24%, var(--bg-surface)); }
+.mobile-photo-search-entry {
+  flex: 0 0 60px;
+  width: 60px;
+  min-width: 0;
+  height: 40px;
+  padding: 0;
+  margin-right: 0;
+  overflow: hidden;
+  opacity: 1;
+  visibility: visible;
+  transition: flex-basis 0.2s ease, width 0.2s ease, margin-right 0.2s ease,
+    opacity 0.15s ease, visibility 0s;
+}
+.mobile-search-bottom-bar:has(.search-input--mobile:focus) .mobile-photo-search-entry,
+.mobile-search-bottom-bar:has(.search-input--mobile:not(:placeholder-shown)) .mobile-photo-search-entry {
+  flex-basis: 0;
+  width: 0;
+  /* flex 항목이 남아 있으므로 기존 12px gap도 함께 접는다. */
+  margin-right: -12px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: flex-basis 0.2s ease, width 0.2s ease, margin-right 0.2s ease,
+    opacity 0.15s ease, visibility 0s 0.2s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-photo-search-entry,
+  .mobile-search-bottom-bar:has(.search-input--mobile:focus) .mobile-photo-search-entry,
+  .mobile-search-bottom-bar:has(.search-input--mobile:not(:placeholder-shown)) .mobile-photo-search-entry {
+    transition: none;
+  }
+}
+.mobile-photo-search-entry i { font-size: 21px; transform: translateY(var(--search-content-offset)); }
 .photo-search-sheet { position: fixed; inset: 0; z-index: 1000002; visibility: hidden; pointer-events: none; }
 .photo-search-sheet.open { visibility: visible; pointer-events: auto; }
 .photo-search-sheet-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.48); opacity: 0; transition: opacity .3s ease; }
@@ -9198,4 +9243,28 @@ input#card-search:disabled { cursor: default; opacity: 1; }
   .photo-candidate-panel { max-height: none; }
   .manage-common-footer { align-items: flex-start; }
   .manage-footer-btn-group { flex-wrap: wrap; }
+}
+
+.catalog-search-toolbar, .catalog-search-filters, .catalog-search-pager {
+  display: flex; align-items: center; gap: 8px;
+}
+.catalog-search-toolbar { justify-content: space-between; flex-wrap: wrap; margin: 0 0 16px; }
+.catalog-search-chip { padding: 7px 14px; }
+.catalog-search-pager button {
+  border: 1px solid var(--text-muted); border-radius: 20px; padding: 7px 14px;
+  background: transparent; color: var(--text-000); cursor: pointer; font: inherit;
+}
+.catalog-search-size { width: 132px; flex-shrink: 0; z-index: 5; }
+.catalog-search-status { min-height: 160px; display: flex; gap: 12px; align-items: center; justify-content: center; color: var(--text-muted); }
+.catalog-search-status .loading-spinner-small { margin: 0; flex-shrink: 0; }
+.catalog-search-progress { padding: 12px 0; color: var(--text-muted); font-size: 0.85rem; text-align: center; }
+.catalog-search-row { width: 100%; font: inherit; color: var(--text-000); text-align: left; border: 0; background: var(--surface-001); }
+.catalog-search-details { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.catalog-search-row .broad-search-left { flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
+.catalog-search-pager { justify-content: center; margin-top: 20px; }
+.catalog-search-pager button:disabled { opacity: .5; cursor: default; }
+.catalog-search-chip:focus-visible, .catalog-search-row:focus-visible { outline: 2px solid var(--theme-000); outline-offset: 2px; }
+@media (max-width: 600px) {
+  .catalog-search-toolbar { align-items: flex-start; }
+  .catalog-search-size { margin-left: auto; }
 }

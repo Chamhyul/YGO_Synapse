@@ -1662,7 +1662,7 @@ async function initApp() {
             if (document.activeElement !== searchInput || searchInput.value !== val) return;
             if (isSearchComposing && !val.trim()) return;
             filterAndShowDropdown(val);
-        }, 50);
+        }, 100);
 
         searchInput.addEventListener('compositionstart', () => {
             isSearchComposing = true;
@@ -1681,13 +1681,7 @@ async function initApp() {
                 // 한글 조합 도중의 일시적인 빈 값으로 최근 검색을 표시하지 않습니다.
                 return;
             }
-            if (val.trim() && document.querySelector('#custom-dropdown .recent-header-item')) {
-                // 타이핑을 시작하면 이전 검색 기록을 대기 시간 없이 교체합니다.
-                filterAndShowDropdown(val);
-            } else {
-                // 실제로 입력을 모두 지운 경우에도 최종 입력값을 확인한 뒤 전환합니다.
-                debouncedFilter(val);
-            }
+            debouncedFilter(val);
         });
 
         const dropdown = document.getElementById('custom-dropdown');
@@ -1699,14 +1693,8 @@ async function initApp() {
             dropdown.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
-                const searchBtn = e.target.closest('.dropdown-search-btn');
-                if (searchBtn) {
-                    const searchType = searchBtn.textContent.includes('이름으로') ? 'name' : 'number';
-                    startSearchWithOption(e, searchType);
-                    return;
-                }
                 const target = e.target;
-                if (target.classList.contains('clear-all-btn')) {
+                if (target.closest('.clear-all-btn')) {
                     localStorage.removeItem(RECENT_KEY);
                     showRecentInDropdown();
                     return;
@@ -1720,7 +1708,7 @@ async function initApp() {
                     return;
                 }
                 const li = target.closest('li');
-                if (li && !li.classList.contains('recent-header-item') && !li.classList.contains('no-result-item') && !li.classList.contains('dropdown-search-btn-row')) {
+                if (li && !li.classList.contains('recent-header-item') && !li.classList.contains('no-result-item')) {
                     const val = li.dataset.val;
                     const searchType = li.dataset.type || 'auto';
                     const isTarget = li.dataset.isTarget === 'true';
@@ -1736,8 +1724,8 @@ async function initApp() {
         searchInput.addEventListener('keydown', function (e) {
             if (e.isComposing) return;
             let list = document.getElementById('custom-dropdown');
-            if (list.style.display === 'none') return;
-            let items = list.querySelectorAll('li:not(.recent-header-item):not(.no-result-item):not(.dropdown-search-btn-row)');
+            if (list.style.display === 'none' && e.key !== 'Enter') return;
+            let items = list.querySelectorAll('li:not(.recent-header-item):not(.no-result-item)');
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 UIStore.dropdownFocus++;
@@ -1750,21 +1738,8 @@ async function initApp() {
                 updateHighlight(items, UIStore.dropdownFocus);
             } else if (e.key === 'Enter') {
                 e.preventDefault();
-                let targetVal = this.value.trim();
-                let searchType = 'auto';
-                let isTarget = null;
-                if (list.style.display !== 'none' && items.length > 0) {
-                    if (UIStore.dropdownFocus > -1) {
-                        if (items[UIStore.dropdownFocus]) {
-                            targetVal = items[UIStore.dropdownFocus].dataset.val;
-                            searchType = items[UIStore.dropdownFocus].dataset.type || 'auto';
-                            isTarget = items[UIStore.dropdownFocus].dataset.isTarget === 'true';
-                        }
-                    }
-                }
-                if (targetVal) this.value = targetVal;
                 this.blur();
-                startSearch(false, searchType, isTarget);
+                startSearch(false, 'auto', false);
             }
         });
 
@@ -1780,20 +1755,15 @@ async function initApp() {
 
     document.getElementById('clear-btn').addEventListener('click', function () {
         searchInput.value = '';
-        this.style.display = 'none';
+        this.hidden = true;
         searchInput.focus();
+        window.PhotoCardSearch?.refreshSearchControls?.();
         showRecentInDropdown();
     });
 
     document.addEventListener('click', function (e) {
         // 지역 설정 드롭다운 외부 클릭 감지 (새로운 구조 대응)
-        const regionWrapper = document.getElementById('region-wrapper');
-        if (regionWrapper && !regionWrapper.contains(e.target)) {
-            // 이미 닫혀있다면 closeDropdowns() 호출 불필요 (성능 최적화)
-            if (regionWrapper.classList.contains('active')) {
-                closeDropdowns();
-            }
-        }
+        if (!e.target.closest('.region-container')) closeDropdowns();
 
         // 팩 추가 팝업 외부 클릭 감지
         const packAddContainer = document.getElementById('pack-add-container');
@@ -1893,6 +1863,31 @@ async function initApp() {
 // 애플리케이션 단일 초기화 이벤트 바인딩
 document.addEventListener('DOMContentLoaded', initApp);
 
+// 펼쳐지는 배경이 아닌 닫힌 컨트롤만 관찰한다. 페이지 전환 높이와는 무관하다.
+function initFluidControlSizing() {
+    if (typeof ResizeObserver === 'undefined') return;
+    const header = document.querySelector('.global-top-nav');
+    const searchBox = document.querySelector('.search-box');
+    const observer = new ResizeObserver(entries => {
+        for (const { target } of entries) {
+            const height = target.getBoundingClientRect().height;
+            if (!height) continue;
+            if (target === header) {
+                const minimum = parseFloat(getComputedStyle(header).minHeight) || 46;
+                document.documentElement.style.setProperty('--app-header-growth', `${Math.max(0, height - minimum)}px`);
+            } else if (target === searchBox) {
+                document.documentElement.style.setProperty('--search-controls-height', `${height}px`);
+            } else {
+                target.style.setProperty('--measured-capsule-height', `${height}px`);
+            }
+        }
+    });
+    for (const element of [header, searchBox, document.getElementById('region-wrapper'), document.getElementById('search-wrapper')]) {
+        if (element) observer.observe(element);
+    }
+}
+document.addEventListener('DOMContentLoaded', initFluidControlSizing);
+
 
 
 function updateActiveNav(mode) {
@@ -1919,7 +1914,7 @@ function updateMetaThemeColor(mode) {
 }
 
 function toggleBackgroundInert(isActive) {
-    const targets = [document.getElementById('dynamic-header-wrapper'), document.querySelector('.global-top-nav'), document.querySelector('.app-sidebar'), document.querySelector('.mobile-nav-container'), document.querySelector('.container')];
+    const targets = [document.getElementById('app-search-masthead'), document.querySelector('.global-top-nav'), document.querySelector('.app-sidebar'), document.querySelector('.mobile-nav-container'), document.querySelector('.container')];
     targets.forEach(el => { if (el) { if (isActive) el.setAttribute('inert', ''); else el.removeAttribute('inert'); } });
 }
 
@@ -2998,18 +2993,18 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     }
 
     if (mode === 'home') {
-        searchInput.value = ''; document.getElementById('clear-btn').style.display = 'none';
+        searchInput.value = ''; document.getElementById('clear-btn').hidden = true;
         document.getElementById('custom-dropdown').classList.remove('active'); toggleSearchWrapper(false); searchInput.placeholder = "";
         window.scrollTo(0, 0);
     } else if (mode === 'search') { searchInput.placeholder = ""; }
     else {
-        searchInput.value = ''; document.getElementById('clear-btn').style.display = 'none';
+        searchInput.value = ''; document.getElementById('clear-btn').hidden = true;
         document.getElementById('custom-dropdown').classList.remove('active'); toggleSearchWrapper(false); searchInput.placeholder = "카드 검색";
     }
 
     if (mode === 'home') { body.classList.remove('mode-compact'); } else { body.classList.add('mode-compact'); }
 
-    const wrapper = document.getElementById('content-slider-wrapper');
+    const wrapper = document.getElementById('app-page-stack');
     if (transitionTimer) {
         clearTimeout(transitionTimer); transitionTimer = null;
         const sections = wrapper.querySelectorAll('.content-section');
@@ -3018,13 +3013,13 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     }
 
     let targetContentId = '';
-    if (mode === 'home') targetContentId = 'intro-area';
-    else if (mode === 'inventory') targetContentId = 'inventory-content-area';
-    else if (mode === 'search') targetContentId = 'result-content-wrapper';
-    else if (mode === 'discard') { targetContentId = 'manage-content-area'; initPageDiscard(); }
-    else if (mode === 'add') { targetContentId = 'manage-content-area'; }
-    else if (mode === 'move') { targetContentId = 'manage-content-area'; initPageMove(); }
-    else if (mode === 'settings') targetContentId = 'settings-content-area';
+    if (mode === 'home') targetContentId = 'app-page-home';
+    else if (mode === 'inventory') targetContentId = 'app-page-inventory';
+    else if (mode === 'search') targetContentId = 'app-page-search';
+    else if (mode === 'discard') { targetContentId = 'app-page-manage'; initPageDiscard(); }
+    else if (mode === 'add') { targetContentId = 'app-page-manage'; }
+    else if (mode === 'move') { targetContentId = 'app-page-manage'; initPageMove(); }
+    else if (mode === 'settings') targetContentId = 'app-page-settings';
 
     const currentEl = wrapper.querySelector('.content-section.active');
     const nextEl = document.getElementById(targetContentId);
@@ -3126,7 +3121,11 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     }, 400);
 }
 
-function checkClearBtn() { const val = document.getElementById('card-search').value; const btn = document.getElementById('clear-btn'); if (btn) btn.style.display = val ? 'block' : 'none'; }
+function checkClearBtn() {
+    const input = document.getElementById('card-search');
+    const button = document.getElementById('clear-btn');
+    if (button) button.hidden = !input?.value || input.disabled;
+}
 function toggleSearchWrapper(isOpen) {
     const wrapper = document.getElementById('search-wrapper');
     const list = document.getElementById('custom-dropdown');
@@ -3144,15 +3143,19 @@ function toggleSearchWrapper(isOpen) {
                 list.classList.remove('active'); list.style.display = 'none';
                 return;
             }
-            // DOM 업데이트 후 높이 측정
-            setTimeout(() => {
+            // Only measure the latest dropdown update.
+            clearTimeout(wrapper._dropdownHeightTimer);
+            wrapper._dropdownHeightTimer = setTimeout(() => {
                 const scrollHeight = list.scrollHeight;
                 // scrollHeight에 이미 CSS의 padding-bottom(15px)이 포함되어 있으므로 추가 합산 제거
                 // CSS max-height: 250px와 일치하도록 보정
                 const finalHeight = Math.min(scrollHeight, 250);
-                wrapper.style.setProperty('--dropdown-height', finalHeight + 'px');
+                if (wrapper.style.getPropertyValue('--dropdown-height') !== finalHeight + 'px') {
+                    wrapper.style.setProperty('--dropdown-height', finalHeight + 'px');
+                }
             }, 50); // 약간의 지연으로 레이아웃 안정화 보장
         } else {
+            clearTimeout(wrapper._dropdownHeightTimer);
             if (window.PhotoCardSearch?.hasDesktopPhoto?.()) {
                 list.classList.remove('active'); list.style.display = 'none';
                 wrapper.classList.add('active', 'photo-search-open');
@@ -5533,7 +5536,7 @@ function showRecentInDropdown() {
         header = document.createElement('li');
         header.id = 'recent-header';
         header.className = 'recent-header-item';
-        header.innerHTML = `<span class="recent-title">최근 검색</span><span class="clear-all-btn">전체 제거</span>`;
+        header.innerHTML = `<span class="recent-title">최근 검색</span><button type="button" class="ui-button ui-button--text ui-button--text-secondary clear-all-btn">전체 제거</button>`;
         list.prepend(header);
     }
     if (recent.length === 0) {
@@ -5542,6 +5545,8 @@ function showRecentInDropdown() {
         noResultLi.innerText = '검색 기록이 없습니다.';
         list.appendChild(noResultLi);
     } else {
+        const ownedNames = cardCacheInstance.getOwnedNamesSet();
+        const ownedNumbers = cardCacheInstance.getOwnedNumbersSet();
         recent.slice(0, 5).forEach(r => {
             const li = document.createElement('li');
             li.className = 'recent-item-row';
@@ -5555,14 +5560,18 @@ function showRecentInDropdown() {
 
             let tagHtml = '';
             if (isTarget) {
+                const isOwned = searchType === 'number'
+                    ? ownedNumbers.has(String(keyword).trim().toUpperCase())
+                    : ownedNames.has(String(keyword).trim());
+                const ownershipClass = isOwned ? ' ui-color--card-owned' : ' ui-color--card-unowned';
                 if (searchType === 'number') {
-                    tagHtml = `<span class="no-badge">[번호]</span>`;
+                    tagHtml = `<span class="ui-tag ui-shape-rounded no-badge${ownershipClass}">번호</span>`;
                 } else {
-                    tagHtml = `<span class="name-badge">[이름]</span>`;
+                    tagHtml = `<span class="ui-tag ui-shape-rounded name-badge${ownershipClass}">이름</span>`;
                 }
             }
 
-            li.innerHTML = `<span class="recent-text text-suggest">${tagHtml}${escapeHTML(keyword)}</span><i class="material-icons item-delete-btn">close</i>`;
+            li.innerHTML = `<span class="recent-text">${tagHtml}${escapeHTML(keyword)}</span><button type="button" class="ui-button ui-button--text ui-button--text-secondary item-delete-btn" aria-label="검색 기록 삭제"><i class="material-icons" aria-hidden="true">close</i></button>`;
             list.appendChild(li);
         });
     }
@@ -5586,119 +5595,24 @@ function filterAndShowDropdown(val, isMobile = false) {
     }
     UIStore.dropdownFocus = -1;
 
-    const hasGlobal = typeof CardDataStore.allCardNamesNormalized !== 'undefined' && CardDataStore.allCardNamesNormalized.length > 0;
-    const ownedNames = typeof cardCacheInstance !== 'undefined' ? cardCacheInstance.getOwnedNamesSet() : new Set();
-    const ownedNumbers = typeof cardCacheInstance !== 'undefined' ? cardCacheInstance.getOwnedNumbersSet() : new Set();
+    const combinedMatches = collectCatalogMatches(val);
 
-    // 1. 이름 검색 매칭
-    let matches = [];
-    if (hasGlobal) {
-        for (let i = 0; i < CardDataStore.allCardNamesNormalized.length; i++) {
-            const item = CardDataStore.allCardNamesNormalized[i];
-            if (matchKorean(item, query)) {
-                matches.push({ 
-                    type: 'name', 
-                    val: item.original, 
-                    normalized: item.normalized,
-                    isOwned: ownedNames.has(item.original)
-                });
-                if (matches.length >= 100) break;
-            }
-        }
-    } else if (typeof cardCacheInstance !== 'undefined') {
-        const localNamesNormalized = cardCacheInstance.getAllNamesNormalized();
-        for (let i = 0; i < localNamesNormalized.length; i++) {
-            const item = localNamesNormalized[i];
-            if (ownedNames.has(item.original)) {
-                if (matchKorean(item, query)) {
-                    matches.push({ 
-                        type: 'name', 
-                        val: item.original, 
-                        normalized: item.normalized,
-                        isOwned: true
-                    });
-                    if (matches.length >= 100) break;
-                }
-            }
-        }
-    }
-
-    // 2. 카드 번호 검색 매칭
-    let numberMatches = [];
-    const searchNumberPool = (hasGlobal && typeof CardDataStore.allCardNumbers !== 'undefined') ? CardDataStore.allCardNumbers : (typeof cardCacheInstance !== 'undefined' ? cardCacheInstance.getOwnedNumbers() : []);
-    for (let i = 0; i < searchNumberPool.length; i++) {
-        const no = String(searchNumberPool[i]);
-        const lowerNo = no.toLowerCase();
-        if (lowerNo.includes(query)) {
-            numberMatches.push({ 
-                type: 'number', 
-                val: no, 
-                normalized: lowerNo,
-                isOwned: ownedNumbers.has(no)
-            });
-            if (numberMatches.length >= 50) break;
-        }
-    }
-
-    // 3. 통합 매칭 배열 생성
-    const combinedMatches = [...matches, ...numberMatches];
-
-    // 4. 정렬 로직 (보유 여부 최우선 정렬 후, 이름/번호 통합 정렬)
-    combinedMatches.sort((a, b) => {
-        if (a.isOwned !== b.isOwned) {
-            return a.isOwned ? -1 : 1;
-        }
-        
-        const normVal = query;
-        const normA = a.normalized;
-        const normB = b.normalized;
-        if (normA === normVal) return -1;
-        if (normB === normVal) return 1;
-
-        const aStarts = normA.startsWith(normVal) || (a.type === 'name' && matchKorean(a, normVal));
-        const bStarts = normB.startsWith(normVal) || (b.type === 'name' && matchKorean(b, normVal));
-
-        if (aStarts && !bStarts) return -1;
-        if (!aStarts && bStarts) return 1;
-        return a.val.length - b.val.length || a.val.localeCompare(b.val);
-    });
-
-    list.innerHTML = '';
-
-    // 맞춤 검색 버튼 2개 추가
-    const btnRow = document.createElement('li');
-    btnRow.className = 'dropdown-search-btn-row';
-
-    const nameBtn = document.createElement('button');
-    nameBtn.type = 'button';
-    nameBtn.className = 'dropdown-search-btn';
-    nameBtn.textContent = `"${val}"을 이름으로 검색`;
-    nameBtn.addEventListener('click', (e) => {
-        if (isMobile) executeMobileSearchWithOption(e, 'name');
-    });
-
-    const noBtn = document.createElement('button');
-    noBtn.type = 'button';
-    noBtn.className = 'dropdown-search-btn';
-    noBtn.textContent = `"${val}"을 번호로 검색`;
-    noBtn.addEventListener('click', (e) => {
-        if (isMobile) executeMobileSearchWithOption(e, 'number');
-    });
-
-    btnRow.appendChild(nameBtn);
-    btnRow.appendChild(noBtn);
-
-    const recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
     if (isMobile) {
-        appendMobileRecentHistory(list, recent);
+        // 최근 검색 칩은 유지하고 자동완성 행만 갱신한다(가로 스크롤 위치도 유지).
+        for (const child of Array.from(list.children)) {
+            if (!child.classList.contains('mobile-recent-container')) child.remove();
+        }
+        if (!list.querySelector('.mobile-recent-container')) {
+            appendMobileRecentHistory(list, JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'));
+        }
+    } else {
+        list.innerHTML = '';
     }
-
-    list.appendChild(btnRow);
 
     if (combinedMatches.length === 0) {
         const noResult = document.createElement('li');
         noResult.className = 'no-result-item';
-        noResult.innerText = '등록되지 않은 카드';
+        noResult.innerText = '일치하는 카드가 없습니다.';
         list.appendChild(noResult);
         list.classList.add('active');
         if (!isMobile) {
@@ -5708,7 +5622,7 @@ function filterAndShowDropdown(val, isMobile = false) {
         return;
     }
 
-    combinedMatches.slice(0, 10).forEach(m => {
+    combinedMatches.slice(0, 5).forEach(m => {
         const li = document.createElement('li');
         li.className = 'text-suggest';
         if (!m.isOwned) {
@@ -5718,6 +5632,7 @@ function filterAndShowDropdown(val, isMobile = false) {
         li.dataset.type = m.type;
         li.dataset.isTarget = 'true';
 
+        const tagColorClass = m.isOwned ? 'ui-color--card-owned' : 'ui-color--card-unowned';
         let html = "";
         const escapedVal = escapeHTML(m.val);
         const escapedQuery = escapeHTML(val);
@@ -5735,7 +5650,7 @@ function filterAndShowDropdown(val, isMobile = false) {
             } else {
                 html = escapedVal;
             }
-            html = `<span class="name-badge">[이름]</span>${html}`;
+            html = `<span class="ui-tag ui-shape-rounded ${tagColorClass} name-badge">이름</span>${html}`;
         } else {
             const idx = escapedVal.toLowerCase().indexOf(escapedQuery.toLowerCase());
             if (idx !== -1) {
@@ -5746,9 +5661,7 @@ function filterAndShowDropdown(val, isMobile = false) {
             } else {
                 html = escapedVal;
             }
-            const cardName = getCardNameByNumber(m.val);
-            const subHtml = cardName ? `<span class="no-card-name-sub">${escapeHTML(cardName)}</span>` : '';
-            html = `<span class="no-badge">[번호]</span>${html}${subHtml}`;
+            html = `<span class="ui-tag ui-shape-rounded ${tagColorClass} no-badge">번호</span>${html}`;
         }
 
         li.innerHTML = html;
@@ -5944,22 +5857,20 @@ function loadRegion() {
 // 모든 드롭다운 닫기 (현재는 지역 설정만 및 검색바 등)
 function closeDropdowns() {
     // 지역 설정 닫기
-    const regionWrapper = document.getElementById('region-wrapper');
-    if (regionWrapper && regionWrapper.classList.contains('active')) {
+    document.querySelectorAll('.region-container.active').forEach(regionWrapper => {
         regionWrapper.classList.remove('active');
-        document.getElementById('region-capsule')?.setAttribute('aria-expanded', 'false');
+        regionWrapper.querySelector('.region-capsule')?.setAttribute('aria-expanded', 'false');
         // 높이 변수 초기화 (애니메이션 종료 후 자연스럽게 무시되지만 명시적 초기화)
         regionWrapper.style.setProperty('--region-dropdown-height', '0px');
-    }
+    });
 
     // 필요 시 다른 드롭다운 닫기 로직 추가
 }
 
 // 지역 설정 드롭다운 토글 (물리적 확장 애니메이션 적용)
-function toggleRegionDropdown(event) {
+function toggleRegionDropdown(event, wrapper = document.getElementById('region-wrapper')) {
     event.stopPropagation();
-    const wrapper = document.getElementById('region-wrapper');
-    const dropdown = document.getElementById('region-dropdown');
+    const dropdown = wrapper.querySelector('.region-dropdown-list');
 
     // 이미 열려있는지 확인
     const isActive = wrapper.classList.contains('active');
@@ -5969,10 +5880,11 @@ function toggleRegionDropdown(event) {
 
     if (!isActive) {
         wrapper.classList.add('active');
-        document.getElementById('region-capsule')?.setAttribute('aria-expanded', 'true');
+        wrapper.querySelector('.region-capsule')?.setAttribute('aria-expanded', 'true');
 
         // 높이 계산 및 애니메이션 시작
         requestAnimationFrame(() => {
+            if (!wrapper.classList.contains('active')) return;
             const scrollHeight = dropdown.scrollHeight;
             // 드롭다운의 실제 높이만큼 배경 확장
             wrapper.style.setProperty('--region-dropdown-height', scrollHeight + 'px');
@@ -5980,7 +5892,7 @@ function toggleRegionDropdown(event) {
     }
 }
 
-function handleRegionButtonKeydown(event) {
+function handleRegionButtonKeydown(event, wrapper = document.getElementById('region-wrapper')) {
     if (event.key === 'Escape') {
         closeDropdowns();
         return;
@@ -5988,19 +5900,18 @@ function handleRegionButtonKeydown(event) {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
 
     event.preventDefault();
-    const wrapper = document.getElementById('region-wrapper');
-    if (!wrapper.classList.contains('active')) toggleRegionDropdown(event);
+    if (!wrapper.classList.contains('active')) toggleRegionDropdown(event, wrapper);
 
-    const options = [...document.querySelectorAll('#region-dropdown [role="option"]')];
+    const options = [...wrapper.querySelectorAll('[role="option"]')];
     const target = event.key === 'ArrowUp' ? options.at(-1) : options[0];
     target?.focus();
 }
 
-function handleRegionOptionKeydown(event) {
+function handleRegionOptionKeydown(event, wrapper = document.getElementById('region-wrapper')) {
     const option = event.target.closest('[role="option"]');
     if (!option) return;
 
-    const options = [...document.querySelectorAll('#region-dropdown [role="option"]')];
+    const options = [...wrapper.querySelectorAll('[role="option"]')];
     const currentIndex = options.indexOf(option);
     let nextIndex = currentIndex;
 
@@ -6011,12 +5922,12 @@ function handleRegionOptionKeydown(event) {
     else if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         option.click();
-        document.getElementById('region-capsule')?.focus();
+        wrapper.querySelector('.region-capsule')?.focus();
         return;
     } else if (event.key === 'Escape') {
         event.preventDefault();
         closeDropdowns();
-        document.getElementById('region-capsule')?.focus();
+        wrapper.querySelector('.region-capsule')?.focus();
         return;
     } else if (event.key === 'Tab') {
         closeDropdowns();
@@ -6031,7 +5942,6 @@ function handleRegionOptionKeydown(event) {
 
 let lastSearchState = null;
 let searchSequence = 0;
-const resolvedSearchNames = new Map();
 
 /**
  * 검색 상태를 URL Hash 규격으로 갱신
@@ -6200,11 +6110,7 @@ function refreshCurrentSearchResult() {
                     targetCid
                 );
             } else if (lastSearchState.type === 'broad') {
-                renderBroadSearchResults(
-                    lastSearchState.nameRows,
-                    lastSearchState.numberRows,
-                    lastSearchState.searchType
-                );
+                renderCatalogResults(lastSearchState);
             }
         } else {
             const inputEl = document.getElementById('card-search');
@@ -6463,9 +6369,6 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
     // 이미 목록에서 고른 대상은 공통 목록의 네트워크 갱신을 기다리지 않습니다.
     if (forcedIsTarget === true) {
         void refreshPublicDataQuietly();
-    } else {
-        await refreshPublicDataQuietly();
-        if (sequence !== searchSequence) return;
     }
 
     const queryNorm = normalizeStr(name);
@@ -6553,109 +6456,9 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
         }
 
     } else {
-        // [포괄 검색]
         updateSearchHash('broad', { searchType, key: name }, true);
-
-        let nameRows = [];
-        let numberRows = [];
-        let candidateNames = [];
-
-        // 이름 검색 수행 (searchType !== 'number')
-        if (searchType !== 'number') {
-            let targetNames = new Set();
-            const useGlobal = typeof CardDataStore.allCardNames !== 'undefined' && CardDataStore.allCardNames.length > 0;
-            let matchedNames = [];
-            if (useGlobal) {
-                matchedNames = CardDataStore.allCardNamesNormalized
-                    .filter(item => Hangul.search(item.normalized, queryNorm) !== -1)
-                    .map(item => item.original);
-            } else if (typeof cardCacheInstance !== 'undefined') {
-                const ownedNames = new Set(cardCacheInstance.getInventory().filter(r => (parseInt(r[3]) || 0) > 0).map(r => String(r[0])));
-                const localNames = cardCacheInstance.getAllNames().filter(n => ownedNames.has(n));
-                matchedNames = localNames
-                    .map(n => ({ original: n, normalized: n.replace(/\s+/g, '').toLowerCase() }))
-                    .filter(item => Hangul.search(item.normalized, queryNorm) !== -1)
-                    .map(item => item.original);
-            }
-            matchedNames.forEach(n => targetNames.add(n));
-
-            if (targetNames.size === 0) {
-                try {
-                    const searchRes = await callApi('searchCard', { query: name });
-                    if (searchRes && searchRes.success && Array.isArray(searchRes.names)) {
-                        searchRes.names.forEach(n => targetNames.add(n));
-                    }
-                } catch (searchErr) {
-                    console.warn('[Search] 백엔드 검색 API 호출 실패, 입력값만으로 검색:', searchErr.message);
-                    targetNames.add(name);
-                }
-            }
-            candidateNames = [...targetNames];
-            nameRows = typeof cardCacheInstance !== 'undefined' ? cardCacheInstance.getInventory().filter(row => targetNames.has(String(row[0]))) : [];
-        }
-
-        // 번호 검색 수행 (searchType !== 'name')
-        if (searchType !== 'name') {
-            const queryLower = name.toLowerCase();
-            numberRows = typeof cardCacheInstance !== 'undefined' ? cardCacheInstance.getInventory().filter(row => String(row[1]).toLowerCase().includes(queryLower)) : [];
-        }
-
-        const matchingCids = new Set(candidateNames.map(n => findCidByNameOrNo(n)).filter(Boolean).map(String));
-        const originalNames = new Set(candidateNames);
-        const collectRows = () => cardCacheInstance.getInventory().filter(row =>
-            originalNames.has(String(row[0])) || (row[6] && matchingCids.has(String(row[6]))));
-        nameRows = collectRows();
-        let expansionStarted = false;
-        const renderBroadFunc = (mountContainer) => {
-            const area = mountContainer || document.getElementById('result-area');
-            renderBroadSearchResults(nameRows, numberRows, searchType, mountContainer);
-            if (expansionStarted || !candidateNames.length) return;
-            expansionStarted = true;
-            let offset = 0;
-            const expand = async () => {
-                if (sequence !== searchSequence) return;
-                const chunk = candidateNames.slice(offset, offset + 40);
-                const missing = chunk.filter(n => {
-                    const cached = resolvedSearchNames.get(n);
-                    return !cached || cached.expires <= Date.now();
-                });
-                try {
-                    if (missing.length) {
-                        const res = await callApi('resolveCardNames', {}, { names: missing });
-                        if (!res.success) throw new Error('검색 연결 정보 조회 실패');
-                        for (const [name, cids] of Object.entries(res.results || {})) {
-                            resolvedSearchNames.set(name, { cids, expires: Date.now() + 60000 });
-                            for (const cid of cids) ClientCache.registerCid(cid, [name]);
-                        }
-                        if (resolvedSearchNames.size > 2000) resolvedSearchNames.delete(resolvedSearchNames.keys().next().value);
-                    }
-                    if (sequence !== searchSequence) return;
-                    for (const name of chunk) for (const cid of resolvedSearchNames.get(name)?.cids || []) matchingCids.add(String(cid));
-                    offset += chunk.length;
-                    nameRows = collectRows();
-                    renderBroadSearchResults(nameRows, numberRows, searchType, mountContainer);
-                } catch (error) {
-                    if (sequence !== searchSequence) return;
-                    console.warn('[Search] 다국어 검색 확장 재시도:', error.message);
-                }
-                if (offset < candidateNames.length && sequence === searchSequence) {
-                    const button = document.createElement('button');
-                    button.className = 'btn-flat';
-                    button.textContent = '다른 언어의 보유카드 더 찾기';
-                    button.onclick = () => { button.remove(); void expand(); };
-                    area.appendChild(button);
-                }
-            };
-            void expand();
-        };
-
-        if (UIStore.mode === 'search') {
-            if (isInstant) { renderBroadFunc(); return; }
-            animateVerticalExpand(renderBroadFunc);
-        } else {
-            renderBroadFunc();
-            switchToMode('search', isInstant);
-        }
+        await showCatalogSearch(name, searchType, sequence, isInstant);
+        return;
     }
 
     document.getElementById('custom-dropdown').style.display = 'none';
@@ -6669,7 +6472,7 @@ function animatePushSlide(renderFunc) {
     const resultArea = document.getElementById('result-area');
     if (!resultArea) { renderFunc(); return; }
 
-    const parentContainer = resultArea.parentNode || document.getElementById('result-content-wrapper');
+    const parentContainer = resultArea.parentNode || document.getElementById('app-page-search');
     if (!parentContainer) { renderFunc(); return; }
 
     // [핵심] 상/하 마진(30px + 30px = 60px) 오프셋 측정
@@ -6771,7 +6574,7 @@ async function animateVerticalExpand(renderFunc) {
     const resultArea = document.getElementById('result-area');
     if (!resultArea) { if (renderFunc) await renderFunc(); return; }
 
-    const parentContainer = resultArea.parentNode || document.getElementById('result-content-wrapper');
+    const parentContainer = resultArea.parentNode || document.getElementById('app-page-search');
     if (!parentContainer) { if (renderFunc) await renderFunc(); return; }
 
     const resStyle = getComputedStyle(resultArea);
@@ -6988,208 +6791,6 @@ function getCardMetaType(cardName, cardNo = null) {
     return { kind: 0, kindStr: "몬스터" };
 }
 
-function renderBroadSearchResults(nameRows, numberRows, searchType, mountContainer = null) {
-    if (!mountContainer) {
-        lastSearchState = { type: 'broad', nameRows, numberRows, searchType };
-        const inputEl = document.getElementById('card-search');
-        const key = inputEl ? inputEl.value.trim() : '';
-        if (key) {
-            updateSearchHash('broad', { searchType, key });
-        }
-    }
-    const resultArea = mountContainer || document.getElementById('result-area');
-    resultArea.innerHTML = '';
-
-    const showName = (searchType !== 'number') && nameRows.length > 0;
-    const showNumber = (searchType !== 'name') && numberRows.length > 0;
-
-    if (!showName && !showNumber) {
-        resultArea.innerHTML = "<p class='center' style='padding: 40px 0;'>검색 결과가 없습니다.</p>";
-        return;
-    }
-
-    let nameSec = null, numSec = null;
-    let nameGroups = {}, numberGroups = {};
-
-    // 1. 이름 검색 결과 구역
-    if (showName) {
-        nameRows.forEach(r => {
-            const cardName = String(r[0] || "이름 없음").trim();
-            if (!nameGroups[cardName]) nameGroups[cardName] = 0;
-            nameGroups[cardName] += (parseInt(r[3]) || 0);
-        });
-
-        const nameKeys = Object.keys(nameGroups);
-
-        nameSec = document.createElement('div');
-        nameSec.className = 'search-result-section';
-        nameSec.innerHTML = `<div class="search-section-header"><i class="material-icons">font_download</i>이름 검색 결과 (${nameKeys.length})</div><div class="broad-search-list"></div>`;
-        resultArea.appendChild(nameSec);
-
-        const listContainer = nameSec.querySelector('.broad-search-list');
-        nameKeys.forEach(cardName => {
-            const totalQty = nameGroups[cardName];
-            const metaType = getCardMetaType(cardName);
-            const rowEl = document.createElement('div');
-            rowEl.className = 'broad-search-row';
-            rowEl.innerHTML = `
-                <div class="broad-search-left">${escapeHTML(cardName)}</div>
-                <div class="broad-search-right">
-                    <span class="broad-type-label broad-type-${metaType.kind}">${metaType.kindStr}</span>
-                    <span class="broad-divider">|</span>
-                    <span>${totalQty}장</span>
-                </div>
-            `;
-            rowEl.addEventListener('click', () => {
-                const searchInput = document.getElementById('card-search');
-                if (searchInput) searchInput.value = cardName;
-
-                const targetNorm = normalizeStr(cardName);
-                const targetRows = typeof cardCacheInstance !== 'undefined' ? cardCacheInstance.getInventory().filter(row => normalizeStr(String(row[0])) === targetNorm) : [];
-                saveRecentSearch(cardName, 'name', true);
-
-                const cid = findCidByNameOrNo(cardName);
-                updateSearchHash('target', { cid: cid, code: null });
-
-                // 클릭과 동시에 API 선제 호출 시작 — 애니메이션 병렬화로 Safari 파일디레이 해소
-                const metaPromise = fetchCardMetaWithCache(cid, cardName);
-
-                animatePushSlide(() => {
-                    renderTargetSearchResult(cardName, targetRows, null, null, cid, metaPromise);
-                });
-            });
-            listContainer.appendChild(rowEl);
-        });
-    }
-
-    // 2. 번호 검색 결과 구역
-    if (showNumber) {
-        numberRows.forEach(r => {
-            const cardNo = String(r[1] || "").trim();
-            const cardName = String(r[0] || "").trim();
-            const qty = parseInt(r[3]) || 0;
-            if (!numberGroups[cardNo]) {
-                numberGroups[cardNo] = { name: cardName, total: 0 };
-            }
-            numberGroups[cardNo].total += qty;
-        });
-
-        const numberKeys = Object.keys(numberGroups);
-
-        numSec = document.createElement('div');
-        numSec.className = 'search-result-section';
-        numSec.innerHTML = `<div class="search-section-header"><i class="material-icons">numbers</i>번호 검색 결과 (${numberKeys.length})</div><div class="broad-search-list"></div>`;
-        resultArea.appendChild(numSec);
-
-        const listContainer = numSec.querySelector('.broad-search-list');
-        numberKeys.forEach(cardNo => {
-            const item = numberGroups[cardNo];
-            const cardName = item.name || getCardNameByNumber(cardNo);
-            const subNameHtml = cardName ? `<span class="broad-card-name-sub">${escapeHTML(cardName)}</span>` : '';
-            const metaType = getCardMetaType(cardName, cardNo);
-
-            const rowEl = document.createElement('div');
-            rowEl.className = 'broad-search-row';
-            rowEl.innerHTML = `
-                <div class="broad-search-left">
-                    <span>${escapeHTML(cardNo)}</span>
-                    ${subNameHtml}
-                </div>
-                <div class="broad-search-right">
-                    <span class="broad-type-label broad-type-${metaType.kind}">${metaType.kindStr}</span>
-                    <span class="broad-divider">|</span>
-                    <span>${item.total}장</span>
-                </div>
-            `;
-            rowEl.addEventListener('click', () => {
-                const searchInput = document.getElementById('card-search');
-                if (searchInput) searchInput.value = cardNo;
-
-                const targetCardName = cardName || cardNo;
-                const targetNorm = normalizeStr(targetCardName);
-                let targetRows = typeof cardCacheInstance !== 'undefined' ? cardCacheInstance.getInventory().filter(row => normalizeStr(String(row[0])) === targetNorm) : [];
-
-                if (cardNo && targetRows.length > 0) {
-                    const prioNorm = normalizeStr(cardNo);
-                    targetRows.sort((a, b) => {
-                        const aMatch = normalizeStr(String(a[1])) === prioNorm ? -1 : 1;
-                        const bMatch = normalizeStr(String(b[1])) === prioNorm ? -1 : 1;
-                        return aMatch - bMatch;
-                    });
-                }
-                saveRecentSearch(cardNo, 'number', true);
-
-                const cid = findCidByNameOrNo(targetCardName, cardNo);
-                updateSearchHash('target', { cid: cid, code: cardNo });
-
-                // 클릭과 동시에 API 선제 호출 시작 — 애니메이션 병렬화로 Safari 파일디레이 해소
-                const metaPromise = fetchCardMetaWithCache(cid, targetCardName);
-
-                animatePushSlide(() => {
-                    renderTargetSearchResult(targetCardName, targetRows, cardNo, null, cid, metaPromise);
-                });
-            });
-            listContainer.appendChild(rowEl);
-        });
-    }
-
-    // 3. 포괄 검색 목록 전체 CID 수집 후 배치(Batch) 메타데이터 1회 연동 및 라벨 일괄 갱신
-    const allCidsToFetch = [];
-    if (showName) {
-        Object.keys(nameGroups).forEach(nameKey => {
-            const cid = findCidByNameOrNo(nameKey);
-            if (cid) allCidsToFetch.push(cid);
-        });
-    }
-    if (showNumber) {
-        Object.keys(numberGroups).forEach(noKey => {
-            const item = numberGroups[noKey];
-            const nameKey = item.name || getCardNameByNumber(noKey);
-            const cid = findCidByNameOrNo(nameKey, noKey);
-            if (cid) allCidsToFetch.push(cid);
-        });
-    }
-
-    if (allCidsToFetch.length > 0) {
-        fetchCardsMetaBatch(allCidsToFetch).then(() => {
-            if (showName && nameSec) {
-                const rows = nameSec.querySelectorAll('.broad-search-row');
-                const nameKeys = Object.keys(nameGroups);
-                rows.forEach((rowEl, idx) => {
-                    const cardName = nameKeys[idx];
-                    if (cardName) {
-                        const metaType = getCardMetaType(cardName);
-                        const labelEl = rowEl.querySelector('.broad-type-label');
-                        if (labelEl) {
-                            labelEl.className = `broad-type-label broad-type-${metaType.kind}`;
-                            labelEl.textContent = metaType.kindStr;
-                        }
-                    }
-                });
-            }
-            if (showNumber && numSec) {
-                const rows = numSec.querySelectorAll('.broad-search-row');
-                const numberKeys = Object.keys(numberGroups);
-                rows.forEach((rowEl, idx) => {
-                    const cardNo = numberKeys[idx];
-                    if (cardNo) {
-                        const item = numberGroups[cardNo];
-                        const cardName = item.name || getCardNameByNumber(cardNo);
-                        const metaType = getCardMetaType(cardName, cardNo);
-                        const labelEl = rowEl.querySelector('.broad-type-label');
-                        if (labelEl) {
-                            labelEl.className = `broad-type-label broad-type-${metaType.kind}`;
-                            labelEl.textContent = metaType.kindStr;
-                        }
-                    }
-                });
-            }
-        }).catch(() => {});
-    }
-
-    M.Tooltip.init(document.querySelectorAll('.tooltipped'));
-}
-
 function findCidByNameOrNo(cardName, cardNo = null) {
     const number = String(cardNo || '').trim().toUpperCase();
     const name = normalizeStr(String(cardName || ''));
@@ -7271,6 +6872,7 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
     const previousCid = (typeof lastSearchState !== 'undefined' && lastSearchState) ? lastSearchState.targetCid : null;
 
     const targetArea = mountContainer || document.getElementById('result-area');
+    targetArea.setAttribute('aria-busy', 'false');
 
     // 튀는 현상 원천 차단: 동일한 카드의 보유 목록 수정 시 기존 상단 메타데이터(tempBox) 유지 및 In-Place 갱신
     const existingTempBox = targetArea.querySelector('.target-card-temp-box');
@@ -10098,7 +9700,7 @@ function switchInventoryMode(mode, instant) {
 
     const forms = ['dashboard', 'list'];
     const wrapper = document.getElementById('inventory-mode-forms');
-    const segmentControl = document.querySelector('#inventory-content-area .segment-control');
+    const segmentControl = document.querySelector('#app-page-inventory .segment-control');
     if (!wrapper) return;
 
     if (instant && segmentControl) {
@@ -14749,6 +14351,8 @@ function closeMobileSearch(fromPopState = false) {
 // 모바일 최근 검색 가로형 UI 추가 함수
 function appendMobileRecentHistory(list, recent) {
     if (!recent || recent.length === 0) return;
+    const ownedNames = cardCacheInstance.getOwnedNamesSet();
+    const ownedNumbers = cardCacheInstance.getOwnedNumbersSet();
 
     const li = document.createElement('li');
     li.className = 'mobile-recent-container';
@@ -14761,16 +14365,15 @@ function appendMobileRecentHistory(list, recent) {
         const searchType = typeof r === 'string' ? 'auto' : (r.searchType || 'auto');
         const isTarget = typeof r === 'string' ? false : !!r.isTarget;
 
-        const chip = document.createElement('span');
-        chip.className = 'recent-chip';
-
-        let tagStr = '';
-        if (isTarget) {
-            if (searchType === 'number') tagStr = '[번호] ';
-            else tagStr = '[이름] ';
-        }
-
-        chip.innerText = tagStr + keyword;
+        const isOwned = isTarget && (searchType === 'number'
+            ? ownedNumbers.has(String(keyword).trim().toUpperCase())
+            : ownedNames.has(String(keyword).trim()));
+        const colorClass = !isTarget ? 'ui-color--search-general'
+            : isOwned ? 'ui-color--card-owned' : 'ui-color--card-unowned';
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = `ui-button ui-chip ui-shape-capsule ${colorClass} recent-chip`;
+        chip.innerText = keyword;
         chip.addEventListener('click', (e) => {
             e.stopPropagation();
             executeMobileSearch(keyword, searchType, isTarget);
@@ -14779,9 +14382,11 @@ function appendMobileRecentHistory(list, recent) {
     });
     li.appendChild(chipsWrapper);
 
-    const deleteIcon = document.createElement('i');
-    deleteIcon.className = 'material-icons clear-all-icon';
-    deleteIcon.innerText = 'delete';
+    const deleteIcon = document.createElement('button');
+    deleteIcon.type = 'button';
+    deleteIcon.className = 'ui-button ui-button--text ui-button--text-secondary clear-all-icon';
+    deleteIcon.setAttribute('aria-label', '전체 검색 기록 삭제');
+    deleteIcon.innerHTML = '<i class="material-icons" aria-hidden="true">delete</i>';
     deleteIcon.onclick = clearMobileAllRecent;
     li.appendChild(deleteIcon);
 
@@ -14808,6 +14413,7 @@ function showMobileRecentInDropdown() {
 function clearMobileAllRecent(e) {
     if (e) e.stopPropagation();
     localStorage.setItem(RECENT_KEY, '[]');
+    document.querySelector('#mobile-custom-dropdown .mobile-recent-container')?.remove();
     
     // 다시 검색창 텍스트 상태를 확인하여 렌더링 방식 결정
     const mSearchInput = document.getElementById('mobile-card-search');
@@ -14869,6 +14475,8 @@ function initMobileSearchListeners() {
         mSearchInput._isInputBound = true;
 
         const debouncedMobileFilter = debounce((val) => {
+            // 지우기 직전에 예약된 검색이 최근 검색 목록을 덮어쓰지 않도록 한다.
+            if (mSearchInput.value.trim() !== val) return;
             mobileFilterAndShowDropdown(val);
         }, 50);
 
@@ -14892,7 +14500,7 @@ function initMobileSearchListeners() {
                 
                 const targetVal = mSearchInput.value.trim();
                 if (targetVal) {
-                    executeMobileSearch(targetVal, 'name');
+                    executeMobileSearch(targetVal, 'auto');
                 }
             }
         });
@@ -14903,7 +14511,7 @@ function initMobileSearchListeners() {
             e.preventDefault();
             const val = mSearchInput.value.trim();
             if (val) {
-                executeMobileSearch(val, 'name');
+                executeMobileSearch(val, 'auto');
             }
         });
     }

@@ -1,5 +1,5 @@
 const { onRequest } = require("firebase-functions/v2/https");
-const { db, admin, getBucket, FieldValue } = require("../config/firebase");
+const { db, admin, getBucket, getStorageEmulatorBaseUrl, FieldValue } = require("../config/firebase");
 const { setCors, verifyUser, verifyAppCheck } = require("../utils/auth");
 const { downloadInventory, updateInventoryWithRetry, deleteInventory } = require("../utils/inventoryStorage");
 
@@ -35,7 +35,7 @@ exports.getInitialData = onRequest({ invoker: "public", memory: "256MiB" }, asyn
       try {
         const [metadata] = await file.getMetadata();
         const url = process.env.FUNCTIONS_EMULATOR === "true"
-          ? `http://127.0.0.1:9199/download/storage/v1/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media`
+          ? `${getStorageEmulatorBaseUrl()}/download/storage/v1/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media`
           : `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media`;
         return { available: true, url, updatedAt: new Date(metadata.updated).getTime(),
           generation: String(metadata.generation), format };

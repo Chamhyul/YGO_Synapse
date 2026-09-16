@@ -28,6 +28,11 @@ function getBucket() {
   return admin.storage().bucket(bucketName);
 }
 
+function getStorageEmulatorBaseUrl() {
+  const host = process.env.FIREBASE_STORAGE_EMULATOR_HOST || "127.0.0.1:5004";
+  return `http://${host}`;
+}
+
 function getProductionBucket() {
   const bucketName = process.env.STORAGE_BUCKET || "ygo-synapse.firebasestorage.app";
   const isEmulator = process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_EMULATOR_HUB;
@@ -112,6 +117,7 @@ module.exports = {
   admin,
   db,
   getBucket,
+  getStorageEmulatorBaseUrl,
   getProductionBucket,
   getProductionDb,
   downloadProductionFile,

@@ -6,7 +6,7 @@
  *   - public/packs.json          : 전체 팩 목록 메타데이터 (cids 제외)
  *   - public/packs/{packId}.json : 개별 팩 상세 파일 (cids 포함)
  */
-const { admin, getBucket } = require("../config/firebase");
+const { admin, getBucket, getStorageEmulatorBaseUrl } = require("../config/firebase");
 
 const PACKS_METADATA_PATH = "public/packs.json";
 const PACK_DETAIL_DIR = "public/packs";
@@ -64,7 +64,7 @@ async function getPacksMetadataInfo() {
     const [metadata] = await file.getMetadata();
     let url;
     if (process.env.FUNCTIONS_EMULATOR === "true") {
-      url = `http://127.0.0.1:9199/download/storage/v1/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
+      url = `${getStorageEmulatorBaseUrl()}/download/storage/v1/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
     } else {
       url = `https://storage.googleapis.com/${bucket.name}/${file.name}`;
     }
@@ -278,4 +278,3 @@ module.exports = {
   upsertPacksBatchToStorage,
   cleanZeroCardPacksFromStorage,
 };
-

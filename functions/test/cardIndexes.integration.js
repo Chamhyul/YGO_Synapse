@@ -1,8 +1,8 @@
 // 이 파일은 demo 프로젝트의 로컬 에뮬레이터에서만 실행할 수 있습니다.
 const assert = require('node:assert/strict');
 if (process.env.GCLOUD_PROJECT !== 'demo-ygo-indexes' ||
-    process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:8181' ||
-    process.env.FIREBASE_STORAGE_EMULATOR_HOST !== '127.0.0.1:9299') {
+    process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:5101' ||
+    process.env.FIREBASE_STORAGE_EMULATOR_HOST !== '127.0.0.1:5102') {
   throw Error('격리된 demo 에뮬레이터가 필요합니다. 운영 실행을 금지합니다.');
 }
 process.env.STORAGE_BUCKET = 'demo-ygo-indexes.appspot.com';
