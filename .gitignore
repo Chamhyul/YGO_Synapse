@@ -44,3 +44,9 @@ data/models/
 
 # Local planning and guidance documents
 /docs/
+
+# Private operational records and evidence
+/private/
+
+# Local-only UI previews and their server
+/previews/

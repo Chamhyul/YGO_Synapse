@@ -10,9 +10,8 @@ Copyright (C) 2026 참혈 (Chamhyul).
 
 제3자 코드·모델·폰트·아이콘은 원래 라이선스가 적용됩니다. 카드 이미지·게임 텍스트·상표·사용자 데이터에는 이 프로젝트의 AGPL 허락을 적용하지 않습니다. 폴더 위치나 package.json의 license 필드가 이러한 예외를 덮어쓰지 않습니다.
 
-- [제3자 소프트웨어 및 모델 고지](THIRD_PARTY_NOTICES.md)
-- [이미지·데이터·브랜드 권리 및 출처](ASSET_RIGHTS.md)
-- [미확인 사항과 배포 전 점검](LICENSE_REVIEW.md)
+- [제3자 소프트웨어 및 모델 고지](legal/THIRD_PARTY_NOTICES.md)
+- [이미지·데이터·브랜드 권리 및 출처](legal/ASSET_RIGHTS.md)
 - [서비스 내 라이선스 화면](public/licenses.html)
 - [npm 전체 의존성 목록](public/legal/npm-inventory.json) / [수집된 원문 고지](public/legal/npm-license-texts.txt)
 
@@ -20,12 +19,10 @@ Copyright (C) 2026 참혈 (Chamhyul).
 
 소스 저장소: https://github.com/Chamhyul/YGO_Synapse
 
-배포 소스 다운로드: https://ygo-synapse.web.app/legal/ygo-source-20260908.tar.gz — 함수별 실제 소스 대응표와 인증 비밀값 제외 기록을 포함합니다. [구성 및 실행 안내](DEPLOYED_SOURCE.md)를 참조하십시오. 개발 작업 트리와 운영 배포 소스는 다를 수 있습니다.
+배포 소스 다운로드: https://ygo-synapse.web.app/legal/ygo-source-20260908.tar.gz — 함수별 실제 소스 대응표와 인증 비밀값 제외 기록을 포함합니다. [구성 및 실행 안내](legal/DEPLOYED_SOURCE.md)를 참조하십시오. 개발 작업 트리와 운영 배포 소스는 다를 수 있습니다.
 
-Node.js 24와 Firebase CLI가 필요합니다. 저장소 루트와 functions에서 각각 `npm ci`를 실행합니다. Firebase 프로젝트 및 필요한 인증 정보를 자신의 환경에 설정한 뒤 루트에서 `npm run dev`로 에뮬레이터를 실행합니다. 로컬 에뮬레이터는 Functions **5001**, UI **5002**, Firestore **5003**, Storage **5004**, Hosting **5005**, Tasks **5006**, Hub **5007**, Logging **5008** 포트를 사용합니다. 실제 외부 서비스/API는 별도 계정·설정·이용 조건이 필요하며, 에뮬레이터 실행이 외부 서비스 연결을 자동으로 격리하지는 않습니다.
+Node.js 24와 Firebase CLI가 필요합니다. 저장소 루트와 functions에서 각각 `npm ci`를 실행합니다. Firebase 프로젝트 및 필요한 인증 정보를 자신의 환경에 설정한 뒤 루트에서 `npm run dev`로 에뮬레이터를 실행합니다. 실제 외부 서비스/API는 별도 계정·설정·이용 조건이 필요하며, 에뮬레이터 실행이 외부 서비스 연결을 자동으로 격리하지는 않습니다.
 
-프런트엔드는 public, 서버는 functions, 데이터 처리·검증 도구는 scripts에 있습니다. `npm run test:illustrations`와 functions의 `npm test`로 관련 테스트를 실행할 수 있습니다. `node scripts/build_license_inventory.js`는 두 lockfile과 현재 설치된 패키지의 고지를 읽어 공개용 목록을 재생성합니다. 누락된 플랫폼별 패키지 고지는 설치 환경에 따라 달라집니다.
-
-개인 키·토큰·사용자 데이터는 소스 제공 대상에 포함하지 마십시오. 카드 이미지 데이터와 외부 저장소 접근 권한은 이 저장소의 라이선스로 제공되지 않습니다. 자체 배포자는 자신의 허가된 데이터와 설정을 준비해야 합니다. 모델과 OpenCV 재현에 필요한 미확인 사항은 LICENSE_REVIEW.md에 기록되어 있습니다.
+개인 키·토큰·사용자 데이터는 소스 제공 대상에 포함하지 마십시오. 카드 이미지 데이터와 외부 저장소 접근 권한은 이 저장소의 라이선스로 제공되지 않습니다. 자체 배포자는 자신의 허가된 데이터와 설정을 준비해야 합니다. 모델과 OpenCV의 출처·재현 자료에 관한 확인 범위는 [제3자 고지](legal/THIRD_PARTY_NOTICES.md)를 참고하십시오.
 
 AGPL의 해당 소스(Corresponding Source) 제공 의무가 적용되는 배포에서는 실행 버전과 일치하는 소스, 변경 사항, 필요한 빌드·설치 스크립트를 제공해야 합니다. 수정된 프로그램을 네트워크로 이용하게 하는 경우 AGPL 제13조의 소스 제공 안내도 확인하십시오. 저장소 홈페이지 링크만으로 배포 버전의 소스가 제공되었다고 단정할 수 없습니다.

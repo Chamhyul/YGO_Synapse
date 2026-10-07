@@ -92,6 +92,20 @@ async function verifyAdmin(req, res, { ownerOnly = false } = {}) {
 }
 
 // CORS 허용 헤더
+async function verifyRegisteredUser(req, res) {
+  const uid = await verifyUser(req, res);
+  if (!uid) return null;
+  try {
+    const { isRegisteredUser } = require('../services/registrationService');
+    if (await isRegisteredUser(uid)) return uid;
+    res.status(403).json({ success: false, code: 'REGISTRATION_REQUIRED', message: '서비스 가입을 완료해 주세요.' });
+  } catch (error) {
+    console.error('Registration verification failed:', safeErrorSummary(error));
+    res.status(503).json({ success: false, message: '가입 상태를 확인하지 못했습니다. 다시 시도해 주세요.' });
+  }
+  return null;
+}
+
 function setCors(res, req) {
   const origin = (req && req.headers.origin) || "";
   const allowed = [
@@ -114,5 +128,6 @@ module.exports = {
   verifyAppCheck,
   verifyUser,
   verifyAdmin,
+  verifyRegisteredUser,
   setCors
 };

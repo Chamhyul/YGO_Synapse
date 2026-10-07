@@ -190,7 +190,7 @@ test('초기 데이터는 본문 중복 없이 Storage 링크와 generation만 �
       getBucket:()=>({name:'test.appspot.com',file:name=>({getMetadata:async()=>[metadata[name]]})}),
     },
     '../utils/inventoryStorage':{},'../services/inventoryMigrationService':{},
-    '../utils/auth':{setCors(){},verifyAppCheck:async()=>true,verifyUser:async()=>null},
+    '../utils/auth':{setCors(){},verifyAppCheck:async()=>true,verifyRegisteredUser:async()=>null},
   });
   let body;
   const res={status(){return this;},json(value){body=value;return this;}};
@@ -210,7 +210,7 @@ test('닉네임 라우트는 인증된 사용자만 저장하고 잘못된 입�
     '../config/firebase':{db:{collection:name=>({doc:id=>({set:async value=>writes.push({name,id,value})})})},FieldValue:{serverTimestamp:()=> 'time'}},
     '../utils/common':{},'../utils/packsStorage':{},'../utils/inventoryStorage':{},
     '../services/cardQueryService':{},'../services/inventoryMigrationService':{},
-    '../utils/auth':{setCors(){},verifyUser:async()=>uid},
+    '../utils/auth':{setCors(){},verifyRegisteredUser:async()=>uid},
   });
   let status=200,body;
   const res={status(code){status=code;return this;},json(value){body=value;return this;}};

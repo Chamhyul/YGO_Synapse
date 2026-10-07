@@ -2,7 +2,7 @@ const cardService = require("../services/cardService");
 const { onRequest } = require("firebase-functions/v2/https");
 const { admin } = require("../config/firebase");
 const { mapToRowArray } = require("../utils/common");
-const { setCors, verifyUser, verifyAppCheck } = require("../utils/auth");
+const { setCors, verifyRegisteredUser, verifyAppCheck } = require("../utils/auth");
 const { crawlByCardNo, crawlByCardName } = require("../scrapers/cardScraper");
 const { getCardFromCacheByNo, getCardFromCacheByName, saveCardToFirestore, buildSearchResponse, resolveCardNumber } = require("../services/cardService");
 const { updateInventoryWithRetry, processAddCards, processMoveCards, processDiscardCards } = require("../utils/inventoryStorage");
@@ -179,7 +179,7 @@ exports.resolveCardNames = onRequest({ invoker: 'public', timeoutSeconds: 60 }, 
 async function applyInventoryGuard(req, res, paramKey) {
   setCors(res, req);
   if (req.method === "OPTIONS") { res.status(204).send(""); return null; }
-  const uid = await verifyUser(req, res);
+  const uid = await verifyRegisteredUser(req, res);
   if (!uid) return null;
   const items = req.body[paramKey];
   if (!items || !Array.isArray(items)) {
@@ -196,30 +196,38 @@ exports.addCards = onRequest({ invoker: "public", memory: "256MiB" }, async (req
 
   try {
     const cardGroups = {};
+    const invalidResults = [];
     
-    for (const entry of rows) {
+    for (const [requestIndex, entry] of rows.entries()) {
+      const eQty = Number(entry[3]);
+      if (!Number.isSafeInteger(eQty) || eQty <= 0) {
+        invalidResults.push({ requestIndex, status: 'fail', qty: 0, failReason: 'invalid_qty' });
+        continue;
+      }
       const eName = entry[0];
       const eRawNo = String(entry[1]).toUpperCase() || "NO_NUMBER";
       const eNo = await resolveCardNumber(eRawNo, eName);
       const eRarity = entry[2];
-      const eQty = parseInt(entry[3]) || 0;
       const eLoc = entry[4];
       const eIllust = entry[5] || "";
 
-      if(eQty <= 0) continue;
+      // 수량 오류도 입력 인덱스를 보존하여 결과에 돌려준다.
       if (!cardGroups[eNo]) cardGroups[eNo] = { name: eName, requestedCid: entry[6], items: [] };
-      cardGroups[eNo].items.push({ rarity: eRarity, loc: eLoc, qty: eQty, illustration: eIllust });
+      cardGroups[eNo].items.push({ rarity: eRarity, loc: eLoc, qty: eQty, illustration: eIllust, requestIndex });
     }
 
     await resolveGroupCids(cardGroups);
-    let updatedItems = [];
+    let updatedItems = [], operationResults = [];
     const finalData = await updateInventoryWithRetry(uid, (inventory) => {
-      updatedItems = processAddCards(inventory, cardGroups);
+      // generation 충돌 재시도에서는 마지막 저장 시도의 결과만 응답한다.
+      operationResults = invalidResults.map(item => ({ ...item }));
+      updatedItems = processAddCards(inventory, cardGroups, operationResults);
     });
 
     return res.json({
       success: true,
       updatedItems,
+      operationResults,
       inventoryVersion: finalData.version,
       inventoryMigration: inventoryMigrationStatus(finalData),
       amount: finalData.amount,
@@ -238,14 +246,17 @@ exports.moveCards = onRequest({ invoker: "public", memory: "256MiB" }, async (re
   const { uid, items: moves } = guard;
 
   try {
-    let updatedItems = [];
+    let updatedItems = [], operationResults = [];
     const finalData = await updateInventoryWithRetry(uid, (inventory) => {
-      updatedItems = processMoveCards(inventory, moves);
+      // generation 충돌 재시도에서는 마지막 저장 시도의 결과만 응답한다.
+      operationResults = [];
+      updatedItems = processMoveCards(inventory, moves, operationResults);
     });
 
     return res.json({
       success: true,
       updatedItems,
+      operationResults,
       inventoryVersion: finalData.version,
       inventoryMigration: inventoryMigrationStatus(finalData),
       amount: finalData.amount,
@@ -264,14 +275,17 @@ exports.discardCards = onRequest({ invoker: "public", memory: "256MiB" }, async 
   const { uid, items: discards } = guard;
 
   try {
-    let updatedItems = [];
+    let updatedItems = [], operationResults = [];
     const finalData = await updateInventoryWithRetry(uid, (inventory) => {
-      updatedItems = processDiscardCards(inventory, discards);
+      // generation 충돌 재시도에서는 마지막 저장 시도의 결과만 응답한다.
+      operationResults = [];
+      updatedItems = processDiscardCards(inventory, discards, operationResults);
     });
 
     return res.json({
       success: true,
       updatedItems,
+      operationResults,
       inventoryVersion: finalData.version,
       inventoryMigration: inventoryMigrationStatus(finalData),
       amount: finalData.amount,

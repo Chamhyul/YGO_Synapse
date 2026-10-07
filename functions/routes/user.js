@@ -1,6 +1,6 @@
 const { onRequest } = require("firebase-functions/v2/https");
 const { db, admin, getBucket, getStorageEmulatorBaseUrl, FieldValue } = require("../config/firebase");
-const { setCors, verifyUser, verifyAppCheck } = require("../utils/auth");
+const { setCors, verifyRegisteredUser, verifyAppCheck } = require("../utils/auth");
 const { downloadInventory, updateInventoryWithRetry, deleteInventory } = require("../utils/inventoryStorage");
 
 const { ensureInventoryV2, inventoryMigrationStatus } = require('../services/inventoryMigrationService');
@@ -10,7 +10,7 @@ exports.clearUserData = onRequest({ invoker: "public" }, async (req, res) => {
   if (req.method === "OPTIONS") return res.status(204).send("");
   if (!(await verifyAppCheck(req, res))) return;
 
-  const uid = await verifyUser(req, res);
+  const uid = await verifyRegisteredUser(req, res);
   if (!uid) return;
   
   try {
@@ -73,7 +73,7 @@ exports.getUserData = onRequest({ invoker: "public", memory: "256MiB" }, async (
     return res.json({ success: true, message: "warmed up" });
   }
 
-  const uid = await verifyUser(req, res);
+  const uid = await verifyRegisteredUser(req, res);
   if (!uid) return;
 
   try {
@@ -95,13 +95,7 @@ exports.getUserData = onRequest({ invoker: "public", memory: "256MiB" }, async (
     let createdAt = userData.createdAt ? (userData.createdAt.toDate ? userData.createdAt.toDate().getTime() : userData.createdAt) : null;
     const nickname = userData.Nickname || "";
 
-    // 가입일이 유실되었거나 최초 로그인인 경우 가입일 서버 측에서 기록
-    if (!createdAt) {
-      createdAt = Date.now();
-      await db.collection("users").doc(uid).set({
-        createdAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-    }
+    // 신규 가입일은 completeRegistration에서만 생성한다. 기존 결측값은 추측하지 않는다.
     
     // Self-healing: 데이터 형식 교정
     let needsFix = false;
@@ -182,7 +176,7 @@ exports.updateUserSettings = onRequest({ invoker: "public" }, async (req, res) =
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
 
-  const uid = await verifyUser(req, res);
+  const uid = await verifyRegisteredUser(req, res);
   if (!uid) return;
 
   const { settings } = req.body;
@@ -220,7 +214,7 @@ exports.updateNickname = onRequest({ invoker: "public" }, async (req, res) => {
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
   
-  const uid = await verifyUser(req, res);
+  const uid = await verifyRegisteredUser(req, res);
   if (!uid) return;
 
   if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'POST 요청을 사용하세요.' });

@@ -44,6 +44,9 @@ exports.getUserData = userRoutes.getUserData;
 exports.updateUserSettings = userRoutes.updateUserSettings;
 exports.clearUserData = userRoutes.clearUserData;
 exports.updateNickname = userRoutes.updateNickname;
+const registrationRoutes = require('./routes/registration');
+exports.getRegistrationStatus = registrationRoutes.getRegistrationStatus;
+exports.completeRegistration = registrationRoutes.completeRegistration;
 
 // 4. 데이터 이관 모음
 const migrationRoutes = require("./routes/migration");

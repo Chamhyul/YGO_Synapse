@@ -1,10 +1,10 @@
 const { onRequest } = require("firebase-functions/v2/https");
-const { setCors, verifyUser } = require("../utils/auth");
-const { fetchMyCardData_Node } = require("../services/migrationService");
+const { setCors, verifyRegisteredUser } = require("../utils/auth");
+const { fetchMyCardData_Node, validateImportData } = require("../services/migrationService");
 const { resolveCardNumber } = require("../services/cardService");
 const { updateInventoryWithRetry, processAddCards } = require("../utils/inventoryStorage");
 const { findCard } = require('../services/cardQueryService');
-const { resolveGroupCids, inventoryMigrationStatus } = require('../services/inventoryMigrationService');
+const { resolveGroupCids, inventoryMigrationStatus, normalizeIllustrationId } = require('../services/inventoryMigrationService');
 
 /**
  * [공통] 마이그레이션 대상 데이터에서 구버전 일판 카드를 파악하고 캐시맵을 빌드
@@ -41,93 +41,76 @@ async function buildJpCardCache(items, noExtractor) {
   return cacheMap;
 }
 
-exports.migrateFromSheet = onRequest({ invoker: "public" }, async (req, res) => {
-  setCors(res, req);
-  if (req.method === "OPTIONS") return res.status(204).send("");
-  
-  const uid = await verifyUser(req, res);
-  if (!uid) return;
+const { safeErrorSummary } = require('../utils/safeError');
 
-  const { spreadsheetId } = req.body;
-  if (!spreadsheetId) return res.status(400).json({ success: false, message: "Missing spreadsheetId" });
-
-  try {
-    const sheetData = await fetchMyCardData_Node(spreadsheetId);
-    if (sheetData.allCards.length === 0) {
-      return res.json({ success: true, message: "이전할 데이터가 없습니다.", importedCount: 0 });
-    }
-
-    const cacheMap = await buildJpCardCache(sheetData.allCards, row => row[1]);
-
-    const cardGroups = {};
-    for (const row of sheetData.allCards) {
-      const [name, rawNo, rarity, qty, loc, illustration] = row;
-      const cardNo = await resolveCardNumber(rawNo, name, cacheMap);
-      if (!cardGroups[cardNo]) cardGroups[cardNo] = { name, items: [] };
-      cardGroups[cardNo].items.push({ rarity, loc, qty, illustration });
-    }
-
-    await resolveGroupCids(cardGroups);
-    let updatedItems = [];
-    const finalData = await updateInventoryWithRetry(uid, inventory => {
-      updatedItems = processAddCards(inventory, cardGroups);
-    });
-
-    return res.json({
-      success: true,
-      message: `${sheetData.allCards.length}개의 카드 데이터 이관 완료`,
-      importedCount: sheetData.allCards.length,
-      updatedItems,
-      inventoryVersion: finalData.version,
-      inventoryMigration: inventoryMigrationStatus(finalData)
-    });
-
-  } catch (e) {
-    console.error("migrateFromSheet error:", e);
-    return res.status(500).json({ success: false, message: e.toString() });
+async function importValidated(uid, parsed) {
+  const cacheMap = await buildJpCardCache(parsed.data, item => item.no);
+  const cardGroups = Object.create(null);
+  for (const item of parsed.data) {
+    const cardNo = await resolveCardNumber(item.no, item.name, cacheMap);
+    if (!cardNo) throw Object.assign(new Error('카드 번호를 확인할 수 없습니다.'), { code: 'INVALID_IMPORT' });
+    if (!cardGroups[cardNo]) cardGroups[cardNo] = { name: item.name, items: [] };
+    cardGroups[cardNo].items.push({ rarity: item.rare, loc: item.loc, qty: item.qty,
+      illustration: normalizeIllustrationId(item.illust) });
   }
-});
-
-exports.migrateFromData = onRequest({ invoker: "public" }, async (req, res) => {
-  setCors(res, req);
-  if (req.method === "OPTIONS") return res.status(204).send("");
-  
-  const uid = await verifyUser(req, res);
-  if (!uid) return;
-
-  const { data } = req.body;
-  if (!data || !Array.isArray(data)) {
-    return res.status(400).json({ success: false, message: "Missing or invalid data" });
-  }
-
-  try {
-    const cacheMap = await buildJpCardCache(data, item => item.no);
-
-    const cardGroups = {};
-    for (const item of data) {
-      const rawNo = String(item.no || "").trim().toUpperCase();
-      const name = String(item.name || "").trim();
-      const cardNo = await resolveCardNumber(rawNo, name, cacheMap);
-      const rarity = String(item.rare || "기본").trim();
-      const loc = String(item.loc || "미보관").trim();
-      const illustration = String(item.illust || "").trim();
-      const qty = 1;
-
-      if (!cardNo) continue;
-      if (!cardGroups[cardNo]) cardGroups[cardNo] = { name, items: [] };
-      cardGroups[cardNo].items.push({ rarity, loc, qty, illustration });
+  await resolveGroupCids(cardGroups);
+  // 추가량은 Storage 충돌 재시도 및 기존 보유 수량과 독립적으로 한 번만 집계한다.
+  const deltas = new Map(), kinds = new Set();
+  for (const [cardNo, group] of Object.entries(cardGroups)) {
+    kinds.add(group.cid ? `cid:${group.cid}` : `name:${group.name}`);
+    for (const item of group.items) {
+      const key = JSON.stringify([cardNo, item.rarity, item.loc, item.illustration]);
+      if (!deltas.has(key)) deltas.set(key, { cardNo, name: group.name, cid: group.cid || null, ...item, qty: 0 });
+      deltas.get(key).qty += item.qty;
     }
-
-    await resolveGroupCids(cardGroups);
-    let updatedItems = [];
-    const finalData = await updateInventoryWithRetry(uid, inventory => {
-      updatedItems = processAddCards(inventory, cardGroups);
-    });
-
-    return res.json({ success: true, message: `${data.length}개의 데이터 이관 완료`, importedCount: data.length, updatedItems, inventoryVersion: finalData.version, inventoryMigration: inventoryMigrationStatus(finalData) });
-
-  } catch (e) {
-    console.error("migrateFromData error:", e);
-    return res.status(500).json({ success: false, message: e.toString() });
   }
-});
+  const importedItems = [...deltas.values()];
+  let updatedItems = [];
+  const finalData = await updateInventoryWithRetry(uid, inventory => {
+    if (!Number.isSafeInteger((inventory.amount || 0) + parsed.totalQty)) {
+      throw Object.assign(new Error('보유 총수량이 지원 범위를 초과했습니다.'), { code: 'INVALID_IMPORT' });
+    }
+    for (const item of importedItems) {
+      const existing = inventory.cards[item.cardNo]?.items.find(entry => entry.rarity === item.rarity
+        && entry.loc === item.loc && normalizeIllustrationId(entry.illustration) === item.illustration);
+      if (existing && !Number.isSafeInteger(existing.qty + item.qty)) {
+        throw Object.assign(new Error('보유 항목의 수량이 지원 범위를 초과했습니다.'), { code: 'INVALID_IMPORT' });
+      }
+    }
+    updatedItems = processAddCards(inventory, cardGroups);
+  });
+  return { success: true, importedCount: parsed.data.length, importedCardCount: kinds.size,
+    importedQty: parsed.totalQty, importedItems, updatedItems,
+    skippedZeroCount: parsed.skippedZeroCount, legacyQuantity: parsed.legacyQuantity,
+    inventoryVersion: finalData.version, inventoryMigration: inventoryMigrationStatus(finalData) };
+}
+
+function importRoute(source) {
+  return onRequest({ invoker: 'public' }, async (req, res) => {
+    setCors(res, req);
+    if (req.method === 'OPTIONS') return res.status(204).send('');
+    if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'POST 요청만 지원합니다.' });
+    const uid = await verifyRegisteredUser(req, res);
+    if (!uid) return;
+    try {
+      let parsed;
+      if (source === 'sheet') {
+        const { spreadsheetId, fingerprint } = req.body || {};
+        if (!/^[\w-]{25,}$/.test(spreadsheetId || '')) {
+          return res.status(400).json({ success: false, message: '올바른 시트 ID가 필요합니다.' });
+        }
+        parsed = await fetchMyCardData_Node(spreadsheetId);
+        if (!fingerprint || fingerprint !== parsed.fingerprint) {
+          return res.status(409).json({ success: false, message: '시트 내용이 변경되었습니다. 링크를 다시 확인해주세요.', code: 'SHEET_CHANGED' });
+        }
+      } else parsed = validateImportData(req.body?.data);
+      return res.json(await importValidated(uid, parsed));
+    } catch (error) {
+      console.error('Data import failed:', safeErrorSummary(error));
+      return res.status(error.code === 'INVALID_IMPORT' ? 400 : 500).json({ success: false,
+        message: error.code === 'INVALID_IMPORT' ? error.message : '카드 데이터를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.' });
+    }
+  });
+}
+exports.migrateFromSheet = importRoute('sheet');
+exports.migrateFromData = importRoute('file');

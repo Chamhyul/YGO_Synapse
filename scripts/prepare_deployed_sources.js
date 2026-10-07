@@ -47,7 +47,14 @@ async function run(){
     mapping.push({function:f.name.split('/').pop(),runtime:f.buildConfig.runtime,entryPoint:f.buildConfig.entryPoint,archive:'functions-sources/'+sanitized.publicHash+'.zip',sha256:sanitized.publicHash,originalSha256:hash,excludedPrivateFiles:sanitized.excluded,sourceGeneration:source.generation});
   }
   await fs.writeFile(path.join(dir,'FUNCTIONS.json'),JSON.stringify(mapping,null,2)+'\n');
-  for(const name of ['LICENSE','ASSET_RIGHTS.md','THIRD_PARTY_NOTICES.md'])await fs.copyFile(path.join(root,name),path.join(dir,name));
+  await fs.copyFile(path.join(root,'LICENSE'),path.join(dir,'LICENSE'));
+  // Keep the existing archive-root layout while reading notices from legal/.
+  for(const name of ['ASSET_RIGHTS.md','THIRD_PARTY_NOTICES.md']){
+    const notice=(await fs.readFile(path.join(root,'legal',name),'utf8'))
+      .replace(/\]\(\.\.\/public\/legal\//g,'](public/legal/')
+      .replace(/\]\(\.\.\/LICENSE\)/g,'](LICENSE)');
+    await fs.writeFile(path.join(dir,name),notice);
+  }
   await fs.cp(path.join(root,'public/legal'),path.join(dir,'public/legal'),{recursive:true});
   console.log(JSON.stringify({directory:dir,functions:mapping.length,uniqueArchives:seen.size,credentialScan:'passed'}));
 }

@@ -109,6 +109,9 @@ function updateUserLocationsSummary(userData, changedCardsLocMap) {
   if (!userData.locations) userData.locations = {};
   for (const cardNo in changedCardsLocMap) {
     const activeLocs = changedCardsLocMap[cardNo];
+    for (const loc of activeLocs) {
+      if (!userData.locations[loc]) userData.locations[loc] = [];
+    }
     for (const loc in userData.locations) {
       const idx = userData.locations[loc].indexOf(cardNo);
       if (activeLocs.includes(loc)) {
@@ -125,7 +128,7 @@ function updateUserLocationsSummary(userData, changedCardsLocMap) {
   }
 }
 
-function processAddCards(inventory, cardGroups) {
+function processAddCards(inventory, cardGroups, operationResults = []) {
   const { normalizeIllustrationId } = require('../services/inventoryMigrationService');
   if (!inventory.cards) inventory.cards = {};
   if (!inventory.locations) inventory.locations = {};
@@ -136,10 +139,7 @@ function processAddCards(inventory, cardGroups) {
 
   for (const cardNo in cardGroups) {
     const group = cardGroups[cardNo];
-    if (!inventory.cards[cardNo]) {
-      inventory.cards[cardNo] = { name: group.name, cid: group.cid || null, cidCheckedAt: Date.now(), items: [] };
-    }
-    const cardEntry = inventory.cards[cardNo];
+    const cardEntry = inventory.cards[cardNo] || { name: group.name, cid: group.cid || null, cidCheckedAt: Date.now(), items: [] };
     const cardName = group.name || cardEntry.name || "Unknown";
     cardEntry.name = cardName;
     if (Object.hasOwn(group, 'cid')) {
@@ -149,6 +149,11 @@ function processAddCards(inventory, cardGroups) {
 
     group.items.forEach(incoming => {
       incoming = { ...incoming, illustration: normalizeIllustrationId(incoming.illustration ?? incoming.another) };
+      if (!Number.isSafeInteger(Number(incoming.qty)) || Number(incoming.qty) <= 0) {
+        operationResults.push({ requestIndex: incoming.requestIndex, status: 'fail', qty: 0, failReason: 'invalid_qty' });
+        return;
+      }
+      incoming.qty = Number(incoming.qty);
       let matchIndex = -1;
       for (let i = 0; i < cardEntry.items.length; i++) {
         const iRare = cardEntry.items[i].rarity || cardEntry.items[i].proc;
@@ -159,12 +164,20 @@ function processAddCards(inventory, cardGroups) {
         }
       }
 
+      const nextQty = (matchIndex > -1 ? cardEntry.items[matchIndex].qty : 0) + incoming.qty;
+      if (![nextQty, inventory.amount + incoming.qty, (inventory.rarities[incoming.rarity] || 0) + incoming.qty].every(Number.isSafeInteger)) {
+        operationResults.push({ requestIndex: incoming.requestIndex, status: 'fail', qty: 0, failReason: 'invalid_qty' });
+        return;
+      }
+      inventory.cards[cardNo] = cardEntry;
       if (matchIndex > -1) {
-        cardEntry.items[matchIndex].qty += incoming.qty;
+        cardEntry.items[matchIndex].qty = nextQty;
       } else {
-        cardEntry.items.push({ ...incoming });
+        const { requestIndex, ...storedItem } = incoming;
+        cardEntry.items.push(storedItem);
       }
 
+      operationResults.push({ requestIndex: incoming.requestIndex, status: 'success', qty: incoming.qty });
       inventory.amount += incoming.qty;
       inventory.rarities[incoming.rarity] = (inventory.rarities[incoming.rarity] || 0) + incoming.qty;
 
@@ -188,147 +201,62 @@ function processAddCards(inventory, cardGroups) {
   return updatedItems;
 }
 
-function processMoveCards(inventory, moves) {
-  const { normalizeIllustrationId } = require('../services/inventoryMigrationService');
-  if (!inventory.cards) inventory.cards = {};
-  if (!inventory.locations) inventory.locations = {};
-
-  const updatedItems = [];
-  const moveGroups = {};
-  moves.forEach(m => {
-    const cNo = String(m.cardNo).toUpperCase() || "NO_NUMBER";
-    if (!moveGroups[cNo]) moveGroups[cNo] = [];
-    moveGroups[cNo].push(m);
-  });
-
-  const changedCardsLocMap = {};
-
-  for (const cardNo in moveGroups) {
-    const cardEntry = inventory.cards[cardNo];
-    if (!cardEntry) continue;
-
-    let items = cardEntry.items || [];
-    const cardName = cardEntry.name || "Unknown";
-
-    moveGroups[cardNo].forEach(m => {
-      const moveQ = parseInt(m.moveQty) || 0;
-      if (moveQ <= 0) return;
-
-      const mRare = m.rarity || m.proc || "";
-      const mIllust = normalizeIllustrationId(m.illustration ?? m.another);
-      const mCurLoc = m.currentLoc || m.loc || "";
-      const mTarLoc = m.targetLoc || "";
-
-      let sourceIdx = -1;
-      for (let i = 0; i < items.length; i++) {
-        const iRare = items[i].rarity || items[i].proc;
-        const iIllust = items[i].illustration || items[i].another;
-        if (iRare === mRare && items[i].loc === mCurLoc && iIllust === mIllust) {
-          sourceIdx = i; break;
-        }
-      }
-      if (sourceIdx === -1) return;
-
-      let newSourceQty = items[sourceIdx].qty - moveQ;
-      if (newSourceQty < 0) newSourceQty = 0;
-      items[sourceIdx].qty = newSourceQty;
-      updatedItems.push({ cardNo, name: cardName, cid: cardEntry.cid || null, rarity: mRare, illustration: mIllust, loc: mCurLoc, qty: newSourceQty, isDeleted: newSourceQty === 0 });
-
-      let targetIdx = -1;
-      for (let i = 0; i < items.length; i++) {
-        const iRare = items[i].rarity || items[i].proc;
-        const iIllust = items[i].illustration || items[i].another;
-        if (i !== sourceIdx && iRare === mRare && items[i].loc === mTarLoc && iIllust === mIllust) {
-          targetIdx = i; break;
-        }
-      }
-
-      if (targetIdx > -1) {
-        items[targetIdx].qty += moveQ;
-      } else {
-        items.push({ rarity: mRare, loc: mTarLoc, illustration: mIllust, qty: moveQ });
-      }
-      updatedItems.push({ cardNo, name: cardName, cid: cardEntry.cid || null, rarity: mRare, illustration: mIllust, loc: mTarLoc, qty: targetIdx > -1 ? items[targetIdx].qty : moveQ, isDeleted: false });
-    });
-
-    items = items.filter(it => it.qty > 0);
-    cardEntry.items = items;
-    changedCardsLocMap[cardNo] = [...new Set(items.map(it => it.loc))];
-
-    if (items.length === 0) {
-      delete inventory.cards[cardNo];
-    }
-  }
-
-  updateUserLocationsSummary(inventory, changedCardsLocMap);
-  return updatedItems;
-}
-
-function processDiscardCards(inventory, discards) {
+// 최신 재고를 입력 순서대로 확인한다. 부족/미발견 행은 변경하지 않는다.
+function processCardChanges(inventory, requests, operation, operationResults) {
   const { normalizeIllustrationId } = require('../services/inventoryMigrationService');
   if (!inventory.cards) inventory.cards = {};
   if (!inventory.locations) inventory.locations = {};
   if (!inventory.rarities) inventory.rarities = {};
-
   const updatedItems = [];
-  const discardGroups = {};
-  discards.forEach(d => {
-    const cNo = String(d.cardNo).toUpperCase() || "NO_NUMBER";
-    if (!discardGroups[cNo]) discardGroups[cNo] = [];
-    discardGroups[cNo].push(d);
-  });
-
   const changedCardsLocMap = {};
-
-  for (const cardNo in discardGroups) {
+  requests.forEach((request, requestIndex) => {
+    const cardNo = String(request.cardNo || '').trim().toUpperCase();
+    const qty = Number(operation === 'move' ? request.moveQty : request.qty);
+    const fail = failReason => operationResults.push({ requestIndex, status: 'fail', qty: 0, failReason });
+    if (!Number.isSafeInteger(qty) || qty <= 0) { fail('invalid_qty'); return; }
     const cardEntry = inventory.cards[cardNo];
-    if (!cardEntry) continue;
-
-    let items = cardEntry.items || [];
-    const cardName = cardEntry.name || "Unknown";
-
-    discardGroups[cardNo].forEach(d => {
-      const discardQ = parseInt(d.qty) || 0;
-      if (discardQ <= 0) return;
-
-      const dRare = d.rarity || d.proc || "";
-      const dIllust = normalizeIllustrationId(d.illustration ?? d.another);
-      const dLoc = d.loc || "";
-
-      let matchIdx = -1;
-      for (let i = 0; i < items.length; i++) {
-        const iRare = items[i].rarity || items[i].proc;
-        const iIllust = items[i].illustration || items[i].another;
-        if (iRare === dRare && items[i].loc === dLoc && iIllust === dIllust) {
-          matchIdx = i; break;
-        }
-      }
-      if (matchIdx === -1) return;
-
-      let newQty = items[matchIdx].qty - discardQ;
-      if (newQty < 0) newQty = 0;
-      items[matchIdx].qty = newQty;
-
-      inventory.amount -= discardQ;
-      const rarityKey = items[matchIdx].rarity || items[matchIdx].proc;
-      inventory.rarities[rarityKey] = (inventory.rarities[rarityKey] || 0) - discardQ;
-      if (inventory.rarities[rarityKey] < 0) inventory.rarities[rarityKey] = 0;
-
-      updatedItems.push({ cardNo, name: cardName, cid: cardEntry.cid || null, rarity: dRare, illustration: dIllust, loc: dLoc, qty: newQty, isDeleted: newQty === 0 });
-    });
-
-    items = items.filter(it => it.qty > 0);
-    cardEntry.items = items;
-    changedCardsLocMap[cardNo] = [...new Set(items.map(it => it.loc))];
-
-    if (items.length === 0) {
-      delete inventory.cards[cardNo];
+    if (!cardEntry) { fail('no_inventory'); return; }
+    const rarity = request.rarity || request.proc || '';
+    const illustration = normalizeIllustrationId(request.illustration ?? request.another);
+    const loc = operation === 'move' ? request.currentLoc || request.loc || '' : request.loc || '';
+    const targetLoc = request.targetLoc || '';
+    if (operation === 'move' && !targetLoc) { fail('no_target_loc'); return; }
+    if (operation === 'move' && loc === targetLoc) { fail('same_loc'); return; }
+    const items = cardEntry.items || [];
+    const source = items.find(item => (item.rarity || item.proc) === rarity && item.loc === loc
+      && normalizeIllustrationId(item.illustration ?? item.another) === illustration);
+    if (!source) { fail('no_inventory'); return; }
+    if (source.qty < qty) { fail('insufficient_qty'); return; }
+    const target = operation === 'move' ? items.find(item => item !== source && (item.rarity || item.proc) === rarity
+      && item.loc === targetLoc && normalizeIllustrationId(item.illustration ?? item.another) === illustration) : null;
+    if (target && !Number.isSafeInteger(target.qty + qty)) { fail('invalid_qty'); return; }
+    source.qty -= qty;
+    const cacheItem = (location, quantity) => ({ cardNo, name: cardEntry.name || 'Unknown',
+      cid: cardEntry.cid || null, rarity, illustration, loc: location, qty: quantity, isDeleted: quantity === 0 });
+    updatedItems.push(cacheItem(loc, source.qty));
+    if (operation === 'move') {
+      if (target) target.qty += qty;
+      else items.push({ rarity, illustration, loc: targetLoc, qty });
+      updatedItems.push(cacheItem(targetLoc, target ? target.qty : qty));
+    } else {
+      inventory.amount -= qty;
+      inventory.rarities[rarity] = Math.max(0, (inventory.rarities[rarity] || 0) - qty);
     }
-  }
-
+    cardEntry.items = items.filter(item => item.qty > 0);
+    changedCardsLocMap[cardNo] = [...new Set(cardEntry.items.map(item => item.loc))];
+    if (!cardEntry.items.length) delete inventory.cards[cardNo];
+    operationResults.push({ requestIndex, status: 'success', qty });
+  });
   updateUserLocationsSummary(inventory, changedCardsLocMap);
-  if (inventory.amount < 0) inventory.amount = 0;
   return updatedItems;
+}
+
+function processMoveCards(inventory, moves, operationResults = []) {
+  return processCardChanges(inventory, moves, 'move', operationResults);
+}
+
+function processDiscardCards(inventory, discards, operationResults = []) {
+  return processCardChanges(inventory, discards, 'discard', operationResults);
 }
 
 module.exports = {

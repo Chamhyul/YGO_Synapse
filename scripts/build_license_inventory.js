@@ -49,11 +49,11 @@ fs.writeFileSync(path.join(out, 'npm-inventory.json'), JSON.stringify({
 fs.writeFileSync(path.join(out, 'npm-license-texts.txt'), [...texts.entries()].map(([hash, item]) =>
     `SHA256: ${hash}\n${[...new Set(item.packages)].sort().join('\n')}\n\n${item.text}\n`).join('\n\n'));
 fs.copyFileSync(path.join(root, 'LICENSE'), path.join(out, 'AGPL-3.0-only.txt'));
-for (const file of ['THIRD_PARTY_NOTICES.md', 'ASSET_RIGHTS.md']) {
-    // Rewrite root-relative documentation links for the hosted copy.
-    const source = fs.readFileSync(path.join(root, file), 'utf8')
-        .replace(/\]\(public\/legal\//g, '](')
-        .replace(/\]\(LICENSE\)/g, '](AGPL-3.0-only.txt)');
+for (const file of ['THIRD_PARTY_NOTICES.md', 'ASSET_RIGHTS.md', 'DEPLOYED_SOURCE.md']) {
+    // Rewrite legal/ source links for the hosted copy.
+    const source = fs.readFileSync(path.join(root, 'legal', file), 'utf8')
+        .replace(/\]\(\.\.\/public\/legal\//g, '](')
+        .replace(/\]\(\.\.\/LICENSE\)/g, '](AGPL-3.0-only.txt)');
     fs.writeFileSync(path.join(out, file), source);
 }
 console.log(JSON.stringify({ packages: records.length, licenseTexts: texts.size,

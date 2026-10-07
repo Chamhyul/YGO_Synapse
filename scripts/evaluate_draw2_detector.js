@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Based on HichTala/draw2 docs/scripts/pipeline.js; upstream rights retained.
 // Modified 2026-09-08 for YGO Synapse evaluation inputs and outputs.
-// See ../THIRD_PARTY_NOTICES.md for source revision and attribution.
+// See ../legal/THIRD_PARTY_NOTICES.md for source revision and attribution.
 'use strict';
 
 const ort = require('onnxruntime-web');

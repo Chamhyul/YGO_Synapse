@@ -119,7 +119,7 @@ function routeFixture() {
       DISCORD_BOT_TOKEN: secret, DISCORD_CLIENT_SECRET: secret,
     },
     '../services/adminActionTransport': { forwardAdminRequest: async () => false },
-    '../utils/auth': { setCors() {}, verifyAppCheck: async () => true, verifyAdmin: async () => ({uid:'uid',role:'admin'}), verifyUser: async () => 'uid' },
+    '../utils/auth': { setCors() {}, verifyAppCheck: async () => true, verifyAdmin: async () => ({uid:'uid',role:'admin'}), verifyRegisteredUser: async () => 'uid' },
     '../utils/safeError': { safeErrorSummary },
     '../integrations/googleSheets': { getSpreadsheetMetadata: async () => { throw error; } },
     '../integrations/discord': { getDiscordUserWithCode: async () => { throw error; } },

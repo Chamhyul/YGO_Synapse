@@ -61,8 +61,8 @@ test('로컬에서 본문 UID가 있어도 위조·만료·철회 토큰은 거�
 });
 test('정상 로컬 로그인은 실제 Auth로 검증하고 요청의 UID 대신 검증한 UID를 사용한다',async()=>{
   const f=fixture({env:{FUNCTIONS_EMULATOR:'true'}}),res=response();
-  assert.equal(await f.helpers.verifyUser(request({uid:'other-user'}),res),'verified-user');
-  assert.deepEqual(f.calls,[['real-auth'],['verify','fixture-token',true]]);
+  assert.equal(await f.helpers.verifyRegisteredUser(request({uid:'other-user'}),res),'verified-user');
+  assert.deepEqual(f.calls,[['real-auth'],['verify','fixture-token',true],['registered','verified-user']]);
   assert.equal(f.writes.length,0);
 });
 test('인증 헤더 누락·배열·빈 값과 Auth 에뮬레이터는 검증 전에 거부한다',async()=>{

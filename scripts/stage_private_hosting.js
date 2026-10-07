@@ -2,8 +2,17 @@
 'use strict';
 // Mechanical staging of the currently deployed site plus this rollout's files.
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
-const {initializeStorage}=require('./upload_card_illustrations');
+function addFooterLicenseLink(html){
+  return html.replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/,footer=>{
+    if(/<a\b[^>]*\bhref=(["'])licenses\.html\1/.test(footer))return footer;
+    return footer.replace(/<a href="privacy\.html" class="(footer-link-item|app-footer__link)"[^>]*>[^<]*<\/a>/,(link,linkClass)=>{
+      const separatorClass=linkClass==='app-footer__link'?'app-footer__link-separator':'footer-link-separator';
+      return `${link}<span class="${separatorClass}">•</span><a href="licenses.html" class="${linkClass}">라이선스 및 출처</a>`;
+    });
+  });
+}
 async function run(){
+  const {initializeStorage}=require('./upload_card_illustrations');
   const {admin}=initializeStorage('ygo-synapse.firebasestorage.app');
   const {access_token}=await admin.app().options.credential.getAccessToken();
   const headers={Authorization:`Bearer ${access_token}`};
@@ -32,12 +41,12 @@ async function run(){
   await fs.cp(path.join(root,'public/legal'),path.join(publicDir,'legal'),{recursive:true});
   let html=await fs.readFile(path.join(publicDir,'index.html'),'utf8');
   html=html.replace(/illustration-images\.js\?[^"']*/g,'illustration-images.js?v=3-private-storage')
-    .replace(/search-illustrations\.js\?[^"']*/g,'search-illustrations.js?v=7-private-storage')
-    .replace(/(<a href="privacy\.html" class="footer-link-item"[^>]*>[^<]*<\/a>)/,
-      '$1<span class="footer-link-separator">•</span><a href="licenses.html" class="footer-link-item">라이선스 및 출처</a>');
+    .replace(/search-illustrations\.js\?[^"']*/g,'search-illustrations.js?v=7-private-storage');
+  html=addFooterLicenseLink(html);
   await fs.writeFile(path.join(publicDir,'index.html'),html);
   const hosting=JSON.parse(await fs.readFile(path.join(root,'firebase.json'),'utf8')).hosting;
   await fs.writeFile(path.join(dir,'firebase.json'),JSON.stringify({hosting:{...hosting,public:'public'}}));
   console.log(JSON.stringify({directory:dir,previousVersion:version}));
 }
-run().catch(()=>{console.error('Hosting staging failed; sensitive details omitted.');process.exitCode=1});
+if(require.main===module)run().catch(()=>{console.error('Hosting staging failed; sensitive details omitted.');process.exitCode=1});
+module.exports={addFooterLicenseLink};

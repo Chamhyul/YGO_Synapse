@@ -9,7 +9,7 @@ const {
   DISCORD_GUILD_ID,
   DISCORD_ROLE_ID
 } = require("../config/firebase");
-const { setCors, verifyAppCheck, verifyAdmin, verifyUser } = require("../utils/auth");
+const { setCors, verifyAppCheck, verifyAdmin, verifyRegisteredUser } = require("../utils/auth");
 const { safeErrorSummary } = require("../utils/safeError");
 const sheets = require("../integrations/googleSheets");
 const { getDiscordUserWithCode, checkGuildMemberRole } = require("../integrations/discord");
@@ -24,9 +24,14 @@ exports.checkSheet = onRequest({ invoker: "public" }, async (req, res) => {
 
   try {
     const metadata = await sheets.getSpreadsheetMetadata(id);
-    return res.json({ status: 'OK', sheetName: metadata.properties.title });
+    const { fetchMyCardData_Node } = require("../services/migrationService");
+    const preview = await fetchMyCardData_Node(id);
+    return res.json({ status: 'OK', sheetName: metadata.properties.title, rowCount: preview.data.length,
+      totalQty: preview.totalQty, skippedZeroCount: preview.skippedZeroCount,
+      legacyQuantity: preview.legacyQuantity, fingerprint: preview.fingerprint });
   } catch (err) {
     console.error("checkSheet error:", safeErrorSummary(err));
+    if (err.code === 'INVALID_IMPORT') return res.json({ status: 'INVALID_DATA', message: err.message });
     return res.json({ status: 'NO_ACCESS' });
   }
 });
@@ -55,7 +60,7 @@ exports.checkMembershipDiscord = onRequest({
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
 
-  const uid = await verifyUser(req, res);
+  const uid = await verifyRegisteredUser(req, res);
   if (!uid) return;
 
   const code = req.body && req.body.code;
@@ -177,7 +182,7 @@ exports.checkMembershipCsv = onRequest({
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
 
-  const uid = await verifyUser(req, res);
+  const uid = await verifyRegisteredUser(req, res);
   if (!uid) return;
 
   const userChannelId = (req.body && req.body.userChannelId) || req.query.userChannelId;
