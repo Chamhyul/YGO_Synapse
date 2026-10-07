@@ -80,6 +80,7 @@ exports.migrateCardIllustrationsTask = require("./tasks/cardIllustrations").migr
 const noticesAdminRoutes = require("./routes/admin/notices");
 exports.manageNotice = noticesAdminRoutes.manageNotice;
 exports.manageAdminRole = noticesAdminRoutes.manageAdminRole;
+exports.checkAdminAccess = require('./routes/admin/access').checkAdminAccess;
 
 // 8. 덱 기능 모음
 const deckRoutes = require("./routes/deck");
@@ -91,3 +92,7 @@ exports.getDeckCards = deckRoutes.getDeckCards;
 exports.searchPackNew = packRoutes.searchPack;
 exports.crawlPackBatchNew = packRoutes.crawlPackCardsBatch;
 exports.getCardFullMetaByCid = cardRoutes.getCardMetadata;
+
+// 세션 쿠키를 검증한 뒤 관리자 독립 문서를 제공한다.
+exports.adminPages = require("./routes/admin/pages").adminPages;
+exports.adminBackend = require("./routes/admin/pages").adminBackend;

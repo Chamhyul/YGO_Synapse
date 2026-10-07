@@ -8,123 +8,21 @@
 const { onRequest } = require("firebase-functions/v2/https");
 const { db, admin } = require("../../config/firebase");
 const { setCors, verifyUser } = require("../../utils/auth");
-const cheerio = require("cheerio");
-
-const STORAGE_PATH = "public/notices.json";
-const ALLOWED_NOTICE_TAGS = new Set([
-  "a", "b", "blockquote", "br", "code", "del", "div", "em", "h1", "h2", "h3",
-  "h4", "h5", "h6", "hr", "i", "li", "ol", "p", "pre", "s", "span", "strong", "u", "ul",
-]);
-const DROP_WITH_CONTENT_TAGS = new Set([
-  "base", "embed", "frame", "iframe", "link", "meta", "object", "script", "style", "svg", "template",
-]);
-
-function isSafeNoticeHref(href) {
-  try {
-    const url = new URL(href, "https://ygo-synapse.web.app");
-    return ["http:", "https:", "mailto:"].includes(url.protocol);
-  } catch {
-    return false;
-  }
+const { createNoticeService, createStorageNoticeStore } = require('../../services/noticeService');
+const { getProductionCredential } = require('../../config/firebase');
+const { withLocalNoticeLock } = require('../../services/localNoticeLock');
+let noticeService;
+function notices() {
+  const local = process.env.FUNCTIONS_EMULATOR === 'true';
+  if (local && (!process.env.FIREBASE_STORAGE_EMULATOR_HOST || !process.env.FIRESTORE_EMULATOR_HOST)) throw Error('로컬 Storage가 필요합니다.');
+  return noticeService ||= createNoticeService({storage:createStorageNoticeStore(admin.storage().bucket()),environment:local?'local':'production',runLocked:local?action=>withLocalNoticeLock(db,action):undefined});
 }
-
-/** 허용된 서식만 남기고 공지 HTML에서 실행 가능한 요소와 속성을 제거합니다. */
-function sanitizeNoticeHtml(content) {
-  const $ = cheerio.load(String(content || ""), null, false);
-
-  $("*").toArray().reverse().forEach(node => {
-    const tag = node.tagName && node.tagName.toLowerCase();
-    if (!tag) return;
-
-    if (!ALLOWED_NOTICE_TAGS.has(tag)) {
-      if (DROP_WITH_CONTENT_TAGS.has(tag)) $(node).remove();
-      else $(node).replaceWith($(node).contents());
-      return;
-    }
-
-    const attrs = node.attribs || {};
-    const href = attrs.href;
-    const title = attrs.title;
-    const target = attrs.target;
-    Object.keys(attrs).forEach(name => $(node).removeAttr(name));
-
-    if (tag === "a") {
-      if (href && isSafeNoticeHref(href)) $(node).attr("href", href);
-      if (title) $(node).attr("title", title);
-      if (target === "_blank") {
-        $(node).attr("target", "_blank");
-        $(node).attr("rel", "noopener noreferrer");
-      }
-    }
-  });
-
-  return $.root().html() || "";
-}
-
-function sanitizeNoticeTitle(title) {
-  const $ = cheerio.load(String(title || ""), null, false);
-  return $.text().trim();
-}
-
-/** 현재 KST 시각을 "YYYY.MM.DDTHH:MM" 형식으로 반환 */
-function getKstDatetimeId() {
-  const now = new Date();
-  // KST = UTC+9
-  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const yyyy = kst.getUTCFullYear();
-  const mm = String(kst.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(kst.getUTCDate()).padStart(2, "0");
-  const hh = String(kst.getUTCHours()).padStart(2, "0");
-  const mi = String(kst.getUTCMinutes()).padStart(2, "0");
-  return `${yyyy}.${mm}.${dd}T${hh}:${mi}`;
-}
-
-/** Storage에서 현재 notices.json을 읽어 notices 배열을 반환 */
-async function readNotices() {
-  try {
-    const bucket = admin.storage().bucket();
-    const file = bucket.file(STORAGE_PATH);
-    const [exists] = await file.exists();
-    if (!exists) return [];
-    const [content] = await file.download();
-    const data = JSON.parse(content.toString("utf-8"));
-    return Array.isArray(data.notices) ? data.notices : [];
-  } catch (e) {
-    console.warn("[NoticesAdmin] readNotices failed or file missing:", e.message || e);
-    return [];
-  }
-}
-
-/** notices 배열을 정렬 후 Storage에 저장 */
-async function saveNotices(notices) {
-  const normalized = notices.map(notice => {
-    const id = String(notice.id || "").replace(/^(\d{4})-(\d{2})-(\d{2})T/, "$1.$2.$3T");
-    return { ...notice, id, date: id.substring(0, 10) };
-  });
-  const sorted = normalized.sort((a, b) => {
-    const aPinned = a.isPinned > 0;
-    const bPinned = b.isPinned > 0;
-    if (aPinned && bPinned) return a.isPinned - b.isPinned;
-    if (aPinned && !bPinned) return -1;
-    if (!aPinned && bPinned) return 1;
-    return b.id.localeCompare(a.id);
-  });
-
-  const payload = {
-    updatedAt: Date.now(),
-    notices: sorted,
-  };
-
-  const bucket = admin.storage().bucket();
-  const file = bucket.file(STORAGE_PATH);
-  await file.save(JSON.stringify(payload, null, 2), {
-    contentType: "application/json",
-    public: true,
-    // 고정 URL을 유지하면서 ETag로 변경 여부를 재검증합니다.
-    metadata: { cacheControl: "public, max-age=0, must-revalidate" },
-  });
-
-  return sorted;
+function noticeAuth() {
+  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) throw Error('실제 Firebase Auth가 필요합니다.');
+  if (process.env.FUNCTIONS_EMULATOR !== 'true') return admin.auth();
+  const name='admin-web-auth';
+  const app=admin.apps.find(a=>a.name===name)||admin.initializeApp({credential:getProductionCredential(),projectId:'ygo-synapse'},name);
+  return admin.auth(app);
 }
 
 /** 유저의 role 및 admin 권한 정보 조회 (Custom Claims 기반) */
@@ -154,81 +52,23 @@ async function getUserRoleInfo(uid) {
 
 // ─── 1. 공지사항 관리 API (manageNotice) ──────────────────────────
 exports.manageNotice = onRequest(
-  { invoker: "public", timeoutSeconds: 30, memory: "256MiB" },
-  async (req, res) => {
-    setCors(res, req);
-    if (req.method === "OPTIONS") return res.status(204).send("");
-
-    if (req.method !== "POST") {
-      return res.status(405).json({ error: "Method Not Allowed. Use POST." });
-    }
-
-    const uid = await verifyUser(req, res);
-    if (!uid) return;
-
-    const caller = await getUserRoleInfo(uid);
-    if (!caller.isAdmin) {
-      return res.status(403).json({ success: false, error: "Forbidden: 관리자 권한이 필요합니다." });
-    }
-
-    const { action, id, title, content, isPinned } = req.body || {};
-
+  { invoker: 'public', timeoutSeconds: 30, memory: '256MiB' },
+  async (req,res) => {
+    setCors(res,req);
+    if(req.method==='OPTIONS')return res.status(204).send('');
+    if(req.method!=='POST')return res.status(405).json({success:false});
     try {
-      let notices = await readNotices();
-
-      if (action === "add") {
-        if (!title) return res.status(400).json({ error: "title 필드가 필요합니다." });
-        const newId = getKstDatetimeId();
-        const finalId = notices.some(n => n.id === newId)
-          ? (() => {
-              const [datePart, timePart] = newId.split("T");
-              const [hh, mi] = timePart.split(":").map(Number);
-              const nextMi = String((mi + 1) % 60).padStart(2, "0");
-              const nextHh = mi === 59 ? String((hh + 1) % 24).padStart(2, "0") : String(hh).padStart(2, "0");
-              return `${datePart}T${nextHh}:${nextMi}`;
-            })()
-          : newId;
-
-        const newNotice = {
-          id: finalId,
-          date: finalId.substring(0, 10),
-          title: sanitizeNoticeTitle(title),
-          content: sanitizeNoticeHtml(content),
-          isPinned: parseInt(isPinned) || 0,
-        };
-
-        notices.push(newNotice);
-        const sorted = await saveNotices(notices);
-        return res.json({ success: true, action: "add", notice: newNotice, notices: sorted });
-      }
-
-      if (action === "update") {
-        if (!id) return res.status(400).json({ error: "id 필드가 필요합니다." });
-        const idx = notices.findIndex(n => n.id === id);
-        if (idx === -1) return res.status(404).json({ error: `id '${id}'에 해당하는 공지가 없습니다.` });
-
-        if (title !== undefined) notices[idx].title = sanitizeNoticeTitle(title);
-        if (content !== undefined) notices[idx].content = sanitizeNoticeHtml(content);
-        if (isPinned !== undefined) notices[idx].isPinned = parseInt(isPinned) || 0;
-
-        const sorted = await saveNotices(notices);
-        return res.json({ success: true, action: "update", notice: notices[idx], notices: sorted });
-      }
-
-      if (action === "delete") {
-        if (!id) return res.status(400).json({ error: "id 필드가 필요합니다." });
-        const before = notices.length;
-        notices = notices.filter(n => n.id !== id);
-        if (notices.length === before) return res.status(404).json({ error: `id '${id}'에 해당하는 공지가 없습니다.` });
-
-        const sorted = await saveNotices(notices);
-        return res.json({ success: true, action: "delete", deletedId: id, notices: sorted });
-      }
-
-      return res.status(400).json({ error: "알 수 없는 action입니다. add | update | delete" });
-    } catch (e) {
-      console.error("[NoticesAdmin] manageNotice failed:", e);
-      return res.status(500).json({ success: false, message: e.toString() });
+      const header=req.headers.authorization;
+      if(typeof header!=='string'||!header.startsWith('Bearer '))return res.status(401).json({success:false});
+      let decoded;
+      try {decoded=await noticeAuth().verifyIdToken(header.slice(7),true);}catch{return res.status(401).json({success:false});}
+      const user=await noticeAuth().getUser(decoded.uid),claims=user.customClaims||{};
+      if(user.disabled)return res.status(401).json({success:false});
+      if(claims.admin!==true && !['owner','admin'].includes(claims.role))return res.status(403).json({success:false});
+      return res.json({success:true,...await notices().mutate(req.body,{requireRevision:false})});
+    }catch(error){
+      if([400,404,409].includes(error.status))return res.status(error.status).json({success:false,message:error.message});
+      return res.status(503).json({success:false,message:'공지 작업을 완료할 수 없습니다.'});
     }
   }
 );

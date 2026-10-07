@@ -120,6 +120,7 @@ module.exports = {
   getStorageEmulatorBaseUrl,
   getProductionBucket,
   getProductionDb,
+  getProductionCredential,
   downloadProductionFile,
   FieldValue,
   FieldPath,

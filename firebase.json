@@ -41,6 +41,19 @@
     ],
     "headers": [
       {
+        "source": "/admin{,/**,.html}",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          },
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, nofollow"
+          }
+        ]
+      },
+      {
         "source": "/index.html",
         "headers": [
           {
@@ -70,8 +83,18 @@
     ],
     "rewrites": [
       {
+        "source": "/admin{,/**,.html}",
+        "function": {
+          "functionId": "adminPages",
+          "region": "asia-northeast3"
+        }
+      },
+      {
         "source": "/api/illustrations/**",
-        "function": { "functionId": "getIllustration", "region": "asia-northeast3" }
+        "function": {
+          "functionId": "getIllustration",
+          "region": "asia-northeast3"
+        }
       },
       {
         "source": "**",
