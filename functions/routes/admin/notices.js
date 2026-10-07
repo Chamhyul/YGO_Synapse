@@ -7,47 +7,13 @@
 
 const { onRequest } = require("firebase-functions/v2/https");
 const { db, admin } = require("../../config/firebase");
-const { setCors, verifyUser } = require("../../utils/auth");
+const { setCors, verifyAdmin } = require("../../utils/auth");
 const { createNoticeService, createStorageNoticeStore } = require('../../services/noticeService');
-const { getProductionCredential } = require('../../config/firebase');
-const { withLocalNoticeLock } = require('../../services/localNoticeLock');
+const { forwardAdminRequest } = require('../../services/adminActionTransport');
+const { safeErrorSummary } = require('../../utils/safeError');
 let noticeService;
 function notices() {
-  const local = process.env.FUNCTIONS_EMULATOR === 'true';
-  if (local && (!process.env.FIREBASE_STORAGE_EMULATOR_HOST || !process.env.FIRESTORE_EMULATOR_HOST)) throw Error('로컬 Storage가 필요합니다.');
-  return noticeService ||= createNoticeService({storage:createStorageNoticeStore(admin.storage().bucket()),environment:local?'local':'production',runLocked:local?action=>withLocalNoticeLock(db,action):undefined});
-}
-function noticeAuth() {
-  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) throw Error('실제 Firebase Auth가 필요합니다.');
-  if (process.env.FUNCTIONS_EMULATOR !== 'true') return admin.auth();
-  const name='admin-web-auth';
-  const app=admin.apps.find(a=>a.name===name)||admin.initializeApp({credential:getProductionCredential(),projectId:'ygo-synapse'},name);
-  return admin.auth(app);
-}
-
-/** 유저의 role 및 admin 권한 정보 조회 (Custom Claims 기반) */
-async function getUserRoleInfo(uid) {
-  try {
-    const user = await admin.auth().getUser(uid);
-    const claims = user.customClaims || {};
-    const isAdmin = claims.admin === true || claims.role === "owner" || claims.role === "admin";
-    const role = claims.role || (claims.admin ? "admin" : "none");
-    return {
-      uid,
-      email: user.email || "",
-      displayName: user.displayName || "",
-      isAdmin,
-      role
-    };
-  } catch (e) {
-    return {
-      uid,
-      email: "",
-      displayName: "",
-      isAdmin: false,
-      role: "none"
-    };
-  }
+  return noticeService ||= createNoticeService({storage:createStorageNoticeStore(admin.storage().bucket()),environment:'production'});
 }
 
 // ─── 1. 공지사항 관리 API (manageNotice) ──────────────────────────
@@ -56,15 +22,10 @@ exports.manageNotice = onRequest(
   async (req,res) => {
     setCors(res,req);
     if(req.method==='OPTIONS')return res.status(204).send('');
+    if(await forwardAdminRequest(req,res,'manageNotice'))return;
     if(req.method!=='POST')return res.status(405).json({success:false});
     try {
-      const header=req.headers.authorization;
-      if(typeof header!=='string'||!header.startsWith('Bearer '))return res.status(401).json({success:false});
-      let decoded;
-      try {decoded=await noticeAuth().verifyIdToken(header.slice(7),true);}catch{return res.status(401).json({success:false});}
-      const user=await noticeAuth().getUser(decoded.uid),claims=user.customClaims||{};
-      if(user.disabled)return res.status(401).json({success:false});
-      if(claims.admin!==true && !['owner','admin'].includes(claims.role))return res.status(403).json({success:false});
+      if(!(await verifyAdmin(req,res)))return;
       return res.json({success:true,...await notices().mutate(req.body,{requireRevision:false})});
     }catch(error){
       if([400,404,409].includes(error.status))return res.status(error.status).json({success:false,message:error.message});
@@ -79,20 +40,15 @@ exports.manageAdminRole = onRequest(
   async (req, res) => {
     setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    if (await forwardAdminRequest(req, res, 'manageAdminRole')) return;
 
     if (req.method !== "POST") {
       return res.status(405).json({ error: "Method Not Allowed. Use POST." });
     }
 
-    const uid = await verifyUser(req, res);
-    if (!uid) return;
-
-    const caller = await getUserRoleInfo(uid);
-    if (!caller.isAdmin) {
-      return res.status(403).json({ success: false, error: "Forbidden: 관리자 권한이 필요합니다." });
-    }
-
     const { action, targetUid, isAdmin } = req.body || {};
+    const caller = await verifyAdmin(req, res, { ownerOnly: action === 'setAdmin' || action === 'setOwner' });
+    if (!caller) return;
 
     try {
       // ── action: list (관리자 목록 조회) ───────────────────
@@ -193,8 +149,8 @@ exports.manageAdminRole = onRequest(
       return res.status(400).json({ error: "알 수 없는 action입니다. list | setAdmin | setOwner" });
 
     } catch (e) {
-      console.error("[ManageAdminRole] failed:", e);
-      return res.status(500).json({ success: false, message: e.toString() });
+      console.error("[ManageAdminRole] failed:", safeErrorSummary(e));
+      return res.status(500).json({ success: false, message: "관리자 권한 변경에 실패했습니다." });
     }
   }
 );

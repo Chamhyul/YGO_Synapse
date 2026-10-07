@@ -1,6 +1,6 @@
+const { forwardAdminRequest } = require('../../services/adminActionTransport');
 const { onRequest } = require("firebase-functions/v2/https");
-const { admin } = require("../../config/firebase");
-const { setCors, verifyUser, verifyAppCheck } = require("../../utils/auth");
+const { setCors, verifyAdmin, verifyAppCheck } = require("../../utils/auth");
 const { controlAutoCrawl } = require("../../services/autoCrawlerService");
 
 exports.triggerAutoCrawl = onRequest({
@@ -11,24 +11,10 @@ exports.triggerAutoCrawl = onRequest({
 }, async (req, res) => {
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
+  if (await forwardAdminRequest(req, res, 'triggerAutoCrawl')) return;
   if (!(await verifyAppCheck(req, res))) return;
 
-  // 관리자 권한 검증 (Custom Claims)
-  const uid = await verifyUser(req, res);
-  if (!uid) return;
-
-  let isAdmin = false;
-  try {
-    const user = await admin.auth().getUser(uid);
-    const claims = user.customClaims || {};
-    if (claims.admin === true || claims.role === "owner" || claims.role === "admin") {
-      isAdmin = true;
-    }
-  } catch (e) {
-    console.error("Scheduler auth error:", e);
-  }
-
-  if (!isAdmin) return res.status(403).json({ success: false, message: "Forbidden: 관리자 권한이 필요합니다." });
+  if (!(await verifyAdmin(req, res))) return;
 
   try {
     return res.json(await controlAutoCrawl(req.query));

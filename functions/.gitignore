@@ -1,2 +1,8 @@
 node_modules/
 *.local
+.env
+.env.*
+.secret
+.secret.*
+!.env.example
+!.secret.example

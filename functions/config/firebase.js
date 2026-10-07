@@ -75,6 +75,19 @@ function getProductionCredential() {
   return productionApp.options.credential;
 }
 
+// 로컬 데이터 저장소와 분리하여 실제 Firebase 로그인만 검증한다.
+// 키 제거 전환 전까지 기존 자격증명을 사용하며, 검증 실패를 UID 주장으로 대체하지 않는다.
+function getProductionAuth() {
+  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('실제 Firebase Auth가 필요합니다.');
+  const local = process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_EMULATOR_HUB;
+  if (!local) return admin.auth();
+  const name = 'verified-user-auth';
+  const app = admin.apps.find(item => item.name === name) || admin.initializeApp({
+    credential: getProductionCredential(), projectId: 'ygo-synapse',
+  }, name);
+  return admin.auth(app);
+}
+
 function getProductionDb() {
   const isEmulator = process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_EMULATOR_HUB;
   if (!isEmulator) return db;
@@ -121,6 +134,7 @@ module.exports = {
   getProductionBucket,
   getProductionDb,
   getProductionCredential,
+  getProductionAuth,
   downloadProductionFile,
   FieldValue,
   FieldPath,

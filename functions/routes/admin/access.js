@@ -1,3 +1,4 @@
+const { forwardAdminRequest } = require('../../services/adminActionTransport');
 const { onRequest } = require('firebase-functions/v2/https');
 const { admin } = require('../../config/firebase');
 const { setCors } = require('../../utils/auth');
@@ -8,6 +9,7 @@ function createAccessHandler(auth, cors, summarizeError) {
     cors(res, req);
     res.set('Cache-Control', 'no-store');
     if (req.method === 'OPTIONS') return res.status(204).send('');
+    if (await forwardAdminRequest(req, res, 'checkAdminAccess')) return;
     if (req.method !== 'POST') return res.status(405).json({ success: false });
     const header = req.headers.authorization;
     if (typeof header !== 'string' || !header.startsWith('Bearer ') || !header.slice(7)) {

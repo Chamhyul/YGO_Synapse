@@ -27,8 +27,11 @@ Thumbs.db
 
 # Local env files
 .env
-.env.local
-.env.*.local
+.env.*
+.secret
+.secret.*
+!.env.example
+!.secret.example
 
 # Firebase Service Account Keys
 *serviceAccount*.json

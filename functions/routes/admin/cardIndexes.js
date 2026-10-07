@@ -1,6 +1,6 @@
+const { forwardAdminRequest } = require('../../services/adminActionTransport');
 const { onRequest } = require('firebase-functions/v2/https');
-const { admin } = require('../../config/firebase');
-const { setCors, verifyUser } = require('../../utils/auth');
+const { setCors, verifyAdmin } = require('../../utils/auth');
 const cardIndexService = require('../../services/cardIndexService');
 
 exports.rebuildCardNames = onRequest({
@@ -8,15 +8,10 @@ exports.rebuildCardNames = onRequest({
 }, async (req, res) => {
   setCors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).send('');
+  if (await forwardAdminRequest(req, res, 'rebuildCardNames')) return;
   if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'POST 요청을 사용하세요.' });
-  const uid = await verifyUser(req, res);
-  if (!uid) return;
+  if (!(await verifyAdmin(req, res))) return;
   try {
-    const user = await admin.auth().getUser(uid);
-    const claims = user.customClaims || {};
-    if (!(claims.admin === true || claims.role === 'owner' || claims.role === 'admin')) {
-      return res.status(403).json({ success: false, message: '관리자 권한이 필요합니다.' });
-    }
     const result = await cardIndexService.rebuildCardNames();
     return res.status(result.busy ? 409 : 200).json(result);
   } catch (error) {

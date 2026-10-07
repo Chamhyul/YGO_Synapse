@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { safeErrorSummary } = require("../utils/safeError");
 
 /**
  * OAuth Code를 이용해 Discord Access Token 및 사용자 정보를 취득합니다.
@@ -34,9 +35,7 @@ async function getDiscordUserWithCode(code, redirectUri, clientId, clientSecret)
       avatar: userRes.data.avatar
     };
   } catch (err) {
-    if (err.response) {
-      console.error("[Discord OAuth Error]", err.config?.url, err.response.status, JSON.stringify(err.response.data));
-    }
+    console.error("[Discord OAuth Error]", safeErrorSummary(err));
     throw err;
   }
 }
@@ -64,7 +63,7 @@ async function checkGuildMemberRole(botToken, guildId, discordUserId, targetRole
     };
   } catch (err) {
     if (err.response) {
-      console.error("[Discord API Error]", err.config?.url, err.response.status, JSON.stringify(err.response.data));
+      console.error("[Discord API Error]", safeErrorSummary(err));
       if (err.response.status === 404) {
         // 해당 디스코드 서버에 가입되어 있지 않은 경우
         return {

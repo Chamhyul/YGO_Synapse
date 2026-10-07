@@ -1,3 +1,4 @@
+const { forwardAdminRequest } = require('../services/adminActionTransport');
 const { onRequest } = require("firebase-functions/v2/https");
 const { 
   db,
@@ -8,7 +9,8 @@ const {
   DISCORD_GUILD_ID,
   DISCORD_ROLE_ID
 } = require("../config/firebase");
-const { setCors, verifyAppCheck, verifyUser } = require("../utils/auth");
+const { setCors, verifyAppCheck, verifyAdmin, verifyUser } = require("../utils/auth");
+const { safeErrorSummary } = require("../utils/safeError");
 const sheets = require("../integrations/googleSheets");
 const { getDiscordUserWithCode, checkGuildMemberRole } = require("../integrations/discord");
 
@@ -24,7 +26,7 @@ exports.checkSheet = onRequest({ invoker: "public" }, async (req, res) => {
     const metadata = await sheets.getSpreadsheetMetadata(id);
     return res.json({ status: 'OK', sheetName: metadata.properties.title });
   } catch (err) {
-    console.error("checkSheet error:", err);
+    console.error("checkSheet error:", safeErrorSummary(err));
     return res.json({ status: 'NO_ACCESS' });
   }
 });
@@ -40,7 +42,7 @@ async function getUserRoleFromAuth(uid) {
     if (claims.role === "admin" || claims.admin === true) return "admin";
     return "none";
   } catch (e) {
-    console.error("getUserRoleFromAuth error:", e);
+    console.error("getUserRoleFromAuth error:", safeErrorSummary(e));
     return "none";
   }
 }
@@ -160,10 +162,10 @@ exports.checkMembershipDiscord = onRequest({
     });
 
   } catch (err) {
-    console.error("checkMembershipDiscord error:", err);
+    console.error("checkMembershipDiscord error:", safeErrorSummary(err));
     return res.status(500).json({
       success: false,
-      message: `디스코드 멤버십 연동 실패: ${err.message || '알 수 없는 오류'}`
+      message: "디스코드 멤버십 연동에 실패했습니다. 잠시 후 다시 시도해 주세요."
     });
   }
 });
@@ -230,10 +232,10 @@ exports.checkMembershipCsv = onRequest({
     });
 
   } catch (err) {
-    console.error("checkMembershipCsv error:", err);
+    console.error("checkMembershipCsv error:", safeErrorSummary(err));
     return res.status(500).json({
       success: false,
-      message: `CSV 멤버십 검증 실패: ${err.message || '알 수 없는 오류'}`
+      message: "CSV 멤버십 검증에 실패했습니다. 잠시 후 다시 시도해 주세요."
     });
   }
 });
@@ -300,17 +302,10 @@ exports.uploadMembershipCsv = onRequest({
 }, async (req, res) => {
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
+  if (await forwardAdminRequest(req, res, 'uploadMembershipCsv')) return;
+  if (req.method !== 'POST') return res.status(405).json({ success: false });
 
-  const uid = await verifyUser(req, res);
-  if (!uid) return;
-
-  // 관리자 권한 확인 (Auth Custom Claims 단독 검사)
-  const userRole = await getUserRoleFromAuth(uid);
-  const isAdmin = userRole === "admin" || userRole === "owner";
-
-  if (!isAdmin) {
-    return res.status(403).json({ success: false, message: "관리자 권한이 필요합니다." });
-  }
+  if (!(await verifyAdmin(req, res))) return;
 
   let members = [];
   
@@ -364,7 +359,7 @@ exports.uploadMembershipCsv = onRequest({
     return res.json({ success: true, count: validMembers.length, sample: validMembers.slice(0, 3) });
 
   } catch (err) {
-    console.error("uploadMembershipCsv error:", err);
-    return res.status(500).json({ success: false, message: err.message });
+    console.error("uploadMembershipCsv error:", safeErrorSummary(err));
+    return res.status(500).json({ success: false, message: "멤버십 CSV 업로드에 실패했습니다. 잠시 후 다시 시도해 주세요." });
   }
 });

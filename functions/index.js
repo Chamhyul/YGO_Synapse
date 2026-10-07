@@ -81,6 +81,7 @@ const noticesAdminRoutes = require("./routes/admin/notices");
 exports.manageNotice = noticesAdminRoutes.manageNotice;
 exports.manageAdminRole = noticesAdminRoutes.manageAdminRole;
 exports.checkAdminAccess = require('./routes/admin/access').checkAdminAccess;
+exports.adminHandleOperationRequest = require('./routes/admin/actions').adminHandleOperationRequest;
 
 // 8. 덱 기능 모음
 const deckRoutes = require("./routes/deck");
