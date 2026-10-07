@@ -1,0 +1,831 @@
+/* 앱 셸·내비게이션·헤더·검색 영역 배치·푸터.
+ * 앞쪽 좁은 폭 헤더 보정을 포함하여 원래 규칙의 상대 순서를 유지한다.
+ * 로고 내부 그래픽과 전역 전환 정책은 style.css에 남아 있다. */
+
+/* 공통 앱 셸: 내비게이션과 페이지 콘텐츠의 레이아웃 책임을 분리한다. */
+.app-main-shell {
+  --app-content-gutter: 16px;
+  padding-top: var(--app-header-growth, 0px);
+  width: calc(100% - var(--navi-sidebar-width));
+  min-height: 100dvh;
+  margin-left: var(--navi-sidebar-width);
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+
+.app-page-content {
+  width: auto;
+  max-width: 100%;
+  min-height: 60vh;
+  margin: 30px var(--app-content-gutter) 0;
+  padding: 20px 0 0;
+  /* 글로벌 푸터가 뷰포트 바닥이 아니라 실제 페이지 콘텐츠 직후에 이어지도록 한다. */
+  flex: 0 0 auto;
+  position: relative;
+  transform: translate3d(0, 0, 0);
+  transition: margin 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), var(--transition-colors);
+}
+
+@media only screen and (max-width: 992px) {
+  html:not(.is-mobile-device) .app-main-shell {
+    --app-content-gutter: 12px;
+    width: calc(100% - var(--navi-sidebar-compact-width));
+    margin-left: var(--navi-sidebar-compact-width);
+  }
+}
+
+html.is-mobile-device .app-main-shell {
+  width: 100%;
+  margin-left: 0;
+}
+
+/* 반응형: 모바일 레이아웃 대응 */
+@media only screen and (max-width: 992px) {
+  .app-header {
+    left: 0;
+    width: 100%;
+    padding-inline: var(--app-content-gutter);
+  }
+}
+
+#app-search-masthead {
+  position: relative;
+  width: 100%;
+  max-width: 700px;
+  margin: 20px auto;
+  height: max(220px, calc(150px + var(--search-controls-height, 69px)));
+  transition: height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), margin-top 0.4s ease, var(--transition-colors);
+  z-index: 100;
+  overflow: visible;
+}
+
+
+.app-title-container {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  position: absolute;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2;
+  width: 220px;
+  margin: 0 !important;
+  top: 30px;
+  left: 50%;
+  margin-left: -110px !important;
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), var(--transition-colors);
+}
+
+.search-box {
+  position: absolute;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 1;
+  margin: 0 !important;
+  top: 130px;
+  left: 10px;
+  width: calc(100% - 20px);
+  margin-left: 0 !important;
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), var(--transition-colors);
+  will-change: top, left, width;
+}
+
+.search-header-row {
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  justify-content: flex-start;
+  padding-left: 5px;
+  margin-bottom: 5px;
+  transition: opacity 0.3s ease, var(--transition-colors);
+}
+
+.search-row {
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
+  width: 100%;
+  gap: 8px;
+  margin: 0 auto;
+  flex-wrap: nowrap;
+  transition: margin 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), max-width 0.4s, var(--transition-colors);
+}
+
+body.mode-compact #app-search-masthead {
+  height: max(70px, calc(24px + var(--search-controls-height, 46px)));
+  margin-top: 0;
+}
+
+body.mode-compact .app-title-container {
+  top: 25px;
+  left: 10px;
+  margin-left: 0 !important;
+  width: 3.9rem !important;
+}
+
+body.mode-compact .search-box {
+  top: 22px;
+  left: 80px;
+  margin-left: 0 !important;
+  width: calc(100% - 90px);
+  align-items: flex-start;
+}
+
+body.mode-compact .search-row {
+  margin: 0;
+}
+
+body.mode-compact .synapse-logo-container {
+  max-width: 3.9rem;
+  width: 3.9rem;
+}
+
+body.mode-compact .synapse-text-logo {
+  opacity: 0;
+}
+
+body.mode-compact .title-ygo,
+body.mode-compact .title-beta {
+  display: none !important;
+}
+
+body.mode-compact .search-header-row {
+  opacity: 0;
+  pointer-events: none;
+  height: 0;
+  margin: 0;
+}
+
+.synapse-logo-container {
+  position: relative;
+  display: inline-block;
+  max-width: 250px;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: max-width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), var(--transition-colors);
+  vertical-align: middle;
+}
+
+.app-sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--navi-sidebar-width);
+  background-color: var(--surface-navi);
+  z-index: 960;
+  display: flex;
+  flex-direction: column;
+  padding-top: calc(80px + env(safe-area-inset-top));
+  transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), var(--transition-colors);
+}
+
+.app-navi-item {
+  display: flex;
+  position: relative;
+  margin: 0;
+  /* Materialize의 button 글꼴·줄높이 리셋보다 우선하여 기존 상속을 보존한다. */
+  font: inherit;
+  text-align: inherit;
+  text-transform: none;
+}
+
+.app-navi-item.active {
+  color: var(--color-selected-text);
+  font-weight: 700;
+}
+
+.app-navi-item--sidebar {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 16px;
+  padding: 16px 24px;
+}
+
+.app-navi-item--sidebar.active,
+.app-navi-item--sidebar.active:focus {
+  background-color: var(--color-selected-bg);
+}
+
+.app-navi-item.active:is(:hover, :focus-visible) {
+  background-color: var(--color-selected-highlight-bg);
+  color: var(--color-selected-highlight-text);
+  outline: none;
+}
+
+.app-navi-item--sidebar.active::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background-color: currentColor;
+}
+
+.app-navi-item--sidebar .app-navi-item__icon {
+  font-size: 24px;
+}
+
+.app-navi-item--sidebar .app-navi-item__label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 광고가 숨겨지면 내비게이션 높이만 남는 공통 고정 영역. */
+.app-mobile-dock {
+  display: none;
+  position: fixed;
+  /* Safari 동적 툴바와의 반올림 틈을 가리도록 하단으로 2px 연장한다. */
+  bottom: calc(-1 * var(--navi-mobile-overdraw));
+  left: 0;
+  right: 0;
+  z-index: 1100;
+  flex-direction: column;
+  transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s ease, var(--transition-colors);
+}
+
+/* 너비가 아닌 기기 판별 결과로 표시 */
+html.is-mobile-device .app-mobile-dock {
+  display: flex;
+}
+
+html.nav-hidden .app-mobile-dock,
+html.modal-open .app-mobile-dock {
+  transform: translateY(150%);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.app-navi--mobile {
+  --mobile-nav-bottom-padding: calc(var(--navi-mobile-height) - var(--navi-mobile-content-height) + env(safe-area-inset-bottom) + var(--navi-mobile-overdraw));
+  display: flex;
+  flex: none;
+  width: 100%;
+  height: calc(var(--navi-mobile-height) + env(safe-area-inset-bottom) + var(--navi-mobile-overdraw));
+  box-sizing: border-box;
+  align-items: stretch;
+  /* nav 기본 스타일의 글자색·행 높이가 버튼에 상속되지 않도록 지정 */
+  color: var(--text-navi);
+  line-height: 1;
+  background-color: var(--surface-navi);
+  border-top: 1px solid var(--border-navi);
+  overflow: hidden;
+}
+
+.mobile-ad-anchor {
+  display: none;
+  flex: none;
+  height: 50px;
+  justify-content: center;
+  align-items: center;
+}
+
+@media only screen and (max-width: 992px) {
+  html.is-mobile-device .mobile-ad-anchor {
+    display: flex;
+  }
+}
+
+/* 기존 광고는 검색 오버레이 뒤에 있었다. 공통 셸 안에서도 검색을 가리지 않는다. */
+html:has(.mobile-search.active) .mobile-ad-anchor {
+  display: none;
+}
+
+.app-navi-item--mobile {
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  flex: 1;
+  height: 100%;
+  font-weight: 500;
+  min-width: 48px;
+  padding: 0 0 var(--mobile-nav-bottom-padding);
+  box-sizing: border-box;
+}
+
+.app-navi--mobile .app-navi-item__icon {
+  font-size: 26px;
+  height: 26px;
+  line-height: 26px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  text-align: center;
+}
+
+.app-navi--mobile .app-navi-item__label {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+@media only screen and (min-width: 993px) {
+  body {
+    padding-left: 0;
+  }
+}
+
+/* 데스크탑/태블릿 반응형: 사이드바 축소 (모바일 기기가 아닐 때 항상 적용) */
+@media only screen and (max-width: 992px) {
+  html:not(.is-mobile-device) body {
+    padding-left: 0;
+  }
+
+  html:not(.is-mobile-device) .app-sidebar {
+    width: var(--navi-sidebar-compact-width);
+    /* 항상 표시 */
+  }
+
+  html:not(.is-mobile-device) .app-navi-item--sidebar .app-navi-item__label {
+    display: none;
+  }
+
+  html:not(.is-mobile-device) .app-navi-item--sidebar {
+    padding: 16px 0 16px 24px;
+  }
+
+}
+
+/* 실제 모바일 기기 접속 시의 레이아웃 (화면 너비 무관) */
+html.is-mobile-device body {
+  padding-bottom: calc(var(--navi-mobile-height) + env(safe-area-inset-bottom));
+  padding-left: 0 !important;
+}
+
+html.is-mobile-device .app-sidebar {
+  display: none;
+}
+
+html.is-mobile-device .app-page-content {
+  margin-inline: 0;
+  padding-inline: var(--app-content-gutter);
+  width: 100%;
+}
+
+/* 전역 상단 헤더 스타일 */
+.app-content-frame {
+  padding-inline: var(--app-content-gutter);
+}
+
+.app-header {
+  position: fixed;
+  top: 0;
+  left: var(--navi-sidebar-width);
+  right: 0;
+  width: auto;
+  min-height: 46px;
+  padding-block: 8px;
+  box-sizing: border-box;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  z-index: 950;
+  transition: left 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), right 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), var(--transition-colors);
+}
+
+@media only screen and (max-width: 992px) {
+  .app-header {
+    left: var(--navi-sidebar-compact-width);
+  }
+}
+
+/* 모바일 기기 접속 시 헤더 위치 조정 */
+html.is-mobile-device .app-header {
+  left: 0;
+}
+
+/* 데스크탑/태블릿 전용 헤더 반응형 보정 */
+@media only screen and (max-width: 992px) {
+  html:not(.is-mobile-device) .app-header {
+    left: var(--navi-sidebar-compact-width);
+    min-height: 50px;
+    padding-block: 10px;
+  }
+}
+
+#noti-btn-wrapper {
+  display: flex;
+  position: relative;
+}
+
+
+.app-header-button {
+  position: relative;
+  min-height: 30px;
+  flex-shrink: 0;
+  margin: 0;
+  transition: var(--transition-colors);
+}
+
+
+/* 인증 캡슐 버튼 스타일 (지역 설정과 통일) */
+.auth-capsule {
+  gap: 6px;
+  padding: 4px 10px;
+}
+
+/* 인증 알림 점 스타일 (모바일 전용) */
+.auth-dot,
+.noti-badge {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 0;
+}
+
+.noti-badge {
+  background-color: var(--red);
+}
+
+.auth-dot {
+  background-color: var(--theme-000);
+  top: 1px;
+  right: 1px;
+  display: none;
+  z-index: 10;
+}
+
+html.is-mobile-device .auth-capsule.has-noti .auth-dot {
+  display: block;
+}
+
+.auth-icon {
+  font-size: 1.1rem;
+  transform: translate(0px, 1px);
+}
+
+.auth-text {
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  transform: translate(-3px, 0px);
+}
+
+/* [모바일] 로그인 버튼: 아이콘 숨김 / 텍스트 표시 */
+html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-icon {
+  display: none;
+}
+
+/* [모바일] 내 계정 버튼: 아이콘 표시 / 텍스트 숨김 */
+html.is-mobile-device #auth-capsule-btn.is-logged-in .auth-text {
+  display: none;
+}
+
+/* 모바일도 인증 아이콘·문구를 표시하며, 공간 부족 시 JS에서 hidden으로 전환한다. */
+html.is-mobile-device #membership-verify-btn {
+  gap: 6px;
+}
+
+html.is-mobile-device #membership-verify-btn .membership-verify-suffix {
+  display: none;
+}
+
+.app-header-button[hidden],
+.noti-badge[hidden] {
+  display: none;
+}
+
+/* [모바일] 헤더 캡슐 버튼 간격 및 패딩 미세 조정 */
+html.is-mobile-device .auth-capsule {
+  padding: 4px 8px;
+  gap: 0;
+  justify-content: center;
+  /* 중앙 정렬 추가 */
+}
+
+html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) {
+  padding: 4px 10px;
+}
+
+/* 모바일 로그인 문구는 공통 auth-text의 위치 보정을 적용하지 않는다. */
+html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
+  transform: none;
+}
+
+.theme-switch-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  margin-inline-start: auto;
+  margin-inline-end: 4px;
+  flex-shrink: 0;
+}
+
+/* 테마 토글: 문구 대신 현재 테마 아이콘 표시 */
+.theme-switch-wrapper::before {
+  font-family: 'Material Icons';
+  content: 'light_mode';
+  font-size: 1.1rem;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.dark-mode .theme-switch-wrapper::before {
+  content: 'dark_mode';
+}
+
+.theme-switch {
+  --slider-height: max(18px, 1.2rem);
+  --slider-inset: max(2px, 0.13rem);
+  display: inline-block;
+  position: relative;
+  margin: 0;
+  font: inherit;
+  appearance: none;
+  cursor: pointer;
+  height: var(--slider-height);
+  width: calc(var(--slider-height) * 2);
+  flex-shrink: 0;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.theme-switch input {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.theme-switch__track {
+  background-color: var(--color-bg);
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transition: .3s, var(--transition-colors);
+}
+
+.theme-switch__track:before {
+  background-color: var(--color-bg);
+  content: "";
+  position: absolute;
+  height: calc(var(--slider-height) - var(--slider-inset) * 2);
+  width: calc(var(--slider-height) - var(--slider-inset) * 2);
+  left: var(--slider-inset);
+  bottom: var(--slider-inset);
+  transition: .3s, var(--transition-colors);
+  border-radius: 50%;
+}
+
+.theme-switch input:checked + .theme-switch__track {
+  background-color: var(--color-selected-bg);
+}
+
+.theme-switch input:hover + .theme-switch__track,
+.theme-switch input:focus-visible + .theme-switch__track {
+  background-color: var(--color-highlight-bg);
+}
+
+.theme-switch input:checked:hover + .theme-switch__track,
+.theme-switch input:checked:focus-visible + .theme-switch__track {
+  background-color: var(--color-selected-highlight-bg);
+}
+
+.theme-switch input:checked + .theme-switch__track:before {
+  transform: translateX(var(--slider-height));
+}
+
+#app-page-stack {
+  position: relative;
+  width: 100%;
+  max-width: 700px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 100px;
+}
+
+.content-section {
+  order: 0;
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  width: 100%;
+  /* 최종 밸런스 커브 (0.4s) */
+  transition: grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.4s, var(--transition-colors);
+  overflow: hidden;
+  /* 비활성 시 잔상 방지 */
+  pointer-events: none;
+}
+
+.content-section.active {
+  order: -1 !important;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s, var(--transition-colors);
+}
+
+.page-transition-inner {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  align-self: start;
+}
+
+/* 관리 카드 그림자는 좌우로 표시하고, 페이지 높이 전환은 계속 가린다.
+ * hidden + visible 조합은 auto로 계산되므로 세로축에는 clip을 사용한다. */
+#app-page-stack:has(> #app-page-manage.active),
+#app-page-manage,
+#app-page-manage > .page-transition-inner,
+#app-page-manage .mode-form,
+#app-page-manage .mode-form-content {
+  overflow-x: visible;
+  overflow-y: clip;
+}
+
+.centered-content-area {
+  text-align: center;
+  padding-top: 10px;
+  padding-bottom: 0;
+  margin: 0;
+}
+
+.content-title {
+  font-weight: 800;
+}
+
+.content-subtitle {
+  color: var(--text-001) !important;
+  margin-bottom: 20px;
+}
+
+.app-footer {
+  text-align: center;
+  font-size: 0.8rem;
+  padding-bottom: 30px;
+}
+
+.app-footer .app-footer__disclaimer {
+  margin-bottom: 12px;
+  line-height: 1.5;
+  word-break: keep-all;
+}
+
+.app-footer .app-footer__info {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  line-height: 1.5;
+}
+
+.app-footer .app-footer__item {
+  white-space: nowrap;
+}
+
+.app-footer .app-footer__separator {
+  margin: 0 8px;
+  user-select: none;
+}
+
+.app-footer .maker-link {
+  text-decoration: none;
+  gap: 4px;
+  transition: var(--transition-colors);
+  font-weight: 600;
+  padding: 0;
+  line-height: 1.5;
+}
+
+
+.app-footer .maker-link i {
+  transform: translate(1.6px, 0.4px);
+}
+
+.app-footer .maker-link .maker-text {
+  transform: translateY(1px);
+}
+
+.app-footer .app-footer__links {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.app-footer .app-footer__link {
+  text-decoration: none;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.5;
+  transition: var(--transition-colors);
+  padding: 4px 8px;
+}
+
+.app-footer .app-footer__link-separator {
+  font-size: 0.6rem;
+  user-select: none;
+}
+
+@media only screen and (max-width: 600px) {
+  .app-footer .app-footer__links {
+    gap: 4px;
+    margin-top: 12px;
+  }
+
+  .app-footer .app-footer__link {
+    font-size: 0.7rem;
+  }
+}
+
+.noti-btn-capsule {
+  min-width: 30px;
+  padding: 0.33rem;
+  line-height: 0;
+}
+
+.noti-btn-capsule i {
+  font-size: 1.33rem;
+  margin: 0;
+}
+
+.noti-badge {
+  top: 2px;
+  right: 2px;
+}
+
+html.is-mobile-device .search-box {
+  display: none !important;
+}
+
+/* 모바일 로고는 홈 본문 위치를 유지한 채 페이지 전환과 함께 사라진다.
+ * 공통 HTML 구조와 데스크톱의 축약 로고·검색 배치는 유지한다. */
+html.is-mobile-device #app-search-masthead {
+  overflow: hidden;
+  transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1), margin 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.4s, var(--transition-colors);
+}
+
+html.is-mobile-device body:not(.mode-compact) #app-search-masthead {
+  height: 100px;
+  opacity: 1;
+  visibility: visible;
+  transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1), margin 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s, var(--transition-colors);
+}
+
+html.is-mobile-device body.mode-compact #app-search-masthead {
+  height: 0;
+  margin: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 기존 모바일 compact 본문의 컨테이닝 블록 동작은 유지한다. */
+html.is-mobile-device body.mode-compact .app-page-content {
+  transform: none;
+}
+
+/* 홈 이탈 중에도 로고 위치·크기를 유지하여 헤더 이동·축소를 방지한다. */
+html.is-mobile-device body .app-title-container {
+  position: absolute;
+  top: 30px;
+  left: 50%;
+  width: 220px !important;
+  margin-left: -110px !important;
+}
+
+html.is-mobile-device body .synapse-logo-container {
+  width: 186px !important;
+  max-width: 186px !important;
+  text-align: center !important;
+}
+
+html.is-mobile-device body .synapse-text-logo {
+  opacity: 1;
+}
+
+html.is-mobile-device body .title-ygo {
+  display: block !important;
+  opacity: 0.8 !important;
+}
+
+html.is-mobile-device body .title-beta {
+  display: block !important;
+  opacity: 1 !important;
+}

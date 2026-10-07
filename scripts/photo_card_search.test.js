@@ -116,3 +116,35 @@ test('카드 비율의 사각형만 정규화 영역으로 변환한다', () => 
     { x: 0, y: 0 }, { x: 90, y: 0 }, { x: 90, y: 20 }, { x: 0, y: 20 },
   ], 100, 100, .2), null);
 });
+
+
+test('모바일 직접 입력은 닫기·취소에서 값을 보존하고 확인에서만 현재 카드에 반영한다', () => {
+  const fs = require('node:fs'), vm = require('node:vm');
+  const source = fs.readFileSync(require.resolve('../public/photo-card-search'), 'utf8');
+  const fn = name => {
+    const start = source.indexOf(`    function ${name}(`);
+    return source.slice(start, source.indexOf('\n    function ', start + 1));
+  };
+  const input = { value: '' }, confirm = {};
+  const backdrop = {};
+  const sheet = { querySelector: selector => selector === '.photo-manual-input' ? input
+    : selector === '[data-manual-confirm]' ? confirm : backdrop };
+  let opened, closed = 0, rendered = 0;
+  const context = vm.createContext({ document: { getElementById: () => sheet }, render() { rendered++; },
+    window: { openManagedSheet(el, options) { opened = options; }, closeManagedSheet() { closed++; } } });
+  vm.runInContext(fn('closeManualNameSheet') + fn('openManualNameSheet'), context);
+  const region = { manualName: '원래 카드', selected: { name: '기존 선택' }, status: 'selected' };
+  context.openManualNameSheet(region);
+  input.value = '취소할 카드'; opened.onDismiss();
+  assert.equal(region.manualName, '원래 카드');
+  assert.equal(region.selected.name, '기존 선택');
+  assert.equal(rendered, 0);
+  context.openManualNameSheet(region);
+  assert.equal(input.value, '원래 카드');
+  input.value = '   수정한 카드   '; confirm.onclick();
+  assert.equal(region.manualName, '수정한 카드');
+  assert.equal(region.selected, null);
+  assert.equal(region.status, 'manual');
+  assert.equal(rendered, 1);
+  assert.equal(closed, 2);
+});

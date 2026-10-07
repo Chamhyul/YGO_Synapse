@@ -16,6 +16,8 @@ const HTTP_FUNCTION_NAMES = [
     "crawlCardMetaByName",
     "getRamMemoryStats",
     "getUserData",
+    "getRegistrationStatus",
+    "completeRegistration",
     "updateUserSettings",
     "updateNickname",
     "checkMembershipDiscord",
@@ -87,7 +89,9 @@ const CLIENT_VERSION = "ver. 0.33.1";
 
 const STORAGE_KEY = 'yugioh_spreadsheet_id';
 const RECENT_KEY = 'recent_card_searches';
-const THEME_KEY = 'yugioh_theme_mode';
+const THEME_KEY = 'yugioh_theme_mode'; // 초기 표시용 마지막 테마 (기존 기록 유지)
+const GUEST_THEME_KEY = 'yugioh_theme_mode_guest';
+const ACCOUNT_THEME_KEY_PREFIX = 'yugioh_theme_mode_user:';
 const REGION_KEY = 'yugioh_region_setting';
 const IS_DETAIL_MODE_KEY = 'yugioh_modal_detail_mode'; // 상세 모드 저장 키
 
@@ -146,49 +150,16 @@ function waitForAuthInit(timeoutMs = 3000) {
  * 비활동 자동 로그아웃 관리를 위한 매니저 (Inactivity Timeout: 기본 30분)
  */
 const AutoLogoutManager = (function () {
-    const TIMEOUT_MS = 30 * 60 * 1000; // 30분 미활동 시 자동 로그아웃
-    let timer = null;
-    let isTracking = false;
-
-    function resetTimer() {
-        if (timer) clearTimeout(timer);
-        if (!UserStore.user) return;
-
-        timer = setTimeout(() => {
-            if (UserStore.user) {
-                console.warn("[AutoLogout] 30분간 활동이 없어 자동 로그아웃되었습니다.");
-                showToast('일정 시간 동안 활동이 없어 자동 로그아웃되었습니다.', 'toast-warn');
-                if (typeof signOutCurrentUser === 'function') {
-                    signOutCurrentUser();
-                }
-            }
-        }, TIMEOUT_MS);
-    }
-
-    function handleUserActivity() {
-        if (UserStore.user && isTracking) {
-            resetTimer();
+    const session = window.createAuthSession({
+        onExpire() {
+            showToast('일정 시간 동안 활동이 없어 자동 로그아웃되었습니다.', 'toast-warn');
+            signOutCurrentUser();
         }
-    }
-
+    });
     return {
-        start: function () {
-            if (isTracking) return;
-            isTracking = true;
-            const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
-            events.forEach(evt => window.addEventListener(evt, handleUserActivity, { passive: true }));
-            resetTimer();
-        },
-        stop: function () {
-            isTracking = false;
-            if (timer) {
-                clearTimeout(timer);
-                timer = null;
-            }
-            const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
-            events.forEach(evt => window.removeEventListener(evt, handleUserActivity));
-        },
-        reset: resetTimer
+        start: () => UserStore.user && session.start(UserStore.user),
+        stop: () => session.stop(),
+        reset: () => session.reset()
     };
 })();
 
@@ -1006,63 +977,44 @@ function updateHighlight(items, index) {
  * 카드 로케일 선택 툴팁 표시
  */
 function showCardLocaleTooltip(target, locales, cid) {
-    if (UIStore.activeLocaleTooltip) {
-        UIStore.activeLocaleTooltip.remove();
-        UIStore.activeLocaleTooltip = null;
-    }
-
+    UIStore.activeLocaleTooltip?._dismiss?.();
     const tooltip = document.createElement('div');
-    tooltip.className = 'card-locale-tooltip';
-
-    // 로케일 코드 -> 한글 명칭 매핑
-    const localeMap = {
-        'ko': '한국', 'ja': '일본', 'ae': '아시아', 'cn': '중국',
-        'en': '영미', 'de': '독일', 'fr': '프랑스', 'it': '이탈리아',
-        'es': '스페인', 'pt': '포르투갈'
+    tooltip.className = 'card-locale-tooltip ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium';
+    tooltip.setAttribute('role', 'dialog');
+    tooltip.setAttribute('aria-label', '공식 카드 페이지 지역 선택');
+    const close = (restoreFocus = false) => {
+        document.removeEventListener('click', outside);
+        document.removeEventListener('keydown', escape);
+        globalThis.AppOverlays.closePopup(tooltip, () => tooltip.remove());
+        target.setAttribute('aria-expanded', 'false');
+        if (UIStore.activeLocaleTooltip === tooltip) UIStore.activeLocaleTooltip = null;
+        if (restoreFocus) target.focus({ preventScroll: true });
     };
-
+    const outside = event => { if (!tooltip.contains(event.target) && !target.contains(event.target)) close(); };
+    const escape = event => { if (event.key === 'Escape') { event.preventDefault(); close(true); } };
+    tooltip._dismiss = close;
+    const localeMap = {
+        ko: '한국', ja: '일본', ae: '아시아', cn: '중국', en: '영미',
+        de: '독일', fr: '프랑스', it: '이탈리아', es: '스페인', pt: '포르투갈'
+    };
     locales.forEach(loc => {
         const btn = document.createElement('button');
+        btn.type = 'button';
         btn.className = 'locale-capsule';
         btn.textContent = localeMap[loc] || loc.toUpperCase();
-        btn.onclick = (e) => {
-            e.stopPropagation();
+        btn.onclick = event => {
+            event.stopPropagation();
             window.open(getCardDetailUrl(cid, loc), '_blank');
-            tooltip.classList.remove('active');
-            setTimeout(() => tooltip.remove(), 300);
-            UIStore.activeLocaleTooltip = null;
+            close(true);
         };
         tooltip.appendChild(btn);
     });
-
     document.body.appendChild(tooltip);
     UIStore.activeLocaleTooltip = tooltip;
-
-    // 위치 계산 (대상 엘리먼트 하단 중앙)
-    const rect = target.getBoundingClientRect();
-    const tooltipWidth = tooltip.offsetWidth || (locales.length * 60); // 근사치 계산
-
-    tooltip.style.left = (rect.left + rect.width / 2 - tooltipWidth / 2) + 'px';
-    tooltip.style.top = (rect.bottom + 10) + 'px';
-
-    // 화면 밖으로 나가는지 체크
-    requestAnimationFrame(() => {
-        const finalRect = tooltip.getBoundingClientRect();
-        if (finalRect.left < 10) tooltip.style.left = '10px';
-        if (finalRect.right > window.innerWidth - 10) tooltip.style.left = (window.innerWidth - finalRect.width - 10) + 'px';
-        tooltip.classList.add('active');
-    });
-
-    // 외부 클릭 시 닫기
-    const closeHandler = (e) => {
-        if (!tooltip.contains(e.target) && e.target !== target) {
-            tooltip.classList.remove('active');
-            setTimeout(() => tooltip.remove(), 300);
-            document.removeEventListener('click', closeHandler);
-            if (UIStore.activeLocaleTooltip === tooltip) UIStore.activeLocaleTooltip = null;
-        }
-    };
-    setTimeout(() => document.addEventListener('click', closeHandler), 10);
+    target.setAttribute('aria-expanded', 'true');
+    globalThis.AppOverlays.openPopup(tooltip, target);
+    document.addEventListener('click', outside);
+    document.addEventListener('keydown', escape);
 }
 
 
@@ -1196,36 +1148,37 @@ async function fetchCardMetaWithCache(cid, cardName = '', cardNo = '') {
 /**
  * 포괄 검색 CID 묶음 배치(Batch) 메타데이터 요청
  */
-async function fetchCardsMetaBatch(cids = []) {
+async function fetchCardsMetaBatch(cids = [], { force = false } = {}) {
     if (!Array.isArray(cids) || cids.length === 0) return {};
 
     const cidStrs = [...new Set(cids.map(c => String(c)).filter(Boolean))];
+    const refreshed = new Set();
     const needed = cidStrs.filter(cid => {
-        if (!cidMetaMemoryCache.has(cid)) return true;
+        if (force || !cidMetaMemoryCache.has(cid)) return true;
         const cached = cidMetaMemoryCache.get(cid);
         if (Date.now() - (cached?.cachedAt || 0) > 60000) return true;
         const raw = cached ? (cached.rawSlot || cached.info) : null;
         return !raw || (Array.isArray(raw) ? raw.length <= 10 : Object.keys(raw).length === 0);
     });
 
-    if (needed.length > 0) {
+    for (let offset = 0; offset < needed.length; offset += 100) {
         try {
-            for (let offset = 0; offset < needed.length; offset += 100) {
             const res = await callApi('getCardsMetaBatch', {}, { cids: needed.slice(offset, offset + 100) });
             if (res && res.success && res.results) {
                 Object.keys(res.results).forEach(cid => {
                     mergeCardMetaToCache(cid, { rawSlot: res.results[cid] }, false);
+                    refreshed.add(String(cid));
                 });
             }
-            }
         } catch (e) {
+            // 한 묶음의 실패가 뒤에 있는 후보의 조회까지 중단하지 않도록 한다.
             console.warn("fetchCardsMetaBatch error:", e);
         }
     }
 
     const resultMap = {};
     cidStrs.forEach(cid => {
-        if (cidMetaMemoryCache.has(cid)) {
+        if (cidMetaMemoryCache.has(cid) && (!force || refreshed.has(cid))) {
             resultMap[cid] = cidMetaMemoryCache.get(cid);
         }
     });
@@ -1274,7 +1227,7 @@ function refreshAdUnit(slotId) {
         return;
     }
 
-    container.style.transition = 'opacity 0.4s ease';
+    container.style.transition = 'opacity 0.4s ease, var(--transition-colors)';
     container.style.opacity = '0.2';
 
     setTimeout(() => {
@@ -1335,7 +1288,7 @@ function showToast(html, classes) {
     currentToastMessage = html;
 
     const toastContainer = document.getElementById('toast-container');
-    const mainContainer = document.querySelector('.container');
+    const mainContainer = document.querySelector('.app-page-content');
     if (toastContainer && mainContainer && toastContainer.parentNode !== mainContainer) {
         mainContainer.appendChild(toastContainer);
     }
@@ -1408,108 +1361,124 @@ function compareRarity(a, b) {
 }
 
 function handleHashChange(skipAutomation = false) {
+    skipAutomation = skipAutomation === true;
     if (isInternalHashChange) return;
-    const hash = window.location.hash.substring(1);
+    // URL 해석은 방문 기록을 다시 만들지 않습니다. 캐시 초기화가 즉시 끝나도
+    // switchToMode의 비동기 해시 잠금 때문에 실제 검색이 생략되지 않게 합니다.
+    isInternalHashChange = true;
+    try {
+        const hash = window.location.hash.substring(1);
 
-    // 해시 변경에 의한 즉시 전환 시 애니메이션 차단
-    document.body.classList.add('no-transition');
+        // 모달 호출 해시인 경우, 모드 전환을 생략하고 모달만 띄우고 종료
+        if (hash === 'terms' || hash === 'privacy') {
+            checkUrlHashForModals();
+            // 애니메이션 차단 해제
+            requestAnimationFrame(() => {
+                document.body.classList.remove('no-transition');
+            });
+            return;
+        }
 
-    // 모달 호출 해시인 경우, 모드 전환을 생략하고 모달만 띄우고 종료
-    if (hash === 'terms' || hash === 'privacy') {
-        checkUrlHashForModals();
-        // 애니메이션 차단 해제
-        requestAnimationFrame(() => {
-            document.body.classList.remove('no-transition');
-        });
-        return;
-    }
+        // 일반 모드 진입 시, 모달이 열려 있다면 닫아주기
+        const termsModal = document.getElementById('terms-modal');
+        if (termsModal) {
+            const inst = M.Modal.getInstance(termsModal);
+            if (inst) inst.close();
+        }
+        const privacyModal = document.getElementById('privacy-modal');
+        if (privacyModal) {
+            const inst = M.Modal.getInstance(privacyModal);
+            if (inst) inst.close();
+        }
 
-    // 일반 모드 진입 시, 모달이 열려 있다면 닫아주기
-    const termsModal = document.getElementById('terms-modal');
-    if (termsModal) {
-        const inst = M.Modal.getInstance(termsModal);
-        if (inst) inst.close();
-    }
-    const privacyModal = document.getElementById('privacy-modal');
-    if (privacyModal) {
-        const inst = M.Modal.getInstance(privacyModal);
-        if (inst) inst.close();
-    }
+        if (typeof SearchNavigation !== 'undefined' && SearchNavigation.handleHashChange(skipAutomation)) return;
+        // 새 주소 해석은 즉시 표시하고, 저장된 검색 방문 간 전환은 위 모듈에 맡깁니다.
+        document.body.classList.add('no-transition');
 
-    if (!hash) {
-        switchToMode('home', true);
-        // 애니메이션 차단 해제
-        requestAnimationFrame(() => {
-            document.body.classList.remove('no-transition');
-        });
-        return;
-    }
+        if (!hash) {
+            switchToMode('home', true);
+            // 애니메이션 차단 해제
+            requestAnimationFrame(() => {
+                document.body.classList.remove('no-transition');
+            });
+            return;
+        }
 
-    if (hash.startsWith('search')) {
-        const qIdx = hash.indexOf('?');
-        if (qIdx !== -1) {
-            const urlParams = new URLSearchParams(hash.substring(qIdx + 1));
-            const cid = urlParams.get('cid');
-            const code = urlParams.get('code');
-            const m = urlParams.get('m');
-            const key = urlParams.get('key');
-            const q = urlParams.get('q');
+        if (hash.startsWith('search')) {
+            const qIdx = hash.indexOf('?');
+            if (qIdx !== -1) {
+                const urlParams = new URLSearchParams(hash.substring(qIdx + 1));
+                const cid = urlParams.get('cid');
+                const code = urlParams.get('code');
+                const m = urlParams.get('m');
+                const key = urlParams.get('key');
+                const q = urlParams.get('q');
+                const targetName = urlParams.get('target');
 
-            if (cid) {
-                renderTargetByCid(cid, code, true);
-            } else if (key !== null || q !== null) {
-                const searchKey = key !== null ? decodeURIComponent(key) : decodeURIComponent(q);
-                let searchType = 'auto';
-                if (m === '1') searchType = 'name';
-                else if (m === '2') searchType = 'number';
+                if (cid) {
+                    if (!skipAutomation) void renderTargetByCid(cid, code, true);
+                    else switchToMode('search', true, null, null, true);
+                } else if (code || targetName) {
+                    const inputEl = document.getElementById('card-search');
+                    if (inputEl) inputEl.value = code || targetName;
+                    switchToMode('search', true, null, null, skipAutomation);
+                    if (!skipAutomation) void startSearch(true, code ? 'number' : 'name', true);
+                } else if (key !== null || q !== null) {
+                    const searchKey = key !== null ? key : q;
+                    let searchType = 'auto';
+                    if (m === '1') searchType = 'name';
+                    else if (m === '2') searchType = 'number';
 
-                const inputEl = document.getElementById('card-search');
-                if (inputEl) inputEl.value = searchKey;
-                checkClearBtn();
-                switchToMode('search', true, null, null, skipAutomation);
-                if (!skipAutomation) {
-                    startSearch(true, searchType, null, searchKey);
+                    const inputEl = document.getElementById('card-search');
+                    if (inputEl) inputEl.value = searchKey;
+                    checkClearBtn();
+                    switchToMode('search', true, null, null, skipAutomation);
+                    if (!skipAutomation) {
+                        startSearch(true, searchType);
+                    }
+                } else {
+                    switchToMode('search', true, null, null, skipAutomation);
                 }
             } else {
                 switchToMode('search', true, null, null, skipAutomation);
             }
         } else {
-            switchToMode('search', true, null, null, skipAutomation);
-        }
-    } else {
-        // 해시를 슬래시(/) 기준으로 분리하고 쿼리 파라미터 파싱
-        const mainParts = hash.split('?');
-        const pathParts = mainParts[0].split('/');
-        const mainMode = pathParts[0];
-        const subMode = pathParts[1] || null;
+            // 해시를 슬래시(/) 기준으로 분리하고 쿼리 파라미터 파싱
+            const mainParts = hash.split('?');
+            const pathParts = mainParts[0].split('/');
+            const mainMode = pathParts[0];
+            const subMode = pathParts[1] || null;
 
-        // 쿼리 파라미터 추출 (name, loc, code 등)
-        const params = new URLSearchParams(mainParts[1] || "");
-        const targetName = params.get('name');
-        const targetLoc = params.get('loc');
-        const targetCode = params.get('code');
+            // 쿼리 파라미터 추출 (name, loc, code 등)
+            const params = new URLSearchParams(mainParts[1] || "");
+            const targetName = params.get('name');
+            const targetLoc = params.get('loc');
+            const targetCode = params.get('code');
 
-        const validModes = ['home', 'inventory', 'add', 'move', 'discard', 'settings', 'manage'];
-        if (validModes.includes(mainMode)) {
-            const targetParams = (targetName || targetLoc || targetCode) ? { name: targetName, loc: targetLoc, code: targetCode } : null;
-            if (mainMode === 'manage') {
-                // #manage/탭모드/칩모드
-                const targetTab = pathParts[1] || 'add';
-                const targetChip = pathParts[2] || null;
-                // 기존 add/move/discard 로직 수행
-                switchToMode(targetTab, true, targetChip, targetParams, skipAutomation);
+            const validModes = ['home', 'inventory', 'add', 'move', 'discard', 'settings', 'manage'];
+            if (validModes.includes(mainMode)) {
+                const targetParams = (targetName || targetLoc || targetCode) ? { name: targetName, loc: targetLoc, code: targetCode } : null;
+                if (mainMode === 'manage') {
+                    // #manage/탭모드/칩모드
+                    const targetTab = pathParts[1] || 'add';
+                    const targetChip = pathParts[2] || null;
+                    // 기존 add/move/discard 로직 수행
+                    switchToMode(targetTab, true, targetChip, targetParams, skipAutomation);
+                } else {
+                    switchToMode(mainMode, true, subMode, targetParams, skipAutomation);
+                }
             } else {
-                switchToMode(mainMode, true, subMode, targetParams, skipAutomation);
+                switchToMode('home', true, null, null, skipAutomation);
             }
-        } else {
-            switchToMode('home', true, null, null, skipAutomation);
         }
-    }
 
-    // 애니메이션 차단 해제 (레이아웃 반영 후)
-    requestAnimationFrame(() => {
-        document.body.classList.remove('no-transition');
-    });
+        // 애니메이션 차단 해제 (레이아웃 반영 후)
+        requestAnimationFrame(() => {
+            document.body.classList.remove('no-transition');
+        });
+    } finally {
+        isInternalHashChange = false;
+    }
 }
 
 /**
@@ -1529,18 +1498,7 @@ function checkLegacyMigrationQuery() {
     if (sessionStorage.getItem('ygo_redirect_legacy') === 'true') {
         const modal = document.getElementById('legacy-migration-modal');
         if (modal) {
-            const inst = M.Modal.init(modal, {
-                opacity: 0.4,
-                startingTop: '10%',
-                endingTop: '10%',
-                onCloseEnd: function () {
-                    // 세션 스토리지 상태 제거
-                    sessionStorage.removeItem('ygo_redirect_legacy');
-                    // 모달이 완전히 화면에서 사라진 후 안전하게 파라미터 소거
-                    const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-                    window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
-                }
-            });
+            const inst = getAppModal(modal);
             
             if (inst) {
                 setTimeout(() => inst.open(), 200);
@@ -1589,59 +1547,7 @@ async function initApp() {
     // [중요] 동기화 시작 전에 URL 해시를 먼저 분석하여 UI를 즉시 설정하되, 자동 검색은 로컬 캐시 로드 후로 미룸 (skipAutomation=true)
     handleHashChange(true);
 
-    const modals = document.querySelectorAll('.modal');
-    const isMobile = document.documentElement.classList.contains('is-mobile-device');
-    modals.forEach(modal => {
-        let options = {
-            opacity: 0.4,           // 배경 오버레이를 더 투명하고 고급스럽게 조정
-            startingTop: '10%',     // 시작 위치와 종료 위치를 동일하게 설정하여 이중 이동 방지
-            endingTop: '10%',
-            inDuration: isMobile ? 350 : 300,   // CSS 애니메이션 시간과 동기화
-            outDuration: isMobile ? 250 : 200,
-            onOpenStart: function (el) {
-                // 모달 오픈 시 하단 요소 숨김을 위해 클래스 추가
-                if (isMobile) document.documentElement.classList.add('modal-open');
-            },
-            onOpenEnd: function (el) {
-                // [모바일] Materialize가 강제 지정하는 style.top을 초기화하여 bottom: 0 배치 유지
-                if (isMobile) el.style.top = '';
-            },
-            onCloseStart: function (el) {
-                // 모달이 닫히기 시작할 때 클래스 제거
-                if (isMobile) document.documentElement.classList.remove('modal-open');
-                // 헤더 직접 열기 모달 닫힐 때 inert 해제
-                if (el.id === 'auth-modal' || el.id === 'mobile-auth-modal' || el.id === 'membership-auth-modal' || el.id === 'notice-modal' || el.id === 'notice-list-modal' || el.id === 'notice-detail-modal') {
-                    toggleBackgroundInert(false);
-                }
-            },
-            onCloseEnd: function (el) {
-
-                // 약관/개인정보 모달을 닫을 때 이전의 URL 해시(예: #add)로 복구
-                if (el.id === 'terms-modal' || el.id === 'privacy-modal') {
-                    const currentHash = window.location.hash;
-                    if (currentHash === '#terms' || currentHash === '#privacy') {
-                        // 저장해둔 이전 해시가 있다면 그것으로, 없으면 빈 값으로 복구
-                        const targetHash = UIStore.lastHashBeforeModal || "";
-                        window.history.pushState(null, null, window.location.pathname + window.location.search + targetHash);
-                        // 복구 후 변수 초기화
-                        UIStore.lastHashBeforeModal = "";
-                    }
-                }
-
-
-                if (el.id === 'add-result-modal') {
-                    handleContinueRegistration();
-                }
-                if (el.id === 'discard-result-modal') {
-                    handleContinueDiscard();
-                }
-            }
-        };
-        if (modal.id === 'add-result-modal' || modal.id === 'move-result-modal' || modal.id === 'discard-result-modal') {
-            options.dismissible = false;
-        }
-        M.Modal.init(modal, options);
-    });
+    document.querySelectorAll('.modal').forEach(getAppModal);
 
     checkLegacyMigrationQuery();
 
@@ -1808,7 +1714,9 @@ async function initApp() {
 
     // 동기화 완료 후 자동화 로직만 별도로 추출하여 트리거 (캐시된 데이터 활용 보장)
     const currentHash = window.location.hash.substring(1);
-    if (currentHash) {
+    if (currentHash.startsWith('search')) {
+        if (!lastSearchState) handleHashChange(false);
+    } else if (currentHash) {
         const hParts = currentHash.split('?');
         // URL path에서 서브모드를 직접 추출하여 강제 동기화
         const pathParts = hParts[0].split('/');
@@ -1842,6 +1750,7 @@ async function initApp() {
     // 단축키(Ctrl+Enter / Cmd+Enter)를 통한 작업 실행 기능 추가
     document.addEventListener('keydown', function (e) {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            if (modalStates.size) return;
             const activeEl = document.activeElement;
             // 포커스가 input이나 textarea 등에 있을 때만 동작
             if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
@@ -1863,10 +1772,55 @@ async function initApp() {
 // 애플리케이션 단일 초기화 이벤트 바인딩
 document.addEventListener('DOMContentLoaded', initApp);
 
+// 인증 대상 여부와 실제 헤더 공간을 함께 반영한다. 숨긴 버튼도 매번 다시 측정하여
+// 창 크기·지역 문구·글꼴 크기가 바뀌면 버튼 표시를 복원할 수 있다.
+function syncMembershipHeader(shouldShowVerify = null) {
+    const verifyBtn = document.getElementById('membership-verify-btn');
+    const authBtn = document.getElementById('auth-capsule-btn');
+    if (!verifyBtn || !authBtn) return;
+    if (shouldShowVerify !== null) verifyBtn.dataset.membershipEligible = String(shouldShowVerify);
+    const hadVerifyFocus = document.activeElement === verifyBtn;
+    const eligible = verifyBtn.dataset.membershipEligible === 'true';
+    const mobile = document.documentElement.classList.contains('is-mobile-device');
+    verifyBtn.hidden = !eligible;
+    let overflow = false;
+    const header = document.querySelector('.app-header');
+    if (eligible && mobile && header) {
+        const style = getComputedStyle(header);
+        const number = value => parseFloat(value) || 0;
+        const available = header.getBoundingClientRect().width
+            - number(style.paddingLeft) - number(style.paddingRight)
+            - number(style.borderLeftWidth) - number(style.borderRightWidth);
+        const controls = [...header.children].filter(element => !element.hidden && element.getBoundingClientRect().width > 0);
+        const required = controls.reduce((total, element) => {
+            const controlStyle = getComputedStyle(element);
+            // 테마 그룹의 자동 왼쪽 여백은 남는 공간이므로 필수 너비에서 제외한다.
+            const leftMargin = element.classList?.contains('theme-switch-wrapper')
+                ? 0 : number(controlStyle.marginLeft);
+            return total + element.getBoundingClientRect().width
+                + leftMargin + number(controlStyle.marginRight);
+        }, 0) + Math.max(0, controls.length - 1) * number(style.columnGap);
+        // 기본 gap 외에 16px의 여유가 없으면 혼잡해지기 전에 점으로 대체한다.
+        overflow = available > 0 && available - required < 16;
+        verifyBtn.hidden = overflow;
+    }
+    authBtn.classList.toggle('has-noti', eligible && mobile && overflow);
+    if (authBtn.classList.contains('is-logged-in')) {
+        authBtn.setAttribute('aria-label', overflow
+            ? '내 계정: 멤버십 인증 필요, 환경설정으로 이동'
+            : '내 계정: 환경설정으로 이동');
+    }
+    // 크기 변경으로 현재 조작 중인 버튼이 숨겨지면 계정 진입으로 초점을 보존한다.
+    if (verifyBtn.hidden && hadVerifyFocus) authBtn.focus();
+}
+
 // 펼쳐지는 배경이 아닌 닫힌 컨트롤만 관찰한다. 페이지 전환 높이와는 무관하다.
 function initFluidControlSizing() {
+    syncMembershipHeader();
+    window.addEventListener('resize', () => syncMembershipHeader());
+    if (document.fonts) document.fonts.ready.then(() => syncMembershipHeader());
     if (typeof ResizeObserver === 'undefined') return;
-    const header = document.querySelector('.global-top-nav');
+    const header = document.querySelector('.app-header');
     const searchBox = document.querySelector('.search-box');
     const observer = new ResizeObserver(entries => {
         for (const { target } of entries) {
@@ -1877,14 +1831,16 @@ function initFluidControlSizing() {
                 document.documentElement.style.setProperty('--app-header-growth', `${Math.max(0, height - minimum)}px`);
             } else if (target === searchBox) {
                 document.documentElement.style.setProperty('--search-controls-height', `${height}px`);
-            } else {
+            } else if (target.id === 'region-wrapper' || target.id === 'search-wrapper') {
                 target.style.setProperty('--measured-capsule-height', `${height}px`);
             }
         }
+        syncMembershipHeader();
     });
     for (const element of [header, searchBox, document.getElementById('region-wrapper'), document.getElementById('search-wrapper')]) {
         if (element) observer.observe(element);
     }
+    if (header) [...header.children].forEach(element => observer.observe(element));
 }
 document.addEventListener('DOMContentLoaded', initFluidControlSizing);
 
@@ -1913,13 +1869,260 @@ function updateMetaThemeColor(mode) {
     }
 }
 
-function toggleBackgroundInert(isActive) {
-    const targets = [document.getElementById('app-search-masthead'), document.querySelector('.global-top-nav'), document.querySelector('.app-sidebar'), document.querySelector('.mobile-nav-container'), document.querySelector('.container')];
-    targets.forEach(el => { if (el) { if (isActive) el.setAttribute('inert', ''); else el.removeAttribute('inert'); } });
+// 모달과 관리 시트의 배경 차단과 초점 복귀는 이 수명주기에서만 관리한다.
+// 닫힘 애니메이션이 끝나기 전까지는 해당 모달도 배경 잠금을 소유한다.
+const modalStates = new Map();
+const modalAfterOpen = new WeakMap();
+let modalBackgroundSnapshot = null;
+let modalReturnFocus = null;
+
+function getModalBackgroundTargets() {
+    return [...document.querySelectorAll('#app-search-masthead, .app-header, .app-sidebar, .app-mobile-dock, .app-page-content, #main-footer, #mobile-search-overlay')];
 }
 
+function syncModalLayers() {
+    const top = [...modalStates].reverse().find(([, state]) => !state.closing)?.[0];
+    // 모달·사진 분석·일러스트 선택과 미이관 입력창이 같은 겹침 순서에 참여한다.
+    let layer = 100000;
+    for (const [modal, state] of modalStates) {
+        if (state.backdrop && !modal.contains(state.backdrop)) state.backdrop.style.zIndex = String(layer);
+        modal.style.zIndex = String(layer + 1);
+        layer += 2;
+        modal.inert = modal !== top;
+        if (modal === top) modal.setAttribute('aria-modal', 'true');
+        else modal.removeAttribute('aria-modal');
+    }
+    document.documentElement.classList.toggle('modal-open',
+        modalStates.size > 0 && document.documentElement.classList.contains('is-mobile-device'));
+    document.documentElement.classList.toggle('overlay-scroll-locked', modalStates.size > 0);
+}
+
+function beginModalLifecycle(modal, trigger, backdrop = null) {
+    const opener = trigger || document.activeElement;
+    if (!modalStates.size) {
+        modalReturnFocus = opener;
+        modalBackgroundSnapshot = getModalBackgroundTargets().map(element => ({
+            element, inert: element.hasAttribute('inert')
+        }));
+    }
+    const state = modalStates.get(modal) || { opener };
+    state.backdrop = backdrop;
+    state.closing = false;
+    // 닫히는 중 다시 연 창도 가장 위의 창으로 취급한다.
+    modalStates.delete(modal);
+    modalStates.set(modal, state);
+    for (const { element } of modalBackgroundSnapshot) element.inert = true;
+    syncModalLayers();
+}
+
+function beginModalClose(modal) {
+    const state = modalStates.get(modal);
+    if (!state) return;
+    state.closing = true;
+    modalAfterOpen.delete(modal);
+    syncModalLayers();
+}
+
+function focusModalReturnTarget(target) {
+    if (!target || !target.isConnected || target === document.body || target === document.documentElement
+        || target.disabled || target.classList.contains('disabled')
+        || target.closest('[inert], [hidden], [aria-hidden="true"]') || !target.getClientRects().length) return false;
+    target.focus({ preventScroll: true });
+    return document.activeElement === target;
+}
+
+function finishModalLifecycle(modal) {
+    const state = modalStates.get(modal);
+    // 중복 종료와 닫힘 도중 재열림의 이전 종료 처리는 무시한다.
+    if (!state || !state.closing) return false;
+    const currentFocus = document.activeElement;
+    const canRestoreFocus = modal.contains(currentFocus) || currentFocus === document.body || currentFocus === document.documentElement;
+    modalStates.delete(modal);
+    modal.inert = true;
+    modal.removeAttribute('aria-modal');
+    syncModalLayers();
+
+    if (!modalStates.size) {
+        for (const { element, inert } of modalBackgroundSnapshot) element.inert = inert;
+        const target = modalReturnFocus;
+        modalBackgroundSnapshot = null;
+        modalReturnFocus = null;
+        if (canRestoreFocus && !focusModalReturnTarget(target)) {
+            if (['add-result-modal', 'move-result-modal', 'discard-result-modal'].includes(modal.id)) {
+                // 성공 행이 제거되어 원래 입력란이 사라졌다면 관리 실행 버튼으로 돌아간다.
+                focusModalReturnTarget(document.getElementById('manage-primary-btn'));
+            } else if (modal.id === 'mobile-entry-bottom-sheet') {
+                // 시트가 닫히는 동안 경로가 바뀌었다면 현재 페이지가 초점을 이어받는다.
+                const page = document.querySelector('#app-page-stack > .content-section.active');
+                if (page) focusActivePage(page, currentFocus);
+            }
+        }
+    } else if (canRestoreFocus) {
+        const top = [...modalStates].reverse().find(([, entry]) => !entry.closing)?.[0];
+        if (top) focusModalReturnTarget(top.contains(state.opener) ? state.opener : top);
+    }
+    return true;
+}
+
+function getAppModal(modal) {
+    if (!modal) return null;
+    const existing = M.Modal.getInstance(modal);
+    if (existing) {
+        globalThis.AppOverlays?.installModal(existing);
+        return existing;
+    }
+    modal.inert = true;
+    const options = getCommonModalOptions();
+    const instance = M.Modal.init(modal, options);
+    globalThis.AppOverlays?.installModal(instance);
+    return instance;
+}
+
+// 직접 만든 시트도 같은 수명주기를 사용한다. 애니메이션 예약만 이 어댑터에서 관리한다.
+const sheetAnimationStates = new WeakMap();
+
+function isManagedSheetOpen(sheet) {
+    const state = modalStates.get(sheet);
+    return !!state && !state.closing;
+}
+
+function resetSheetAnimation(sheet) {
+    const previous = sheetAnimationStates.get(sheet);
+    if (previous) {
+        cancelAnimationFrame(previous.frame);
+        clearTimeout(previous.timer);
+    }
+    const state = { frame: null, timer: null };
+    sheetAnimationStates.set(sheet, state);
+    return state;
+}
+
+function openManagedSheet(sheet, { backdrop = null, trigger = null, initialFocus = sheet, onOpen = null, onDismiss = null } = {}) {
+    if (!sheet) return;
+    const state = resetSheetAnimation(sheet);
+    const previous = modalStates.get(sheet);
+    if (trigger && previous?.closing) {
+        if (modalReturnFocus === previous.opener) modalReturnFocus = trigger;
+        previous.opener = trigger;
+    }
+    state.onDismiss = onDismiss;
+    sheet.hidden = false;
+    sheet.style.display = 'flex';
+    if (backdrop) backdrop.style.display = 'block';
+    beginModalLifecycle(sheet, trigger, backdrop);
+    state.frame = requestAnimationFrame(() => {
+        if (sheetAnimationStates.get(sheet) !== state || !isManagedSheetOpen(sheet)) return;
+        sheet.classList.add('active');
+        if (backdrop) backdrop.classList.add('active');
+        // 다른 창을 연 사이에 예약된 초점 이동이 끼어들지 않도록 한다.
+        if (!sheet.inert) focusModalReturnTarget(initialFocus);
+        if (onOpen) onOpen();
+    });
+}
+
+function closeManagedSheet(sheet, { backdrop = null, duration = globalThis.AppOverlays?.duration() ?? 200, onClose = null } = {}) {
+    if (!isManagedSheetOpen(sheet)) return;
+    const state = resetSheetAnimation(sheet);
+    beginModalClose(sheet);
+    sheet.classList.remove('active');
+    if (backdrop) backdrop.classList.remove('active');
+    state.timer = setTimeout(() => {
+        if (sheetAnimationStates.get(sheet) !== state) return;
+        sheet.style.display = 'none';
+        if (backdrop) backdrop.style.display = 'none';
+        finishModalLifecycle(sheet);
+        if (onClose) onClose();
+    }, duration);
+}
+
+function handleManagedSheetKeydown(event) {
+    const top = [...modalStates].reverse().find(([, state]) => !state.closing)?.[0];
+    if (!top || (!sheetAnimationStates.has(top) && !top.classList.contains('ui-overlay'))) return;
+    // 일러스트 선택기의 방향키·초점 순환·history 처리는 기존 선택기가 소유한다.
+    if (document.querySelector('.illustration-picker-root')) return;
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (top.classList.contains('modal') && M.Modal.getInstance(top)?.options?.dismissible === false) return;
+        const close = top.classList.contains('modal') ? () => M.Modal.getInstance(top)?.close() : sheetAnimationStates.get(top)?.onDismiss || {
+            'mobile-entry-bottom-sheet': closeEntryBottomSheet,
+            'mobile-sheet-input-overlay': closeSheetOverlay,
+            'mobile-sheet-qty-overlay': closeQtyOverlay,
+            'mobile-sheet-dropdown-select': closeSheetDropdownSelect,
+            'catalog-filter-editor': typeof closeCatalogFilterEditor === 'function' ? closeCatalogFilterEditor : null
+        }[top.id];
+        if (close) close();
+        return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+    }
+    const target = event.target;
+    if (top.contains(target) && (event.key === 'Enter' || event.key === ' ')) {
+        const field = target.closest('input[data-field]');
+        const action = field?.closest('.sheet-input-box') || target.closest('[role="button"]');
+        if (action) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            action.click();
+            return;
+        }
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = [...top.querySelectorAll('button, input, select, textarea, a[href], [tabindex]')]
+        .filter(el => el.tabIndex >= 0 && !el.disabled && !el.classList.contains('disabled')
+            && !el.closest('[inert], [hidden], [aria-hidden="true"]') && el.getClientRects().length);
+    const index = focusable.indexOf(document.activeElement);
+    if (!focusable.length || index < 0 || (event.shiftKey ? index === 0 : index === focusable.length - 1)) {
+        event.preventDefault();
+        focusModalReturnTarget((event.shiftKey ? focusable.at(-1) : focusable[0]) || top);
+    }
+}
+document.addEventListener('keydown', handleManagedSheetKeydown, true);
+
 let transitionTimer = null;
+let pageTransitionFrame = null;
+let pageTransitionRevision = 0;
 let isInternalHashChange = false;
+
+// 표시 애니메이션과 조작 가능 여부를 함께 갱신합니다. 상위 모달의 inert는 건드리지 않습니다.
+function setViewActive(element, active, activeClass = 'active', inactiveClass = null) {
+    if (!element) return;
+    if (!active && element.contains(document.activeElement)) document.activeElement.blur();
+    element.inert = !active;
+    element.classList.toggle(activeClass, active);
+    if (inactiveClass) element.classList.toggle(inactiveClass, !active);
+}
+
+function setModePanelActive(element, active) {
+    setViewActive(element, active, 'anim-active', 'anim-hidden');
+}
+
+function setActivePage(page) {
+    document.querySelectorAll('#app-page-stack > .content-section').forEach(section => {
+        setViewActive(section, section === page);
+    });
+}
+
+function focusActivePage(page, previousFocus) {
+    if (!page.classList.contains('active') || page.closest('[inert], [hidden], [aria-hidden="true"]')) return;
+    const currentFocus = document.activeElement;
+    // 예약한 전환 사이에 사용자가 다른 컨트롤로 이동했다면 초점을 가져오지 않습니다.
+    if (currentFocus !== previousFocus && currentFocus !== document.body && currentFocus !== document.documentElement) return;
+
+    // 모달 공통화 전까지는 기존 창의 열림/닫힘 애니메이션 구간도 초점을 소유하도록 둡니다.
+    const overlaySelector = '.modal, .ui-overlay, #mobile-search-overlay, .mobile-bottom-sheet, '
+        + '#mobile-sheet-input-overlay, #mobile-sheet-qty-overlay, '
+        + '.illustration-picker-root, .onboarding-overlay';
+    if (document.body.classList.contains('onboarding-active') || [...document.querySelectorAll(overlaySelector)].some(el => el.getClientRects().length > 0)) return;
+
+    const target = page.querySelector('.content-title, h1, #result-area') || page;
+    if (target.closest('[inert], [hidden], [aria-hidden="true"]')) return;
+    target.setAttribute('tabindex', '-1');
+    target.focus({ preventScroll: true });
+}
 
 /**
  * URL 해시 및 쿼리 파라미터 업데이트 공통 유틸리티
@@ -2853,6 +3056,7 @@ function closeGridFilterSheet() {
 }
 
 function switchToMode(mode, isInstant = false, subMode = null, params = null, skipAutomation = false) {
+    if (mode !== 'search' && UIStore.mode === 'search' && typeof SearchNavigation !== 'undefined') SearchNavigation.leave();
     // 모바일 검색 모드 활성화 시 다른 페이지로 이동하면 검색창 자동 닫기 + 실제 페이지는 전환 애니메이션 스킵
     if (mode !== 'search') {
         const overlay = document.getElementById('mobile-search-overlay');
@@ -2919,6 +3123,9 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
 
     if (isSameMode && isSameSubMode && isSameParams && mode !== 'search') return;
 
+    // hash/뒤로가기로 이동해도 이전 모드의 입력 노드를 먼저 제자리에 돌려놓는다.
+    if (typeof currentEditingRow !== 'undefined' && currentEditingRow) closeEntryBottomSheet();
+
     // 세부 모드 상태 즉시 동기화 (가드 통과 시 가장 먼저 수행)
     if (mode === 'add' && subMode) {
         UIStore.chipState.add = subMode;
@@ -2938,7 +3145,7 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     updateActiveNav(mode);
     const body = document.body;
     const searchInput = document.getElementById('card-search');
-    if (document.activeElement) { document.activeElement.blur(); }
+    const previousFocus = document.activeElement;
 
     // URL 해시 업데이트
     if (!isInternalHashChange) {
@@ -3004,11 +3211,21 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
 
     if (mode === 'home') { body.classList.remove('mode-compact'); } else { body.classList.add('mode-compact'); }
 
+    // 모바일에서 홈을 벗어나면 퇴장 애니메이션 중에도 로고 링크를 탐색하지 않는다.
+    const masthead = document.getElementById('app-search-masthead');
+    if (masthead) {
+        masthead.inert = document.documentElement.classList.contains('is-mobile-device') && mode !== 'home';
+    }
+
     const wrapper = document.getElementById('app-page-stack');
+    const transitionRevision = ++pageTransitionRevision;
+    if (pageTransitionFrame !== null) {
+        cancelAnimationFrame(pageTransitionFrame);
+        pageTransitionFrame = null;
+        document.body.classList.remove('no-transition');
+    }
     if (transitionTimer) {
         clearTimeout(transitionTimer); transitionTimer = null;
-        const sections = wrapper.querySelectorAll('.content-section');
-        sections.forEach(sec => { sec.classList.remove('active'); });
         const ghost = document.getElementById('result-ghost'); if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
     }
 
@@ -3026,6 +3243,7 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
 
     // [버그 수정] 동일 페이지 내에서 세부 모드(탭)만 바뀌는 경우 애니메이션을 생략함
     if (currentEl === nextEl) {
+        setActivePage(nextEl);
         if (['add', 'move', 'discard'].includes(mode)) {
             handleManageUI(mode);
             if (mode === 'add' && !skipAutomation) {
@@ -3035,7 +3253,9 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
             switchInventoryMode(UIStore.inventoryMode, true);
         }
         if (typeof OnboardingManager !== 'undefined' && !OnboardingManager.isActive() && (typeof UserStore.user !== 'undefined' && UserStore.user || typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser)) {
-            setTimeout(() => OnboardingManager.start(mode), 300);
+            setTimeout(() => {
+                if (transitionRevision === pageTransitionRevision && !OnboardingManager.isActive()) OnboardingManager.start(mode);
+            }, 300);
         }
         return;
     }
@@ -3043,10 +3263,7 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     if (isInstant) {
         document.body.classList.add('no-transition');
 
-        if (currentEl) {
-            currentEl.classList.remove('active');
-        }
-        nextEl.classList.add('active');
+        setActivePage(nextEl);
 
         if (['add', 'move', 'discard'].includes(mode)) {
             handleManageUI(mode);
@@ -3064,8 +3281,12 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
 
 
 
-        requestAnimationFrame(() => {
+        pageTransitionFrame = requestAnimationFrame(() => {
+            if (transitionRevision !== pageTransitionRevision) return;
+            pageTransitionFrame = null;
             document.body.classList.remove('no-transition');
+            // 최초 표시·새로고침에서는 제목으로 초점을 강제로 옮기지 않는다.
+            if (currentEl) focusActivePage(nextEl, previousFocus);
         });
         return;
     }
@@ -3086,24 +3307,16 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     }
 
     // [최종 안정화] JS가 높이에 개입하지 않도록 모든 인라인 스타일 지정을 배제함
-    requestAnimationFrame(() => {
-        // 모든 섹션에서 active 제거하여 중복 활성화로 인한 order 충돌 방지
-        wrapper.querySelectorAll('.content-section').forEach(sec => {
-            sec.classList.remove('active');
-        });
-        nextEl.classList.add('active');
+    pageTransitionFrame = requestAnimationFrame(() => {
+        if (transitionRevision !== pageTransitionRevision) return;
+        pageTransitionFrame = null;
+        document.body.classList.remove('no-transition');
+        setActivePage(nextEl);
+        if (currentEl) focusActivePage(nextEl, previousFocus);
     });
 
     transitionTimer = setTimeout(() => {
-        // 모든 비활성 섹션 강제 숨김 및 인라인 스타일 청소
-        const sections = wrapper.querySelectorAll('.content-section');
-        sections.forEach(sec => {
-            if (sec.id !== targetContentId) {
-                sec.classList.remove('active');
-            }
-        });
-
-        nextEl.classList.add('active');
+        if (transitionRevision !== pageTransitionRevision) return;
 
         const ghost = document.getElementById('result-ghost');
         if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
@@ -3114,7 +3327,9 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
 
         // 온보딩 가이드 트리거 (로그인 상태일 때만)
         if (typeof OnboardingManager !== 'undefined' && !OnboardingManager.isActive() && (typeof UserStore.user !== 'undefined' && UserStore.user || typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser)) {
-            setTimeout(() => OnboardingManager.start(mode), 300);
+            setTimeout(() => {
+                if (transitionRevision === pageTransitionRevision && !OnboardingManager.isActive()) OnboardingManager.start(mode);
+            }, 300);
         }
 
         transitionTimer = null;
@@ -4911,206 +5126,79 @@ function saveRecentSearch(keyword, searchType = 'auto', isTarget = false) {
 
 
 
-function showResultModal(successCount, successQty, detailLog, errorMsg, isFullSynced) {
-    const modal = document.getElementById('add-result-modal');
-    const iconArea = document.getElementById('result-icon-area');
-    const successText = document.getElementById('result-success-text');
-    const failText = document.getElementById('result-fail-text');
-    const summaryBody = document.getElementById('result-summary-body');
-    const detailBody = document.getElementById('result-detail-body');
+let managementRequestPending = false;
 
-    const titleEl = document.getElementById('add-modal-title');
-    if (successCount > 0) { titleEl.innerText = "카드 등록 완료!"; }
-    else { titleEl.innerText = "카드 등록 실패!"; }
-
-    summaryBody.innerHTML = ''; detailBody.innerHTML = '';
-    successText.innerHTML = ""; failText.innerHTML = "";
-    // applyModalDetailUI에서 레이아웃을 결정하므로 개별 display 설정 제거
-
-    if (errorMsg) {
-        iconArea.innerHTML = '<i class="material-icons" style="color: var(--error-red);">error</i>';
-        failText.innerText = "오류 발생: " + errorMsg;
-        failText.style.color = 'var(--error-red)';
-    } else {
-        const failCount = detailLog.length - successCount;
-        if (failCount === 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--success-green);">check_circle</i>'; }
-        else if (successCount === 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--error-red);">cancel</i>'; }
-        else { iconArea.innerHTML = '<i class="material-icons" style="color: var(--warning-yellow);">warning</i>'; }
-
-        if (successCount > 0) { successText.innerHTML = `<div style="margin-bottom:4px;">${successQty}장 성공, ${failCount}건 실패</div>`; }
-        else if (failCount > 0) { successText.innerHTML = `<div style="margin-bottom:4px; color:var(--error-red);">${successQty}장 성공, ${failCount}건 실패</div>`; }
-
-        if (isFullSynced) {
-            successText.innerHTML += `<div style="margin-top:8px; color:var(--warning-yellow); font-weight:bold;">외부 수정이 감지되어 전체 동기화가 진행되었습니다.</div>`;
+async function requestManagementOperation(endpoint, payload, rows, loadingText) {
+    if (managementRequestPending) return null;
+    managementRequestPending = true;
+    const user = UserStore.user;
+    let response;
+    try {
+        showLoading(true, loadingText);
+        try { response = await callApi(endpoint, buildAuthPayload(), payload); }
+        catch (error) {
+            if (UserStore.user !== user) return null;
+            settleManagementRows(rows, null, String(error));
+            return { success: false, message: '처리 결과를 확인할 수 없습니다. 보유 현황을 확인한 뒤 다시 시도해주세요.' };
         }
-
-        const successLogs = detailLog.filter(l => l.status === 'success');
-        if (successLogs.length > 0) {
-            const nameAgg = {};
-            successLogs.forEach(l => { if (!nameAgg[l.name]) nameAgg[l.name] = 0; nameAgg[l.name] += l.qty; });
-            for (const [name, qty] of Object.entries(nameAgg)) {
-                summaryBody.innerHTML += `<tr class="result-summary-row-success"><td>${escapeHTML(name)}</td><td>${escapeHTML(qty)}장</td></tr>`;
-            }
+        if (UserStore.user !== user) return null;
+        if (!response || typeof response !== 'object') {
+            settleManagementRows(rows, null, '응답 양식 오류');
+            return { success: false, message: '처리 결과를 확인할 수 없습니다. 보유 현황을 확인한 뒤 다시 시도해주세요.' };
         }
-        const failLogs = detailLog.filter(l => l.status === 'fail');
-        if (failLogs.length > 0) {
-            const failAgg = {};
-            failLogs.forEach(l => {
-                let reason = l.failReason;
-                if (reason === 'empty_no' || reason === 'invalid_no') reason = "카드 번호 오류";
-                else if (reason === 'no_another') reason = "일러스트 오류";
-                else if (reason === 'no_proc') reason = "레어도 오류";
-                else if (reason === 'invalid_qty') reason = "수량 오류";
-                else if (reason === 'no_loc') reason = "위치 오류";
-                else if (reason === 'loading') reason = "번호 검색 중";
-
-                if (!failAgg[reason]) failAgg[reason] = 0;
-                failAgg[reason]++;
-            });
-            for (const [reason, count] of Object.entries(failAgg)) {
-                summaryBody.innerHTML += `<tr class="result-summary-row-fail"><td>${escapeHTML(reason)}</td><td>${escapeHTML(count)}건</td></tr>`;
-            }
-        }
-
-        detailLog.forEach((log, idx) => {
-            const tr = document.createElement('tr');
-            let procTxt = log.proc || log.rarity;
-            let locTxt = log.loc;
-            let qtyTxt = log.qty;
-            let anotherTxt = log.another || log.illustration;
-            let cardNoStyle = ''; let anotherStyle = ''; let procStyle = ''; let locStyle = ''; let qtyStyle = '';
-
-            if (log.status === 'fail') {
-                if (log.failReason === 'empty_no') {
-                    log.cardNo = "미입력"; log.name = "-"; anotherTxt = "-"; procTxt = ""; locTxt = "-"; qtyTxt = "-";
-                    cardNoStyle = 'color:var(--error-red); font-weight:700;';
-                } else if (log.failReason === 'invalid_no') {
-                    log.cardNo = "카드번호 오류"; log.name = "-"; procTxt = "-"; locTxt = "-"; qtyTxt = "-"; anotherTxt = "-";
-                    cardNoStyle = 'color:var(--error-red); font-weight:700;';
-                } else if (log.failReason === 'no_proc') {
-                    procTxt = "미선택"; locTxt = "-"; qtyTxt = "-"; procStyle = 'color:var(--error-red); font-weight:700;';
-                } else if (log.failReason === 'no_loc') {
-                    locTxt = "미선택"; qtyTxt = "-"; locStyle = 'color:var(--error-red); font-weight:700;';
-                } else if (log.failReason === 'no_another') {
-                    anotherTxt = "미선택"; procTxt = "-"; locTxt = "-"; qtyTxt = "-"; anotherStyle = 'color:var(--error-red); font-weight:700;';
-                } else if (log.failReason === 'invalid_qty') {
-                    qtyStyle = 'color:var(--error-red); font-weight:700;';
-                } else if (log.failReason === 'loading') {
-                    log.cardNo = "검색 중"; log.name = "-"; anotherTxt = "-"; procTxt = "-"; locTxt = "-"; qtyTxt = "-";
-                    cardNoStyle = 'color:var(--error-red); font-weight:700;';
+        settleManagementRows(rows, response);
+        if (response.success) {
+            // 저장 성공과 표시용 캐시 갱신 실패를 구분한다.
+            try {
+                updateLocalInventory(response.updatedItems);
+                if (response.locations !== undefined) {
+                    cardCacheInstance.setSummary(response.amount, response.locations, response.rarities);
+                    updateTotals();
                 }
+                syncCounter++;
+            } catch (_) {
+                showToast('저장 응답을 받았지만 보유 정보 갱신에 실패했습니다. 새로고침 후 확인해주세요.', 'toast-warn');
             }
-            // 인라인 스타일 최소화 (github version 대조 복구)
-            tr.innerHTML = `<td>${idx + 1}</td><td>${escapeHTML(log.name)}</td><td style="${cardNoStyle}">${escapeHTML(log.cardNo)}</td><td style="${anotherStyle}">${escapeHTML(anotherTxt)}</td><td style="${procStyle}">${escapeHTML(getLocalizedRarity(procTxt) || "-")}</td><td style="${locStyle}">${escapeHTML(locTxt)}</td><td style="${qtyStyle}">${escapeHTML(qtyTxt)}</td>`;
-            detailBody.appendChild(tr);
-        });
+        }
+        if (rows.some(row => row.log.failReason === 'unconfirmed_result')) {
+            return { ...response, resultUnconfirmed: true, message: '처리 결과를 확인할 수 없습니다. 보유 현황을 확인한 뒤 다시 시도해주세요.' };
+        }
+        return response;
+    } finally {
+        managementRequestPending = false;
+        showLoading(false);
     }
+}
 
-    toggleBackgroundInert(true);
-    M.Modal.getInstance(modal).open();
-    // 사용자 설정에 맞게 상세/요약 레이아웃 초기화
-    setTimeout(() => applyModalDetailUI(UserStore.settings.isDetailMode), 50);
+// 성공 표시는 저장 응답으로 확정하며, 실패/미확인 행은 입력 목록에 남긴다.
+function settleManagementRows(rows, response, errorMessage = '') {
+    const results = AppManagementResults.reconcile(rows.map(row => row.log), response, errorMessage);
+    rows.forEach((row, index) => {
+        Object.assign(row.log, results[index]);
+        if (row.el) row.el.dataset[row.statusKey || 'status'] = results[index].status;
+    });
+    return results;
+}
+
+function showResultModal(successCount, successQty, detailLog, errorMsg, isFullSynced) {
+    showManagementResult('add', detailLog, errorMsg, isFullSynced);
 }
 
 function showDiscardResultModal(successCount, successQty, detailLog, errorMsg, isFullSynced) {
-    const modal = document.getElementById('discard-result-modal');
-    const iconArea = document.getElementById('discard-result-icon-area');
-    const successText = document.getElementById('discard-success-text');
-    const failText = document.getElementById('discard-fail-text');
-    const summaryBody = document.getElementById('discard-summary-body');
-    const detailBody = document.getElementById('discard-result-detail-body');
+    showManagementResult('discard', detailLog, errorMsg, isFullSynced);
+}
 
-    const titleEl = document.getElementById('discard-modal-title');
-    if (successCount > 0) { titleEl.innerText = "카드 제거 완료!"; }
-    else { titleEl.innerText = "카드 제거 실패!"; }
-
-    summaryBody.innerHTML = ''; detailBody.innerHTML = '';
-    successText.innerHTML = ""; failText.innerHTML = "";
-    // applyModalDetailUI에서 레이아웃을 결정하므로 개별 display 설정 제거
-
-    if (errorMsg) {
-        iconArea.innerHTML = '<i class="material-icons" style="color: var(--error-red);">error</i>';
-        failText.innerText = "오류 발생: " + errorMsg;
-        failText.style.color = 'var(--error-red)';
-    } else {
-        const failCount = detailLog.length - successCount;
-        if (failCount === 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--success-green);">check_circle</i>'; }
-        else if (successCount === 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--error-red);">cancel</i>'; }
-        else { iconArea.innerHTML = '<i class="material-icons" style="color: var(--warning-yellow);">warning</i>'; }
-
-        if (successCount > 0) { successText.innerHTML = `<div style="margin-bottom:4px;">${successQty}장 성공, ${failCount}건 실패</div>`; }
-        else if (failCount > 0) { successText.innerHTML = `<div style="margin-bottom:4px; color:var(--error-red);">${successQty}장 성공, ${failCount}건 실패</div>`; }
-
-        if (isFullSynced) {
-            successText.innerHTML += `<div style="margin-top:8px; color:var(--warning-yellow); font-weight:bold;">외부 수정이 감지되어 전체 동기화가 진행되었습니다.</div>`;
-        }
-
-        const successLogs = detailLog.filter(l => l.status === 'success');
-        if (successLogs.length > 0) {
-            const nameAgg = {};
-            successLogs.forEach(l => { if (!nameAgg[l.name]) nameAgg[l.name] = 0; nameAgg[l.name] += l.qty; });
-            for (const [name, qty] of Object.entries(nameAgg)) {
-                summaryBody.innerHTML += `<tr class="result-summary-row-success"><td>${escapeHTML(name)}</td><td>${escapeHTML(qty)}장</td></tr>`;
-            }
-        }
-        const failLogs = detailLog.filter(l => l.status === 'fail');
-        if (failLogs.length > 0) {
-            const failAgg = {};
-            failLogs.forEach(l => {
-                let reason = l.failReason;
-                if (reason === 'empty_no' || reason === 'invalid_no') reason = "카드 번호 오류";
-                else if (reason === 'no_another') reason = "일러스트 미선택";
-                else if (reason === 'no_proc') reason = "레어도 미선택";
-                else if (reason === 'no_loc') reason = "보관 위치 미선택";
-                else if (reason === 'invalid_qty') reason = "수량 오류";
-
-                if (!failAgg[reason]) failAgg[reason] = 0;
-                failAgg[reason]++;
-            });
-            for (const [reason, count] of Object.entries(failAgg)) {
-                summaryBody.innerHTML += `<tr class="result-summary-row-fail"><td>${escapeHTML(reason)}</td><td>${escapeHTML(count)}건</td></tr>`;
-            }
-        }
-
-        detailLog.forEach((log, idx) => {
-            const tr = document.createElement('tr');
-            let procTxt = log.proc || log.rarity;
-            let locTxt = log.loc;
-            let qtyTxt = log.qty;
-            let anotherTxt = log.another || log.illustration;
-            let cardNoStyle = ''; let anotherStyle = ''; let procStyle = ''; let locStyle = ''; let qtyStyle = '';
-
-            if (log.status === 'fail') {
-                if (log.failReason === 'empty_no') {
-                    log.cardNo = "미입력"; log.name = "-"; anotherTxt = "-"; procTxt = ""; locTxt = "-"; qtyTxt = "-";
-                    cardNoStyle = 'color:var(--error-red); font-weight:700;';
-                } else if (log.failReason === 'invalid_no') {
-                    log.cardNo = "오류"; log.name = "-"; procTxt = "-"; locTxt = "-"; qtyTxt = "-"; anotherTxt = "-";
-                    cardNoStyle = 'color:var(--error-red); font-weight:700;';
-                } else if (log.failReason === 'no_another') {
-                    anotherTxt = "미선택"; procTxt = "-"; locTxt = "-"; qtyTxt = "-"; anotherStyle = 'color:var(--error-red); font-weight:700;';
-                } else if (log.failReason === 'no_proc') {
-                    procTxt = "미선택"; locTxt = "-"; qtyTxt = "-"; procStyle = 'color:var(--error-red); font-weight:700;';
-                } else if (log.failReason === 'no_loc') {
-                    locTxt = "미선택"; qtyTxt = "-"; locStyle = 'color:var(--error-red); font-weight:700;';
-                } else if (log.failReason === 'invalid_qty') {
-                    qtyStyle = 'color:var(--error-red); font-weight:700;';
-                }
-            }
-            tr.innerHTML = `<td>${idx + 1}</td><td>${escapeHTML(log.name)}</td><td style="${cardNoStyle}">${escapeHTML(log.cardNo)}</td><td style="${anotherStyle}">${escapeHTML(anotherTxt)}</td><td style="${procStyle}">${escapeHTML(getLocalizedRarity(procTxt) || "-")}</td><td style="${locStyle}">${escapeHTML(locTxt)}</td><td style="${qtyStyle}">${escapeHTML(qtyTxt)}</td>`;
-            detailBody.appendChild(tr);
-        });
-    }
-
-    toggleBackgroundInert(true);
-    M.Modal.getInstance(modal).open();
-    // 사용자 설정에 맞게 상세/요약 레이아웃 초기화
-    setTimeout(() => applyModalDetailUI(UserStore.settings.isDetailMode), 50);
+function showManagementResult(operation, items, errorMessage, fullSynced) {
+    const modal = document.getElementById(`${operation}-result-modal`);
+    AppManagementResults.render(modal, items, {
+        formatIllustration: IllustrationImages.label,
+        formatRarity: getLocalizedRarity, errorMessage, fullSynced
+    });
+    AppManagementResults.setView(modal, UserStore.settings.isDetailMode ? 'detail' : 'summary');
+    getAppModal(modal).open();
 }
 
 async function handleContinueDiscard() {
-    M.Modal.getInstance(document.getElementById('discard-result-modal')).close();
-    toggleBackgroundInert(false);
 
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
     const containerId = isMobile ? 'mobile-cards-list-discard' : 'desktop-cards-list-discard';
@@ -5155,6 +5243,7 @@ async function handleContinueDiscard() {
 }
 
 async function submitPageEntries() {
+    if (managementRequestPending) return;
     const submitBtn = document.getElementById('add-submit-main-btn');
     if (submitBtn && submitBtn.classList.contains('disabled')) return;
 
@@ -5223,6 +5312,7 @@ async function submitPageEntries() {
 
     const validRows = [];
     const detailLog = [];
+    const submittedRows = [];
     let successCount = 0; let successQty = 0;
 
     entries.forEach(item => {
@@ -5262,8 +5352,8 @@ async function submitPageEntries() {
             }
             if (!procRaw) failReason = "no_rarity";
         }
-        else if (!loc) failReason = "no_loc";
-        else if (!qty || qty < 1) failReason = "invalid_qty";
+        if (!failReason && !loc) failReason = "no_loc";
+        if (!failReason && (!Number.isSafeInteger(Number(qty)) || Number(qty) < 1)) failReason = "invalid_qty";
 
         if (failReason) {
             detailLog.push({ no, name: nameText, cardNo, illustration: illustrationRaw, rarity: item.rawRarityVal || "미선택", loc: loc || "미선택", qty: qty || 0, status: 'fail', failReason });
@@ -5275,38 +5365,17 @@ async function submitPageEntries() {
                 cid = data.linkData?.id || cid;
             } catch (error) { /* 구형 입력 행은 서버에서 CID를 보완합니다. */ }
             validRows.push([nameText, cardNo, procRaw, qty, loc, illustrationRaw, cid]);
-            detailLog.push({ no, name: nameText, cardNo, illustration: illustrationRaw, rarity: procRaw, loc, qty, status: 'success' });
-            successCount++; successQty += qty;
-            el.dataset.status = 'success';
+            detailLog.push({ no, cid, name: nameText, cardNo, illustration: illustrationRaw, rarity: procRaw, loc, qty, status: 'pending' });
+            el.dataset.status = 'pending';
+            submittedRows.push({ log: detailLog[detailLog.length - 1], el });
         }
     });
 
     if (validRows.length > 0) {
-        showLoading(true, "등록 중...");
-        try {
-            const reqData = { rows: validRows };
-            const res = await callApi('addCards', buildAuthPayload(), reqData);
-            showLoading(false);
-
-            if (res.success) {
-                updateLocalInventory(res.updatedItems);
-                // 서버에서 받은 통계 업데이트
-                if (res.locations !== undefined) {
-                    cardCacheInstance.setSummary(res.amount, res.locations, res.rarities);
-                    updateTotals();
-                    renderHomeDash();
-                }
-                syncCounter++;
-                showResultModal(successCount, successQty, detailLog, null);
-            } else {
-                // [토스트 삭제] UI 모달에서 안내되므로 제거
-                showResultModal(0, 0, [], res.message || '오류 발생');
-            }
-        } catch (e) {
-            showLoading(false);
-            // [토스트 삭제] UI 모달에서 안내되므로 제거
-            showResultModal(0, 0, [], e.toString());
-        }
+        const response = await requestManagementOperation('addCards', { rows: validRows }, submittedRows, '등록 중...');
+        if (!response) return;
+        const totals = AppManagementResults.summarize(detailLog);
+        showResultModal(totals.successCount, totals.totalQty, detailLog, (response.resultUnconfirmed || !response.success) ? response.message : null);
     } else if (detailLog.length > 0) {
         showResultModal(0, 0, detailLog);
     } else {
@@ -5315,6 +5384,7 @@ async function submitPageEntries() {
 }
 
 async function submitDiscardEntries() {
+    if (managementRequestPending) return;
     const submitBtn = document.getElementById('discard-submit-main-btn');
     if (submitBtn && submitBtn.classList.contains('disabled')) return;
 
@@ -5361,6 +5431,7 @@ async function submitDiscardEntries() {
 
     const validRows = [];
     const detailLog = [];
+    const submittedRows = [];
     let successCount = 0; let successQty = 0;
     let hasFail = false;
 
@@ -5386,7 +5457,7 @@ async function submitDiscardEntries() {
             failReason = "no_rarity";
         } else if (!loc) {
             failReason = "no_loc";
-        } else if (!qty || qty < 1) {
+        } else if (!Number.isSafeInteger(Number(qty)) || Number(qty) < 1) {
             failReason = "invalid_qty";
         }
 
@@ -5396,9 +5467,9 @@ async function submitDiscardEntries() {
             detailLog.push({ no, name: nameText, cardNo, illustration: illustration || "-", rarity: rarity || "-", loc: loc || "-", qty: qty || 0, status: 'fail', failReason });
         } else {
             validRows.push({ cardNo, name: nameText, rarity, illustration, loc, qty });
-            detailLog.push({ no, name: nameText, cardNo, illustration, rarity, loc, qty, status: 'success' });
-            successCount++; successQty += qty;
-            el.dataset.status = 'success';
+            detailLog.push({ no, cid: findCidByNameOrNo(nameText, cardNo), name: nameText, cardNo, illustration, rarity, loc, qty, status: 'pending' });
+            el.dataset.status = 'pending';
+            submittedRows.push({ log: detailLog[detailLog.length - 1], el });
         }
     });
 
@@ -5418,30 +5489,11 @@ async function submitDiscardEntries() {
         return;
     }
 
-    showLoading(true, "카드 제거 중...");
-    try {
-        const res = await callApi('discardCards', buildAuthPayload(), { discards: validRows });
-        showLoading(false);
+    const response = await requestManagementOperation('discardCards', { discards: validRows }, submittedRows, '카드 제거 중...');
+    if (!response) return;
+    const totals = AppManagementResults.summarize(detailLog);
+    showDiscardResultModal(totals.successCount, totals.totalQty, detailLog, (response.resultUnconfirmed || !response.success) ? response.message : null);
 
-        if (res.success) {
-            updateLocalInventory(res.updatedItems);
-            // 서버에서 받은 통계 업데이트
-            if (res.locations !== undefined) {
-                cardCacheInstance.setSummary(res.amount, res.locations, res.rarities);
-                updateTotals();
-                renderHomeDash();
-            }
-            syncCounter++;
-            showDiscardResultModal(successCount, successQty, detailLog, null);
-        } else {
-            // [토스트 삭제] UI 모달에서 안내되므로 제거
-            showDiscardResultModal(0, 0, detailLog, res.message || '오류 발생');
-        }
-    } catch (e) {
-        showLoading(false);
-        // [토스트 삭제] UI 모달에서 안내되므로 제거
-        showDiscardResultModal(0, 0, detailLog, e.toString());
-    }
 }
 
 function decomposeHangul(str) {
@@ -5536,12 +5588,12 @@ function showRecentInDropdown() {
         header = document.createElement('li');
         header.id = 'recent-header';
         header.className = 'recent-header-item';
-        header.innerHTML = `<span class="recent-title">최근 검색</span><button type="button" class="ui-button ui-button--text ui-button--text-secondary clear-all-btn">전체 제거</button>`;
+        header.innerHTML = `<span class="color-text-001">최근 검색</span><button type="button" class="ui-button ui-button--text color-text-002 clear-all-btn">전체 제거</button>`;
         list.prepend(header);
     }
     if (recent.length === 0) {
         const noResultLi = document.createElement('li');
-        noResultLi.className = 'no-result-item';
+        noResultLi.className = 'no-result-item color-text-002';
         noResultLi.innerText = '검색 기록이 없습니다.';
         list.appendChild(noResultLi);
     } else {
@@ -5549,7 +5601,7 @@ function showRecentInDropdown() {
         const ownedNumbers = cardCacheInstance.getOwnedNumbersSet();
         recent.slice(0, 5).forEach(r => {
             const li = document.createElement('li');
-            li.className = 'recent-item-row';
+            li.className = 'recent-item-row color-type004';
             const keyword = typeof r === 'string' ? r : r.keyword;
             const searchType = typeof r === 'string' ? 'auto' : (r.searchType || 'auto');
             const isTarget = typeof r === 'string' ? false : !!r.isTarget;
@@ -5563,15 +5615,15 @@ function showRecentInDropdown() {
                 const isOwned = searchType === 'number'
                     ? ownedNumbers.has(String(keyword).trim().toUpperCase())
                     : ownedNames.has(String(keyword).trim());
-                const ownershipClass = isOwned ? ' ui-color--card-owned' : ' ui-color--card-unowned';
+                const ownershipClass = isOwned ? ' color-tint-theme' : ' color-tint-neutral';
                 if (searchType === 'number') {
-                    tagHtml = `<span class="ui-tag ui-shape-rounded no-badge${ownershipClass}">번호</span>`;
+                    tagHtml = `<span class="ui-tag shape-rounded001${ownershipClass}">번호</span>`;
                 } else {
-                    tagHtml = `<span class="ui-tag ui-shape-rounded name-badge${ownershipClass}">이름</span>`;
+                    tagHtml = `<span class="ui-tag shape-rounded001${ownershipClass}">이름</span>`;
                 }
             }
 
-            li.innerHTML = `<span class="recent-text">${tagHtml}${escapeHTML(keyword)}</span><button type="button" class="ui-button ui-button--text ui-button--text-secondary item-delete-btn" aria-label="검색 기록 삭제"><i class="material-icons" aria-hidden="true">close</i></button>`;
+            li.innerHTML = `<span>${tagHtml}${escapeHTML(keyword)}</span><button type="button" class="ui-button ui-button--text color-text-002 item-delete-btn" aria-label="검색 기록 삭제"><i class="material-icons" aria-hidden="true">close</i></button>`;
             list.appendChild(li);
         });
     }
@@ -5598,7 +5650,7 @@ function filterAndShowDropdown(val, isMobile = false) {
     const combinedMatches = collectCatalogMatches(val);
 
     if (isMobile) {
-        // 최근 검색 칩은 유지하고 자동완성 행만 갱신한다(가로 스크롤 위치도 유지).
+        // 최근 검색 버튼은 유지하고 자동완성 행만 갱신한다(가로 스크롤 위치도 유지).
         for (const child of Array.from(list.children)) {
             if (!child.classList.contains('mobile-recent-container')) child.remove();
         }
@@ -5611,7 +5663,7 @@ function filterAndShowDropdown(val, isMobile = false) {
 
     if (combinedMatches.length === 0) {
         const noResult = document.createElement('li');
-        noResult.className = 'no-result-item';
+        noResult.className = 'no-result-item color-text-002';
         noResult.innerText = '일치하는 카드가 없습니다.';
         list.appendChild(noResult);
         list.classList.add('active');
@@ -5624,15 +5676,14 @@ function filterAndShowDropdown(val, isMobile = false) {
 
     combinedMatches.slice(0, 5).forEach(m => {
         const li = document.createElement('li');
-        li.className = 'text-suggest';
-        if (!m.isOwned) {
-            li.classList.add('not-owned');
-        }
+        li.className = 'text-suggest color-type004';
         li.dataset.val = m.val;
         li.dataset.type = m.type;
         li.dataset.isTarget = 'true';
 
-        const tagColorClass = m.isOwned ? 'ui-color--card-owned' : 'ui-color--card-unowned';
+        const tagColorClass = m.isOwned ? 'color-tint-theme' : 'color-tint-neutral';
+        const textColorClass = m.isOwned ? 'color-text-theme' : 'color-text-001';
+        const matchColorClass = m.isOwned ? 'color-text-000' : 'color-text-001';
         let html = "";
         const escapedVal = escapeHTML(m.val);
         const escapedQuery = escapeHTML(val);
@@ -5645,23 +5696,23 @@ function filterAndShowDropdown(val, isMobile = false) {
                 const start = range[0][0];
                 const end = range[0][1] + 1;
                 html = escapedVal.substring(0, start) +
-                    `<span class="text-match">${escapedVal.substring(start, end)}</span>` +
+                    `<span class="text-match ${matchColorClass}">${escapedVal.substring(start, end)}</span>` +
                     escapedVal.substring(end);
             } else {
                 html = escapedVal;
             }
-            html = `<span class="ui-tag ui-shape-rounded ${tagColorClass} name-badge">이름</span>${html}`;
+            html = `<span class="ui-tag shape-rounded001 ${tagColorClass}">이름</span><span class="${textColorClass}">${html}</span>`;
         } else {
             const idx = escapedVal.toLowerCase().indexOf(escapedQuery.toLowerCase());
             if (idx !== -1) {
                 const len = escapedQuery.length;
                 html = escapedVal.substring(0, idx) +
-                    `<span class="text-match">${escapedVal.substring(idx, idx + len)}</span>` +
+                    `<span class="text-match ${matchColorClass}">${escapedVal.substring(idx, idx + len)}</span>` +
                     escapedVal.substring(idx + len);
             } else {
                 html = escapedVal;
             }
-            html = `<span class="ui-tag ui-shape-rounded ${tagColorClass} no-badge">번호</span>${html}`;
+            html = `<span class="ui-tag shape-rounded001 ${tagColorClass}">번호</span><span class="${textColorClass}">${html}</span>`;
         }
 
         li.innerHTML = html;
@@ -5702,6 +5753,49 @@ function handleHelpClick() {
 }
 
 function toggleGuide(forceOpen = null) { const btn = document.getElementById('guide-accordion-btn'); const box = document.getElementById('guide-box'); const isOpen = (forceOpen !== null) ? forceOpen : box.style.display === 'none'; box.style.display = isOpen ? 'block' : 'none'; if (isOpen) btn.classList.add('active'); else btn.classList.remove('active'); }
+
+function getLocalTheme(key) {
+    try {
+        const value = localStorage.getItem(key);
+        return ['light', 'dark'].includes(value) ? value : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function getSystemTheme() {
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function getThemeRecordKey() {
+    return UserStore.user ? ACCOUNT_THEME_KEY_PREFIX + UserStore.user.uid : GUEST_THEME_KEY;
+}
+
+function rememberTheme(mode) {
+    // 마지막 표시값과 비로그인/계정별 기록은 서로 다른 역할이다.
+    for (const key of [THEME_KEY, getThemeRecordKey()]) {
+        try { localStorage.setItem(key, mode); } catch (e) { /* 저장 실패와 화면 적용은 분리한다. */ }
+    }
+}
+
+function applyTheme(mode) {
+    UserStore.settings.theme = mode;
+    document.documentElement.classList.toggle('dark-mode', mode === 'dark');
+    const checkbox = document.getElementById('checkbox-theme');
+    if (checkbox) checkbox.checked = mode === 'dark';
+    updateMetaThemeColor(mode);
+}
+
+function loadUserTheme(settingsFromServer, waitForServer = false) {
+    const localTheme = getLocalTheme(getThemeRecordKey());
+    // 계정 기록이 없으면 서버 응답까지 초기 표시를 유지한다.
+    if (UserStore.user && !localTheme && waitForServer) return;
+    const serverTheme = UserStore.user && ['light', 'dark'].includes(settingsFromServer?.theme)
+        ? settingsFromServer.theme : null;
+    const mode = localTheme || serverTheme || getSystemTheme();
+    applyTheme(mode);
+    rememberTheme(mode);
+}
 /**
  * 사용자 설정을 저장 (DB + LocalStorage)
  */
@@ -5710,7 +5804,7 @@ async function saveUserSetting(field, value) {
 
     // 로컬 스토리지 호환성 유지
     if (field === 'theme') {
-        localStorage.setItem(THEME_KEY, value);
+        rememberTheme(value);
     } else if (field === 'isDetailMode') {
         localStorage.setItem(IS_DETAIL_MODE_KEY, value ? 'true' : 'false');
     }
@@ -5732,22 +5826,11 @@ async function saveUserSetting(field, value) {
  * 저장된 설정을 로드하여 UI에 적용
  */
 function loadUserSettings(settingsFromServer) {
-    // 초기 HTML에서 시스템 테마를 먼저 그린 뒤,
-    // DB > LocalStorage > 시스템 순으로 사용자 설정을 적용한다.
-    const serverTheme = settingsFromServer && ['light', 'dark'].includes(settingsFromServer.theme)
-        ? settingsFromServer.theme
-        : null;
-    const localThemeValue = localStorage.getItem(THEME_KEY);
-    const localTheme = ['light', 'dark'].includes(localThemeValue) ? localThemeValue : null;
-    const systemTheme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light';
-    const savedTheme = serverTheme || localTheme || systemTheme;
+    loadUserTheme(settingsFromServer);
     const savedDetailMode = (settingsFromServer && settingsFromServer.isDetailMode !== undefined)
         ? settingsFromServer.isDetailMode
         : (localStorage.getItem(IS_DETAIL_MODE_KEY) === 'true');
 
-    UserStore.settings.theme = savedTheme;
     UserStore.settings.isDetailMode = savedDetailMode;
 
     // 온보딩 정보 동기화 (DB -> LocalStorage)
@@ -5764,83 +5847,33 @@ function loadUserSettings(settingsFromServer) {
         localStorage.setItem('ygo_synapse_read_notices', JSON.stringify(mergedNotices));
     }
 
-    // 2. 테마 적용
-    if (savedTheme === 'dark') {
-        document.documentElement.classList.add('dark-mode');
-        const chk = document.getElementById('checkbox-theme');
-        if (chk) chk.checked = true;
-        updateMetaThemeColor('dark');
-    } else {
-        document.documentElement.classList.remove('dark-mode');
-        const chk = document.getElementById('checkbox-theme');
-        if (chk) chk.checked = false;
-        updateMetaThemeColor('light');
-    }
 }
 
 /**
  * 모달 상세/요약 토글 핸들러
  */
-function handleToggleDetail() {
-    const nextMode = !UserStore.settings.isDetailMode;
-    saveUserSetting('isDetailMode', nextMode);
-    applyModalDetailUI(nextMode);
+function handleToggleDetail(isDetail = !UserStore.settings.isDetailMode) {
+    saveUserSetting('isDetailMode', isDetail);
+    applyModalDetailUI(isDetail);
 }
 
-/**
- * 현재 열린 모달에 상세/요약 UI 반영 (페이드인 지원)
- */
 function applyModalDetailUI(isDetail) {
-    const activeModal = document.querySelector('.modal.open');
-    if (!activeModal) return;
-
-    const summaryBox = activeModal.querySelector('.js-summary-box');
-    const detailBox = activeModal.querySelector('.js-detail-box');
-    const toggleBtn = activeModal.querySelector('.js-modal-detail-toggle');
-
-    if (!summaryBox || !detailBox) return;
-
-    // 공통 애니메이션 클래스 제거 (재발동을 위해)
-    summaryBox.classList.remove('fade-in');
-    detailBox.classList.remove('fade-in');
-
-    if (isDetail) {
-        summaryBox.style.display = 'none';
-        detailBox.style.display = 'block';
-        detailBox.classList.add('fade-in');
-        if (toggleBtn) toggleBtn.innerText = '간략히 보기';
-    } else {
-        summaryBox.style.display = 'block';
-        detailBox.style.display = 'none';
-        summaryBox.classList.add('fade-in');
-        if (toggleBtn) toggleBtn.innerText = '자세히 보기';
-    }
+    const activeModal = document.querySelector('.modal.open[data-result-operation]');
+    if (!activeModal || activeModal.dataset.resultOperation === 'import') return;
+    AppManagementResults.setView(activeModal, isDetail ? 'detail' : 'summary');
 }
 
-function loadTheme() { loadUserSettings(); }
+function loadTheme() {
+    // 인증 확인 전에는 비로그인 기록을 적용하지 않고 HTML의 마지막 표시를 유지한다.
+    applyTheme(getLocalTheme(THEME_KEY) || getSystemTheme());
+}
 function toggleTheme() {
-    document.documentElement.classList.add('theme-transitioning');
     const isDark = document.getElementById('checkbox-theme').checked;
-
-    // [Fix] requestAnimationFrame을 사용하여 브라우저의 렌더링 프레임을 강제로 분리:
-    // 확실하게 theme-transitioning 규칙이 적용된 프레임 이후에 다크모드 속성을 칠하도록 하여
-    // transition 엔진이 누락되는 현상을 100% 방지합니다.
-    requestAnimationFrame(() => {
-        if (isDark) {
-            document.documentElement.classList.add('dark-mode');
-            saveUserSetting('theme', 'dark');
-            updateMetaThemeColor('dark');
-        } else {
-            document.documentElement.classList.remove('dark-mode');
-            saveUserSetting('theme', 'light');
-            updateMetaThemeColor('light');
-        }
-    });
-
-    setTimeout(() => {
-        document.documentElement.classList.remove('theme-transitioning');
-    }, 350); // 안전 마진 50ms 추가
+    const mode = isDark ? 'dark' : 'light';
+    applyTheme(mode);
+    saveUserSetting('theme', mode);
 }
+
 const regionMap = { 'ko': '한국', 'ja': '일본', 'ae': '아시아', 'cn': '중국', 'en': '영미', 'de': '독일', 'fr': '프랑스', 'it': '이탈리아', 'es': '스페인', 'pt': '포르투갈' };
 function syncRegionOptionSelection(code) {
     document.querySelectorAll('#region-dropdown [role="option"]').forEach(option => {
@@ -5852,6 +5885,7 @@ function loadRegion() {
     UIStore.currentRegion = savedRegion;
     document.getElementById('region-text').innerText = regionMap[savedRegion];
     document.documentElement.setAttribute('data-region', savedRegion);
+    updateFaqLanguage(savedRegion);
     syncRegionOptionSelection(savedRegion);
 }
 // 모든 드롭다운 닫기 (현재는 지역 설정만 및 검색바 등)
@@ -5985,6 +6019,7 @@ function selectRegion(code, text) {
     localStorage.setItem(REGION_KEY, code);
     document.getElementById('region-text').innerText = text;
     document.documentElement.setAttribute('data-region', code);
+    updateFaqLanguage(code);
     syncRegionOptionSelection(code);
 
     closeDropdowns();
@@ -6008,21 +6043,8 @@ function updateMemoryDecodedElements() {
     const resultArea = document.getElementById('result-area');
     if (!resultArea) return;
 
-    // 포괄 검색 뱃지 갱신
-    const broadLabels = resultArea.querySelectorAll('.broad-type-label');
-    broadLabels.forEach(lbl => {
-        const text = lbl.textContent.trim();
-        if (text === "몬스터" || text === "モンスター" || text === "Monster") {
-            lbl.textContent = DECODE_KIND[0] || "몬스터";
-        } else if (text === "마법" || text === "魔法" || text === "Spell" || text === "Magic") {
-            lbl.textContent = DECODE_KIND[1] || "마법";
-        } else if (text === "함정" || text === "罠" || text === "Trap") {
-            lbl.textContent = DECODE_KIND[2] || "함정";
-        }
-    });
-
     // 대상 카드 뷰 테이블 갱신 (속성/종족)
-    const monsterTable = resultArea.querySelector('.target-info-table.monster-table');
+    const monsterTable = resultArea.querySelector('.search-card__table--monster');
     if (monsterTable && typeof lastSearchState !== 'undefined' && lastSearchState && lastSearchState.targetMeta) {
         const rawSlot = lastSearchState.targetMeta.rawSlot || lastSearchState.targetMeta.info || [];
         const attrVal = rawSlot[13];
@@ -6113,6 +6135,10 @@ function refreshCurrentSearchResult() {
                 renderCatalogResults(lastSearchState);
             }
         } else {
+            if (window.location.hash.startsWith('#search?')) {
+                handleHashChange(false);
+                return;
+            }
             const inputEl = document.getElementById('card-search');
             if (inputEl && inputEl.value.trim()) {
                 startSearch(true);
@@ -6122,7 +6148,10 @@ function refreshCurrentSearchResult() {
 }
 
 function updateTooltipsOnly() {
-    const headers = document.querySelectorAll('th.sp-col.tooltipped');
+    const resultArea = (typeof SearchNavigation !== 'undefined' && SearchNavigation.currentPane())
+        || document.getElementById('result-area');
+    if (!resultArea) return;
+    const headers = resultArea.querySelectorAll('th.sp-col.tooltipped');
     if (headers.length === 0) return;
 
     headers.forEach(th => {
@@ -6139,14 +6168,11 @@ function updateTooltipsOnly() {
             }
         }
 
-        newTooltip = String(newTooltip).replace(/\(/g, '<br>(');
+        newTooltip = escapeHTML(String(newTooltip)).replace(/\(/g, '<br>(');
         th.setAttribute('data-tooltip', newTooltip);
     });
 
-    const resultArea = document.getElementById('result-area');
-    if (resultArea) {
-        M.Tooltip.init(resultArea.querySelectorAll('.tooltipped'), { html: true, margin: 3 });
-    }
+    M.Tooltip.init(headers, { html: true, margin: 3 });
 }
 
 function updateRarityInputs() {
@@ -6235,9 +6261,11 @@ async function requestApi(action, params = {}, postData = null) {
     if (action === 'searchCardByImage') options.signal = AbortSignal.timeout(45000);
 
     // 최신 Firebase ID Token을 즉시 가져와 Authorization 헤더에 설정 (오래된 캐시 토큰으로 인한 403 거부 방지)
-    if (UserStore.user) {
+    const authUser = UserStore.user || (['getRegistrationStatus', 'completeRegistration'].includes(action)
+        ? firebase.auth().currentUser : null);
+    if (authUser) {
         try {
-            const token = await UserStore.user.getIdToken();
+            const token = await authUser.getIdToken();
             _cachedAuthToken = token;
             options.headers['Authorization'] = `Bearer ${token}`;
         } catch (authErr) {
@@ -6275,7 +6303,7 @@ async function requestApi(action, params = {}, postData = null) {
             const errBody = await response.json().catch(() => ({}));
             console.error(`[API Error Details] Action: ${action}, Status: ${response.status}`, errBody);
             const detailMsg = errBody.message || errBody.name || (Object.keys(errBody).length ? JSON.stringify(errBody) : "");
-            throw new Error(detailMsg ? `HTTP ${response.status}: ${detailMsg}` : `HTTP error! status: ${response.status}`);
+            throw Object.assign(new Error(detailMsg ? `HTTP ${response.status}: ${detailMsg}` : `HTTP error! status: ${response.status}`), { code: errBody.code });
         }
 
         const res = await response.json();
@@ -6346,7 +6374,7 @@ async function refreshInitialData(forceSync = false) {
     }
 }
 
-async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarget = null) {
+async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarget = null, navigationOptions = {}) {
     const sequence = ++searchSequence;
     // [AD] 검색 시 결과 하단 광고 갱신
     if (typeof refreshAdUnit === 'function') refreshAdUnit('search-result-ad');
@@ -6433,12 +6461,12 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
         if (sequence !== searchSequence) return;
 
         const targetCid = fetchedCid || findCidByNameOrNo(targetCardName, prioritizeNumber);
-        updateSearchHash('target', { cid: targetCid, code: prioritizeNumber }, true);
+        if (typeof SearchNavigation === 'undefined') updateSearchHash('target', { cid: targetCid, code: prioritizeNumber }, true);
 
         // CID 기반 다국어 보유 카드 수집 및 언어권 상단 정렬
         let targetRows = getInventoryRowsByCidOrName(targetCid, targetCardName, prioritizeNumber);
 
-        // animateVerticalExpand의 old 접기 애니메이션(0.4s)과 API 호출을 병렬 실행 — Safari 딜레이 해소
+        // 카드의 기본 정보를 먼저 표시하고 메타데이터는 같은 화면 안에서 갱신한다.
         const metaPromise = fetchCardMetaWithCache(targetCid, targetCardName, prioritizeNumber);
 
         const renderTargetFunc = (mountContainer) => {
@@ -6447,16 +6475,17 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
                 .catch(error => console.error('[Search] 대상 카드 렌더링 실패:', error));
         };
 
-        if (UIStore.mode === 'search') {
-            if (isInstant) { await renderTargetFunc(); return; }
-            await animateVerticalExpand(renderTargetFunc);
+        if (typeof SearchNavigation !== 'undefined') {
+            SearchNavigation.showTarget({ type: 'target', targetCardName, targetRows,
+                prioritizeNumber, targetCid, targetMeta: null }, renderTargetFunc,
+                { ...navigationOptions, instant: isInstant });
         } else {
             await renderTargetFunc();
             switchToMode('search', isInstant);
         }
 
     } else {
-        updateSearchHash('broad', { searchType, key: name }, true);
+        if (typeof SearchNavigation === 'undefined') updateSearchHash('broad', { searchType, key: name }, true);
         await showCatalogSearch(name, searchType, sequence, isInstant);
         return;
     }
@@ -6466,218 +6495,6 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
     checkClearBtn();
     showLoading(false);
 }
-
-// 1. 포괄 검색 리스트 항목 클릭 ➔ 대상 검색 전용 좌우 슬라이드 밀어내기 애니메이션
-function animatePushSlide(renderFunc) {
-    const resultArea = document.getElementById('result-area');
-    if (!resultArea) { renderFunc(); return; }
-
-    const parentContainer = resultArea.parentNode || document.getElementById('app-page-search');
-    if (!parentContainer) { renderFunc(); return; }
-
-    // [핵심] 상/하 마진(30px + 30px = 60px) 오프셋 측정
-    const resStyle = getComputedStyle(resultArea);
-    const marginOffset = (parseFloat(resStyle.marginTop) || 0) + (parseFloat(resStyle.marginBottom) || 0);
-
-    const oldHeight = resultArea.offsetHeight > 0 ? (resultArea.offsetHeight + marginOffset) : 0;
-
-    parentContainer.classList.add('slide-push-container');
-
-    // 1. 기존 화면 복제
-    const ghost = resultArea.cloneNode(true);
-    ghost.id = 'result-ghost';
-    ghost.className = 'slide-push-ghost-exit';
-    ghost.style.top = '0px';
-    parentContainer.appendChild(ghost);
-
-    // 2. 새 대상 검색 화면 렌더링
-    renderFunc();
-
-    // 3. 목표 높이(newHeight + marginOffset) 측정 및 부모 컨테이너 연속 높이 준비
-    resultArea.classList.remove('slide-push-area-enter', 'active');
-    resultArea.style.transition = 'none';
-    resultArea.style.position = 'relative';
-    let curContentHeight = resultArea.scrollHeight || resultArea.offsetHeight;
-    let newHeight = curContentHeight > 0 ? (curContentHeight + marginOffset) : 0;
-    resultArea.style.position = '';
-
-    resultArea.classList.add('slide-push-area-enter');
-
-    let isTransitionStarted = false;
-
-    if (oldHeight > 0 && newHeight > 0) {
-        parentContainer.style.transition = 'none';
-        parentContainer.style.height = oldHeight + 'px';
-    }
-
-    void resultArea.offsetHeight;
-
-    // 4. ResizeObserver 부착: 20ms 트랜지션 시작 후 resultArea 내부 비동기 카드 데이터 수신으로 높이가 늘어나면 즉시 부모 높이 실시간 반영!
-    let slideResizeObserver = null;
-    if (typeof ResizeObserver !== 'undefined') {
-        slideResizeObserver = new ResizeObserver(() => {
-            let liveContentHeight = resultArea.scrollHeight || resultArea.offsetHeight;
-            if (resultArea.children.length > 0) {
-                let childrenHeightSum = 0;
-                for (let i = 0; i < resultArea.children.length; i++) {
-                    childrenHeightSum += resultArea.children[i].scrollHeight || resultArea.children[i].offsetHeight;
-                }
-                if (childrenHeightSum > liveContentHeight) liveContentHeight = childrenHeightSum;
-            }
-
-            if (liveContentHeight > 0) {
-                const liveTotal = liveContentHeight + marginOffset;
-                if (liveTotal !== newHeight) {
-                    newHeight = liveTotal;
-                    if (isTransitionStarted && oldHeight > 0) {
-                        parentContainer.style.height = newHeight + 'px';
-                    }
-                }
-            }
-        });
-        slideResizeObserver.observe(resultArea);
-        for (let i = 0; i < resultArea.children.length; i++) {
-            slideResizeObserver.observe(resultArea.children[i]);
-        }
-    }
-
-    // 5. 동시 트랜지션 시작 (마진 포함 oldHeight ➔ newHeight 연속 높이 변형)
-    setTimeout(() => {
-        isTransitionStarted = true;
-        resultArea.style.transition = '';
-        if (oldHeight > 0 && newHeight > 0) {
-            parentContainer.style.transition = 'height 0.4s cubic-bezier(0.25, 1, 0.5, 1)';
-            parentContainer.style.height = newHeight + 'px';
-        }
-        ghost.classList.add('active');
-        resultArea.classList.add('active');
-    }, 20);
-
-    // 6. 완료 후 ResizeObserver 해제, 수동 고정 해제 및 정규 흐름 원복
-    setTimeout(() => {
-        if (slideResizeObserver) {
-            slideResizeObserver.disconnect();
-            slideResizeObserver = null;
-        }
-
-        if (ghost.parentNode) ghost.parentNode.removeChild(ghost);
-        resultArea.classList.remove('slide-push-area-enter', 'active');
-        resultArea.style.transition = '';
-        parentContainer.classList.remove('slide-push-container');
-        parentContainer.style.transition = '';
-        parentContainer.style.height = '';
-    }, 420);
-}
-
-// 2. 상단 검색바를 통한 새로운 검색 전용 수직 높이 펼침 애니메이션 (Y축 높이 보존 1:1 대칭 밀어내기)
-async function animateVerticalExpand(renderFunc) {
-    const resultArea = document.getElementById('result-area');
-    if (!resultArea) { if (renderFunc) await renderFunc(); return; }
-
-    const parentContainer = resultArea.parentNode || document.getElementById('app-page-search');
-    if (!parentContainer) { if (renderFunc) await renderFunc(); return; }
-
-    const resStyle = getComputedStyle(resultArea);
-    const marginOffset = (parseFloat(resStyle.marginTop) || 0) + (parseFloat(resStyle.marginBottom) || 0);
-
-    const oldHeight = resultArea.offsetHeight;
-    const oldTotalHeight = oldHeight > 0 ? (oldHeight + marginOffset) : 0;
-
-    // 1. [OLD 컨테이너] 기존 검색 결과를 old-search-container로 감싸기
-    const oldContainer = document.createElement('div');
-    oldContainer.className = 'old-search-container';
-    if (oldHeight > 0) {
-        oldContainer.style.maxHeight = oldHeight + 'px';
-    }
-
-    while (resultArea.firstChild) {
-        oldContainer.appendChild(resultArea.firstChild);
-    }
-    resultArea.appendChild(oldContainer);
-
-    // 2. [NEW 컨테이너] 새 결과를 담을 독립적인 new-search-container 생성 (oldContainer보다 Y축 상단 위치!)
-    const newContainer = document.createElement('div');
-    newContainer.className = 'new-search-container';
-    newContainer.style.visibility = 'hidden';
-    resultArea.insertBefore(newContainer, oldContainer);
-
-    // 새 결과 화면 렌더링 (Target & Inventory 100% 완성!)
-    if (renderFunc) {
-        await renderFunc(newContainer);
-    }
-
-    // 3. newContainer 목표 높이 측정
-    newContainer.style.transition = 'none';
-    newContainer.style.maxHeight = 'none';
-    let newHeight = newContainer.offsetHeight;
-    let newTotalHeight = newHeight > 0 ? (newHeight + marginOffset) : 0;
-
-    newContainer.style.maxHeight = '0px';
-    newContainer.style.visibility = ''; // 높이가 0px로 세팅된 후 보이기 복원
-
-    if (oldTotalHeight > 0 && newTotalHeight > 0) {
-        parentContainer.style.transition = 'none';
-        parentContainer.style.height = oldTotalHeight + 'px';
-    }
-
-    void oldContainer.offsetHeight;
-    void newContainer.offsetHeight;
-
-    // 4. ResizeObserver 부착: 애니메이션 도중 newContainer 내부 비동기 렌더링으로 높이가 변하더라도 실시간 목표 높이 갱신!
-    let resizeObserver = null;
-    if (typeof ResizeObserver !== 'undefined') {
-        resizeObserver = new ResizeObserver(() => {
-            const liveHeight = newContainer.scrollHeight || newContainer.offsetHeight;
-            if (liveHeight > 0 && liveHeight !== newHeight) {
-                newHeight = liveHeight;
-                newTotalHeight = newHeight + marginOffset;
-                newContainer.style.maxHeight = newHeight + 'px';
-                if (oldTotalHeight > 0) {
-                    parentContainer.style.height = newTotalHeight + 'px';
-                }
-            }
-        });
-        resizeObserver.observe(newContainer);
-    }
-
-    // 5. 이중 컨테이너 동시 트랜지션 (old 0.4초 축소 + new 0.4초 팽창 등장!)
-    setTimeout(() => {
-        if (oldTotalHeight > 0 && newTotalHeight > 0) {
-            parentContainer.style.transition = 'height 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
-            parentContainer.style.height = newTotalHeight + 'px';
-        }
-
-        oldContainer.style.transition = 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease';
-        oldContainer.style.maxHeight = '0px';
-        oldContainer.classList.add('collapse-active');
-
-        newContainer.style.transition = 'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease';
-        newContainer.style.maxHeight = newHeight + 'px';
-        newContainer.classList.add('expand-active');
-    }, 20);
-
-    // 6. 완료 후 ResizeObserver 해제, oldContainer 제거 및 newContainer 정상 원복
-    setTimeout(() => {
-        if (resizeObserver) {
-            resizeObserver.disconnect();
-            resizeObserver = null;
-        }
-
-        if (oldContainer.parentNode) oldContainer.parentNode.removeChild(oldContainer);
-
-        while (newContainer.firstChild) {
-            resultArea.appendChild(newContainer.firstChild);
-        }
-        if (newContainer.parentNode) newContainer.parentNode.removeChild(newContainer);
-
-        resultArea.style.transition = '';
-        resultArea.style.maxHeight = '';
-        parentContainer.style.transition = '';
-        parentContainer.style.height = '';
-    }, 420);
-}
-
-const DECODE_KIND = { 0: "몬스터", 1: "마법", 2: "함정" };
 
 const DECODE_ATTR = [
     ["어둠", "빛", "땅", "물", "화염", "바람", "신"],
@@ -6802,118 +6619,86 @@ function findCidByNameOrNo(cardName, cardNo = null) {
     return ClientCache._knownNameToCid[cardName] || ClientCache._knownNameToCid[name] || null;
 }
 
-async function renderTargetByCid(cid, code = null, isInstant = false) {
-    const sequence = ++searchSequence;
+async function renderTargetByCid(cid, code = null, isInstant = false, navigationOptions = {}) {
     if (!cid) return;
-    switchToMode('search', isInstant);
-
-    let cardName = typeof ClientCache !== 'undefined' ? ClientCache.getCardNameByCid(cid, UIStore.currentRegion) : null;
-    let targetMeta = null;
-
-    const relatedNames = new Set();
-    if (cardName) relatedNames.add(cardName);
-
-    try {
-        const res = await fetchCardMetaWithCache(cid, cardName || '');
-        if (res && res.success && res.info) {
-            targetMeta = res;
-            const langArr = extractLangData(res);
-            if (langArr && langArr[0]) {
-                cardName = langArr[0];
-                relatedNames.add(cardName);
-            }
-
-            // res.info (0~9 언어 객체)에 들어있는 모든 언어권 카드 이름을 추출하여 relatedNames에 추가
-            if (res.info && typeof res.info === 'object' && !Array.isArray(res.info)) {
-                Object.keys(res.info).forEach(k => {
-                    const infoItem = res.info[k];
-                    if (Array.isArray(infoItem) && infoItem[0] && typeof infoItem[0] === 'string') {
-                        const nameStr = infoItem[0].trim();
-                        if (nameStr && nameStr.length < 150) relatedNames.add(nameStr);
-                    }
-                });
-            }
+    ++searchSequence;
+    const cardName = ClientCache.getCardNameByCid(cid, UIStore.currentRegion) || code || `CID: ${cid}`;
+    const targetRows = getInventoryRowsByCidOrName(cid, cardName, code);
+    // Do not wait for the network before entering the selected card.
+    const metaPromise = fetchCardMetaWithCache(cid, cardName).then(meta => {
+        if (meta?.info) {
+            const names = Object.values(meta.info).filter(value => Array.isArray(value)
+                && typeof value[0] === 'string' && value[0].length < 150).map(value => value[0]);
+            ClientCache.registerCid(cid, names, code ? [code] : []);
         }
-    } catch (e) {
-        console.warn("[renderTargetByCid] getCardMetadata error:", e.message);
-    }
-
-    if (sequence !== searchSequence) return;
-    if (!cardName) cardName = code || `CID: ${cid}`;
-    relatedNames.add(cardName);
-
-    if (cid && typeof ClientCache !== 'undefined') {
-        ClientCache.registerCid(cid, Array.from(relatedNames));
-    }
-
-    let targetRows = getInventoryRowsByCidOrName(cid, cardName, code);
-
-    // 이미 획득한 targetMeta를 그대로 전달하여 renderTargetSearchResult 내부의 중복 API 호출 방지
-    const preFetchedMeta = targetMeta ? Promise.resolve(targetMeta) : null;
-
-    const renderFunc = async (mountContainer) => {
-        if (sequence !== searchSequence) return;
-        await renderTargetSearchResult(cardName, targetRows, code, mountContainer, cid, preFetchedMeta);
-    };
-
-    if (isInstant) {
-        await renderFunc();
+        return meta;
+    });
+    const render = mount => renderTargetSearchResult(cardName, targetRows, code, mount, cid, metaPromise);
+    if (typeof SearchNavigation !== 'undefined') {
+        SearchNavigation.showTarget({ type: 'target', targetCardName: cardName, targetRows,
+            prioritizeNumber: code, targetCid: cid, targetMeta: null }, render,
+            { ...navigationOptions, instant: isInstant });
     } else {
-        await animateVerticalExpand(renderFunc);
+        switchToMode('search', isInstant);
+        await render();
     }
 }
 
 async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNumber = null, mountContainer = null, forcedCid = null, preFetchedMetaPromise = null) {
-    const targetSequence = ++searchSequence;
     let targetCid = forcedCid || findCidByNameOrNo(targetCardName, prioritizeNumber);
     if (targetCid) targetRows = getInventoryRowsByCidOrName(targetCid, targetCardName, prioritizeNumber);
 
     const previousCardName = (typeof lastSearchState !== 'undefined' && lastSearchState) ? lastSearchState.targetCardName : null;
     const previousCid = (typeof lastSearchState !== 'undefined' && lastSearchState) ? lastSearchState.targetCid : null;
 
-    const targetArea = mountContainer || document.getElementById('result-area');
+    const targetArea = mountContainer || (typeof SearchNavigation !== 'undefined' && SearchNavigation.currentPane()) || document.getElementById('result-area');
     targetArea.setAttribute('aria-busy', 'false');
 
-    // 튀는 현상 원천 차단: 동일한 카드의 보유 목록 수정 시 기존 상단 메타데이터(tempBox) 유지 및 In-Place 갱신
-    const existingTempBox = targetArea.querySelector('.target-card-temp-box');
+    // 동일한 카드의 보유 목록 수정 시 상단 카드 정보는 유지합니다.
+    const existingTempBox = targetArea.querySelector('.search-card');
     const existingBottomSec = targetArea.querySelector('.target-inventory-section');
 
-    const isSameCard = (previousCid && targetCid && String(previousCid) === String(targetCid)) || 
-                       (previousCardName && targetCardName && previousCardName === targetCardName);
+    const isSameCard = previousCid && targetCid
+        ? String(previousCid) === String(targetCid)
+        : previousCardName && targetCardName && previousCardName === targetCardName;
 
     if (existingTempBox && existingBottomSec && !mountContainer && isSameCard) {
         lastSearchState = { ...lastSearchState, targetRows, targetCid };
-        existingBottomSec.innerHTML = '';
-        if (targetRows.length === 0) {
-            existingBottomSec.innerHTML = `<p class="center" style="padding: 20px 0; color: var(--text-001);">등록되지 않은 카드입니다.</p>`;
-        } else {
-            renderTableToContainer(targetRows, existingBottomSec);
-        }
+        if (typeof SearchNavigation !== 'undefined') SearchNavigation.updateTarget(lastSearchState, targetArea);
+        renderOwnedCardsToContainer(targetRows, existingBottomSec);
         return;
     }
 
+    const targetSequence = ++searchSequence;
     targetArea.innerHTML = '';
 
-    const tempBox = document.createElement('div');
-    tempBox.className = 'target-card-temp-box';
+    const tempBox = document.createElement('article');
+    tempBox.className = 'search-card color-surface-001 shape-rounded002';
+    const titleId = `search-card-title-${targetSequence}`;
+    tempBox.setAttribute('aria-labelledby', titleId);
     targetArea.appendChild(tempBox);
 
     // 2. 하단 보유 카드 검색 결과 영역
-    const bottomSec = document.createElement('div');
+    // 언어 변경으로 상단 설명을 다시 그려도 보유 상세의 펼침 상태는 유지합니다.
+    const bottomSec = isSameCard && existingBottomSec ? existingBottomSec : document.createElement('section');
     bottomSec.className = 'target-inventory-section';
-
-    if (targetRows.length === 0) {
-        bottomSec.innerHTML = `<p class="center" style="padding: 20px 0; color: var(--text-001);">등록되지 않은 카드입니다.</p>`;
-    } else {
-        renderTableToContainer(targetRows, bottomSec);
-    }
+    bottomSec.setAttribute('aria-label', '보유 정보');
+    renderOwnedCardsToContainer(targetRows, bottomSec);
     targetArea.appendChild(bottomSec);
 
-    // [상단 4개 수직 구역 렌더링 로직]
-    // Safari 최적화: innerHTML 파싱 제거 → createElement + textContent + DocumentFragment
-    // innerHTML은 HTML 파서를 실행하지만 createElement + textContent는 파싱 없이 직접 DOM 노드 생성
-    // DocumentFragment로 모든 노드를 조립 후 한 번에 삽입하여 Reflow를 4회→1회로 감소
-    const renderFourSections = (cardMeta) => {
+    // 이름·정보·설명을 textContent와 DocumentFragment로 조립합니다.
+    const renderCardDetails = (cardMeta) => {
+        const previousFocus = document.activeElement;
+        let focusSelector = null;
+        let focusArtwork = null;
+        if (previousFocus && tempBox.contains(previousFocus)) {
+            const focusClasses = ['search-card__title', 'search-results__back', 'search-art-toggle', 'search-art-prev', 'search-art-next',
+                'search-art-strip-prev', 'search-art-strip-next'];
+            const focusedClass = focusClasses.find(name => previousFocus.classList.contains(name));
+            if (focusedClass) focusSelector = `.${focusedClass}`;
+            else if (previousFocus.classList.contains('search-art-thumb')) focusArtwork = previousFocus.dataset.artworkId;
+            else if (previousFocus === tempBox.querySelector('.search-art-region > button')) focusSelector = '.search-art-region > button';
+        }
         const locIdx = getRegionLocIdx();
         const langArr = extractLangData(cardMeta);
 
@@ -6943,15 +6728,18 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
         const fragment = document.createDocumentFragment();
 
         // 1. [이름] 구역 — textContent로 XSS 안전하게 처리 (escapeHTML 불필요)
-        const sec1 = document.createElement('div');
-        sec1.className = 'target-sec-name';
-        const nameTitle = document.createElement('div');
-        nameTitle.className = 'target-name-title';
+        const sec1 = document.createElement('header');
+        sec1.className = 'search-card__name';
+        const nameTitle = document.createElement('h2');
+        nameTitle.className = 'search-card__title color-text-000';
+        nameTitle.id = titleId;
         nameTitle.textContent = nameVal;
         sec1.appendChild(nameTitle);
+        const backLink = tempBox.querySelector('.search-results__back');
+        if (backLink) sec1.prepend(backLink);
         if (prioritizeNumber) {
-            const nameSub = document.createElement('div');
-            nameSub.className = 'target-name-sub';
+            const nameSub = document.createElement('p');
+            nameSub.className = 'search-card__number color-text-002';
             nameSub.textContent = `(검색 번호: ${prioritizeNumber})`;
             sec1.appendChild(nameSub);
         }
@@ -6959,7 +6747,7 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
 
         // 2. [정보] 구역
         const sec2 = document.createElement('div');
-        sec2.className = 'target-sec-info';
+        sec2.className = 'search-card__info border-basic shape-rounded002';
 
         if (kind === 1 || kind === 2 || etcList.some(e => e >= 15 && e <= 23)) {
             // 마법 / 함정 ➔ 1행 1열 단일 셀 구도
@@ -6971,16 +6759,17 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
                 spellTrapText = (kind === 2 ? "일반 함정" : "일반 마법");
             }
             const stTable = document.createElement('table');
-            stTable.className = 'target-info-table spell-trap-table';
+            stTable.className = 'search-card__table';
+            stTable.setAttribute('aria-label', '카드 정보');
             const stTbody = document.createElement('tbody');
             const stTr = document.createElement('tr');
             const stTd = document.createElement('td');
-            stTd.className = 'spell-trap-single-cell';
+            stTd.className = 'search-card__kind search-card__value color-surface-001 color-text-001 border-basic';
             stTd.textContent = spellTrapText;
             stTr.appendChild(stTd); stTbody.appendChild(stTr); stTable.appendChild(stTbody);
             sec2.appendChild(stTable);
         } else {
-            // 몬스터 ➔ 3행 테이블 구도
+            // 몬스터 ➔ 기본 정보 2행과 조건부 분류 1행
             const attrText = (attrVal !== null && attrVal !== undefined && DECODE_ATTR[locIdx]?.[attrVal]) ? DECODE_ATTR[locIdx][attrVal] : "-";
             const speciesText = (speciesVal !== null && speciesVal !== undefined && DECODE_SPECIES[locIdx]?.[speciesVal]) ? DECODE_SPECIES[locIdx][speciesVal] : "-";
             let levelLabel = "레벨";
@@ -6988,99 +6777,116 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
             else if (etcList.includes(13)) levelLabel = "LINK";
             const levelDisplay = levelVal !== null && levelVal !== undefined ? (levelLabel === "LINK" ? `LINK-${levelVal}` : `★ ${levelVal}`) : "-";
             const atkDisplay = atkVal !== null && atkVal !== undefined ? (atkVal === -1 ? "?" : String(atkVal)) : "-";
-            const defDisplay = defVal !== null && defVal !== undefined ? (defVal === -1 ? "?" : String(defVal)) : "-";
-            const showDef = !etcList.includes(13);
+            const defDisplay = !etcList.includes(13) && defVal !== null && defVal !== undefined ? (defVal === -1 ? "?" : String(defVal)) : "-";
+            const scaleDisplay = etcList.includes(6) && scaleVal !== null && scaleVal !== undefined && scaleVal !== '' ? String(scaleVal) : "-";
 
             const mTable = document.createElement('table');
-            mTable.className = 'target-info-table monster-table';
+            mTable.className = 'search-card__table search-card__table--monster';
+            mTable.setAttribute('aria-label', '카드 정보');
             const mTbody = document.createElement('tbody');
 
             // 행 1: 속성 / 종족 / 레벨
-            const mkThTd = (label, value) => {
-                const th = document.createElement('th'); th.textContent = label;
-                const td = document.createElement('td'); td.textContent = value;
+            const mkThTd = (key, label, value) => {
+                const th = document.createElement('th');
+                th.className = 'search-card__label color-surface-002 color-text-000 border-basic';
+                th.id = `search-card-${targetSequence}-${key}`;
+                if (key === 'pendulum') {
+                    const fullLabel = document.createElement('span');
+                    fullLabel.className = 'search-card__label-desktop';
+                    fullLabel.textContent = label;
+                    const shortLabel = document.createElement('span');
+                    shortLabel.className = 'search-card__label-mobile';
+                    shortLabel.textContent = '펜듈럼';
+                    th.append(fullLabel, shortLabel);
+                } else {
+                    th.textContent = label;
+                }
+                const td = document.createElement('td');
+                td.className = 'search-card__value color-surface-001 color-text-001 border-basic';
+                td.setAttribute('headers', th.id);
+                td.textContent = value;
                 return [th, td];
             };
             const tr1 = document.createElement('tr');
-            tr1.append(...mkThTd('속성', attrText), ...mkThTd('종족', speciesText), ...mkThTd(levelLabel, levelDisplay));
+            tr1.append(...mkThTd('attribute', '속성', attrText), ...mkThTd('race', '종족', speciesText), ...mkThTd('level', levelLabel, levelDisplay));
             mTbody.appendChild(tr1);
 
-            // 행 2: 공격력 / 수비력
+            // 행 2: 공격력 / 수비력 / 펜듈럼 스케일
             const tr2 = document.createElement('tr');
-            const thAtk = document.createElement('th'); thAtk.textContent = '공격력';
-            const tdAtk = document.createElement('td'); tdAtk.colSpan = 2; tdAtk.textContent = atkDisplay;
-            tr2.append(thAtk, tdAtk);
-            if (showDef) {
-                const thDef = document.createElement('th'); thDef.textContent = '수비력';
-                const tdDef = document.createElement('td'); tdDef.colSpan = 2; tdDef.textContent = defDisplay;
-                tr2.append(thDef, tdDef);
-            } else {
-                const tdEmpty = document.createElement('td'); tdEmpty.colSpan = 3;
-                tr2.appendChild(tdEmpty);
-            }
+            tr2.append(...mkThTd('attack', '공격력', atkDisplay), ...mkThTd('defense', '수비력', defDisplay), ...mkThTd('pendulum', '펜듈럼 스케일', scaleDisplay));
             mTbody.appendChild(tr2);
 
             // 행 3: 분류 배지 (조건부)
             const monsterEtcList = etcList.filter(e => e >= 0 && e <= 14);
             if (monsterEtcList.length > 0) {
                 const tr3 = document.createElement('tr');
-                const thBadge = document.createElement('th'); thBadge.textContent = '분류';
-                const tdBadge = document.createElement('td'); tdBadge.colSpan = 5; tdBadge.className = 'badge-cell';
+                const tdBadge = document.createElement('td');
+                tdBadge.colSpan = 6;
+                tdBadge.className = 'search-card__classifications color-surface-001 color-text-001 border-basic';
+                const accessibleLabel = document.createElement('span');
+                accessibleLabel.className = 'visually-hidden';
+                accessibleLabel.textContent = '분류: ';
+                const badges = document.createElement('div');
+                badges.className = 'ui-chip-list';
                 monsterEtcList.forEach(e => {
                     const label = DECODE_ETC[locIdx]?.[e] || "";
                     if (label) {
                         const span = document.createElement('span');
-                        span.className = 'pill-badge';
+                        span.className = 'ui-chip ui-chip--compact color-tint-theme shape-capsule';
                         span.textContent = label;
-                        tdBadge.appendChild(span);
+                        badges.appendChild(span);
                     }
                 });
-                tr3.append(thBadge, tdBadge);
-                mTbody.appendChild(tr3);
+                if (badges.children.length) {
+                    tdBadge.append(accessibleLabel, badges);
+                    tr3.appendChild(tdBadge);
+                    mTbody.appendChild(tr3);
+                }
             }
             mTable.appendChild(mTbody);
             sec2.appendChild(mTable);
         }
         fragment.appendChild(sec2);
 
-        // 3. [펜듈럼] 구역 (조건부)
-        if (etcList.includes(6)) {
-            const sec3 = document.createElement('div');
-            sec3.className = 'target-sec-pendulum';
-            const pTable = document.createElement('table');
-            pTable.className = 'target-info-table pendulum-table';
-            const pTbody = document.createElement('tbody');
-            const pTr1 = document.createElement('tr');
-            const pTdText = document.createElement('td');
-            pTdText.className = 'pen-text-cell'; pTdText.rowSpan = 2;
-            pTdText.textContent = penTextVal || "-";
-            const pThScale = document.createElement('th');
-            pThScale.className = 'pen-scale-header'; pThScale.textContent = '스케일';
-            pTr1.append(pTdText, pThScale);
-            pTbody.appendChild(pTr1);
-            const pTr2 = document.createElement('tr');
-            const pTdVal = document.createElement('td');
-            pTdVal.className = 'pen-scale-val';
-            pTdVal.textContent = (scaleVal !== null && scaleVal !== undefined) ? String(scaleVal) : "-";
-            pTr2.appendChild(pTdVal);
-            pTbody.appendChild(pTr2);
-            pTable.appendChild(pTbody); sec3.appendChild(pTable);
-            fragment.appendChild(sec3);
-        }
-
-        // 4. [텍스트] 구역
-        const sec4 = document.createElement('div');
-        sec4.className = 'target-sec-text';
-        const cardTextDiv = document.createElement('div');
-        cardTextDiv.className = 'target-card-text';
-        cardTextDiv.textContent = cardTextVal || "카드 텍스트 정보가 없습니다.";
-        sec4.appendChild(cardTextDiv);
-        fragment.appendChild(sec4);
+        // 3. 펜듈럼 효과와 카드 텍스트를 하나의 설명 영역에 배치합니다.
+        const textSection = document.createElement('div');
+        textSection.className = 'search-card__text color-surface-000 color-text-000 shape-rounded002';
+        const appendTextSection = (title, content) => {
+            const section = document.createElement('section');
+            section.className = 'search-card__text-section';
+            const heading = document.createElement('h3');
+            heading.className = 'search-card__text-heading';
+            heading.textContent = title;
+            const body = document.createElement('p');
+            body.className = 'search-card__text-body';
+            body.textContent = content;
+            section.append(heading, body);
+            textSection.appendChild(section);
+        };
+        if (etcList.includes(6)) appendTextSection('[펜듈럼 효과]', penTextVal || '-');
+        appendTextSection('[카드 텍스트]', cardTextVal || '카드 텍스트 정보가 없습니다.');
+        fragment.appendChild(textSection);
 
         // tempBox 초기화 후 Fragment를 한 번에 삽입 (Reflow 1회)
         tempBox.innerHTML = '';
         tempBox.appendChild(fragment);
-        SearchIllustrations.mount(tempBox, targetCid || cardMeta?.cid, cardMeta?.info);
+        const artworkReady = SearchIllustrations.mount(tempBox, targetCid || cardMeta?.cid, cardMeta?.info);
+        const restoreDetailFocus = () => {
+            if (!tempBox.isConnected || targetSequence !== searchSequence) return;
+            // 조회를 기다리는 동안 사용자가 다른 조작으로 옮긴 초점은 가져오지 않습니다.
+            if (document.activeElement !== previousFocus && document.activeElement !== document.body) return;
+            const control = focusArtwork
+                ? [...tempBox.querySelectorAll('.search-art-thumb')].find(thumb => thumb.dataset.artworkId === focusArtwork)
+                : tempBox.querySelector(focusSelector);
+            if (!control) return;
+            if (focusSelector === '.search-card__title') {
+                control.tabIndex = -1;
+                control.classList.add('search-results__focus-target');
+            }
+            control.focus({ preventScroll: true });
+        };
+        if (focusSelector === '.search-card__title' || focusSelector === '.search-results__back' || focusSelector === '.search-art-toggle') restoreDetailFocus();
+        else if (focusSelector || focusArtwork) Promise.resolve(artworkReady).then(restoreDetailFocus).catch(() => {});
     };
 
     if (!targetCid) targetCid = findCidByNameOrNo(targetCardName, prioritizeNumber);
@@ -7096,7 +6902,7 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
 
     // [방안 B - 1차 렌더링] 로컬 캐시(또는 카드명만)으로 즉시 렌더링 — API 대기 없음
     // 수평 전환 시 애니메이션 진행 중에 카드명이 즉시 표시되는 효과
-    renderFourSections(targetMeta);
+    renderCardDetails(targetMeta);
 
     // 3순위: API 완료 대기 (preFetchedMetaPromise는 이미 RAM에서 거의 즉시 resolve)
     try {
@@ -7105,7 +6911,7 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
         if (res && (res.info || res.rawSlot)) {
             targetMeta = res;
             // [방안 B - 2차 렌더링] 완전한 API 데이터로 갱신
-            renderFourSections(targetMeta);
+            renderCardDetails(targetMeta);
         }
     } catch (e) {
         console.warn("[TargetBox] getCardMetadata 연동 실패, 기본 캐시 유지:", e.message);
@@ -7118,10 +6924,12 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
         ClientCache.registerCid(targetCid, [targetCardName], [prioritizeNumber]);
         targetRows = getInventoryRowsByCidOrName(targetCid, targetCardName, prioritizeNumber);
         // 전환 애니메이션이 끝나면 결과 요소는 임시 컨테이너에서 본문으로 이동합니다.
-        if (bottomSec.isConnected) renderTableToContainer(targetRows, bottomSec);
+        if (bottomSec.isConnected) renderOwnedCardsToContainer(targetRows, bottomSec);
     }
 
-    if (!mountContainer) {
+    if (typeof SearchNavigation !== 'undefined') {
+        SearchNavigation.updateTarget({ type: 'target', targetCardName, targetRows, prioritizeNumber, targetCid, targetMeta }, targetArea);
+    } else if (!mountContainer) {
         lastSearchState = { type: 'target', targetCardName, targetRows, prioritizeNumber, targetCid, targetMeta };
         if (targetCid && targetCid !== "null" && targetCid !== "undefined") {
             updateSearchHash('target', { cid: targetCid, code: prioritizeNumber }, true);
@@ -7130,112 +6938,67 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
 
     // [핵심] 2차 렌더링에서 이미 최종 메타데이터로 완성됨 (lastSearchState 갱신 후 추가 호출 불필요)
 
-    M.Tooltip.init(document.querySelectorAll('.tooltipped'));
+    // 보유 표는 자체 수명 주기로 초기화합니다. 전환 중인 이전 화면을 다시 초기화하지 않습니다.
+    M.Tooltip.init(tempBox.querySelectorAll('.tooltipped'));
 }
 
-function renderTableToContainer(rows, container) {
-    if (!container) return;
-    if (rows.length === 0) { container.innerHTML = "<p class='center'>결과 없음</p>"; return; }
+function renderOwnedCardsToContainer(rows, container) {
+    return OwnedCards.render(rows, container, {
+        contextKey: typeof UserStore !== 'undefined' ? (UserStore.user?.uid || 'guest') : 'guest',
+        compareRarity,
+        describeRarity(key, card) {
+            const index = rarityReverseMap[key];
+            const row = index !== undefined ? rarityRows[index] : null;
+            const preferred = row?.[rarityColMap[UIStore.currentRegion]];
+            const locale = preferred ? '' : getOwnedCardDisplayContext(card).locale;
+            return {
+                label: preferred || row?.[rarityColMap[locale]] || key,
+            };
+        },
+        async loadIllustration(card, illustration) {
+            const { cid } = getOwnedCardDisplayContext(card);
+            if (!cid || typeof IllustrationImages === 'undefined') return { status: 'error', url: null };
+            // 저장된 CIID만 전달하며, 번호가 없을 때 다른 일러스트를 대신 선택하지 않습니다.
+            try { return await IllustrationImages.preload(cid, illustration); }
+            catch (_) { return { status: 'error', url: null }; }
+        },
+    });
+}
 
-    // 카드 이름별 그룹화
-    const nameGroups = {};
-    rows.forEach(r => {
-        const cardName = String(r[0] || "이름 없음").trim();
-        if (!nameGroups[cardName]) {
-            nameGroups[cardName] = [];
+function getOwnedCardDisplayContext(card = {}) {
+    const number = String(card.number || '').trim().toUpperCase();
+    const locales = ['ko', 'ja', 'ae', 'cn', 'en', 'de', 'fr', 'it', 'es', 'pt'];
+    const validCid = value => /^[1-9]\d{0,9}$/.test(String(value || '')) ? String(value) : '';
+    const localeEntries = meta => locales.map((locale, index) => {
+        const data = meta?.info?.[locale] ?? meta?.info?.[index];
+        return { locale, name: Array.isArray(data) ? data[0] : data?.name,
+            packs: Array.isArray(data) ? data[2] : data?.packs };
+    });
+    const matchesNumber = meta => !!number && (Array.isArray(meta?.numbers)
+        && meta.numbers.some(value => String(value).trim().toUpperCase() === number)
+        || localeEntries(meta).some(entry => Object.keys(entry.packs || {}).some(value => value.trim().toUpperCase() === number)));
+    const cache = typeof cidMetaMemoryCache !== 'undefined' ? cidMetaMemoryCache : new Map();
+    const currentMeta = typeof lastSearchState !== 'undefined' ? lastSearchState?.targetMeta : null;
+    let cid = validCid(card.cid);
+    if (!cid && number) {
+        const inventoryMap = typeof cardCacheInstance !== 'undefined' ? cardCacheInstance._inventoryNoToCid : null;
+        const knownMap = typeof ClientCache !== 'undefined' ? ClientCache._knownNumberToCid : null;
+        const mapping = [inventoryMap, knownMap].find(map => map && Object.hasOwn(map, number));
+        if (mapping) cid = validCid(mapping[number]);
+        else {
+            // 이름이 같다는 이유로 다른 카드의 이미지를 연결하지 않습니다.
+            const candidates = [...cache.entries(), [currentMeta?.cid, currentMeta]]
+                .filter(([key, meta]) => validCid(key) && matchesNumber(meta));
+            const ids = [...new Set(candidates.map(([key]) => validCid(key)))];
+            if (ids.length === 1) cid = ids[0];
         }
-        nameGroups[cardName].push(r);
-    });
-
-    let newHtml = "";
-    const nameKeys = Object.keys(nameGroups);
-
-    nameKeys.forEach(cardName => {
-        const nameRows = nameGroups[cardName];
-
-        // 카드 번호별 그룹화
-        const groups = {};
-        nameRows.forEach(r => {
-            const cardNo = String(r[1]), rarity = String(r[2]), qty = parseInt(r[3]) || 0, loc = String(r[4]);
-            const illustration = String(r[5] || "기본").trim();
-            if (!groups[cardNo]) groups[cardNo] = { locations: {}, illustrationGroups: {} };
-            if (!groups[cardNo].locations[loc]) groups[cardNo].locations[loc] = { total: 0, rarities: {} };
-            groups[cardNo].locations[loc].total += qty; groups[cardNo].locations[loc].rarities[rarity] = (groups[cardNo].locations[loc].rarities[rarity] || 0) + qty;
-
-            const aKey = `${illustration}|${loc}`;
-            if (!groups[cardNo].illustrationGroups[aKey]) groups[cardNo].illustrationGroups[aKey] = { illustration, loc, total: 0, rarities: {} };
-            groups[cardNo].illustrationGroups[aKey].total += qty; groups[cardNo].illustrationGroups[aKey].rarities[rarity] = (groups[cardNo].illustrationGroups[aKey].rarities[rarity] || 0) + qty;
-        });
-
-        let innerHtml = "";
-        Object.keys(groups).forEach(cardNo => {
-            const rowId = `row-${cardNo}`.replace(/[^a-zA-Z0-9]/g, '');
-            const cardRows = nameRows.filter(r => String(r[1]) === cardNo);
-            const totalQty = cardRows.reduce((sum, r) => sum + (parseInt(r[3]) || 0), 0);
-            const locSet = new Set(cardRows.map(r => String(r[4])).filter(l => l));
-            const distinctKeys = [...new Set(cardRows.map(r => String(r[2]).trim()).filter(k => k))];
-
-            distinctKeys.sort(compareRarity);
-
-            const displayNamesForSummary = [...new Set(distinctKeys.map(k => {
-                let idx = rarityReverseMap[k];
-                let row = (idx !== undefined) ? rarityRows[idx] : null;
-                return (row && row[rarityColMap['display']]) ? row[rarityColMap['display']] : k;
-            }))];
-
-            const procStr = displayNamesForSummary.map(p => escapeHTML(p)).join(", ");
-            const locStr = [...locSet].map(l => escapeHTML(l)).join(", ");
-
-            const anotherGroups = {};
-            cardRows.forEach(r => {
-                const illustration = String(r[5] || "기본").trim();
-                if (!anotherGroups[illustration]) anotherGroups[illustration] = [];
-                anotherGroups[illustration].push(r);
-            });
-
-            let leftTableHtml = `<table class="split-table"><thead><tr><th class="fp-col-1">일러스트</th><th class="fp-col-2">보관 위치</th><th class="fp-col-3">총 수량</th></tr></thead><tbody>`;
-            let rightTableHtml = `<table class="split-table"><thead><tr>`;
-
-            distinctKeys.forEach(key => {
-                let displayName = key;
-                let tooltipContent = key;
-                let idx = rarityReverseMap[key];
-
-                if (idx !== undefined) {
-                    let row = rarityRows[idx];
-                    if (row) {
-                        displayName = row[rarityColMap['display']] || key;
-                        let localName = row[rarityColMap[UIStore.currentRegion]];
-                        if (localName && localName !== "") {
-                            tooltipContent = localName;
-                        } else {
-                            tooltipContent = key;
-                        }
-                    }
-                }
-
-                const escapedDisplayName = escapeHTML(displayName);
-                const escapedTooltip = escapeHTML(tooltipContent).replace(/\(/g, '<br>(');
-                rightTableHtml += `<th class="sp-col tooltipped" data-key="${escapeHTML(key)}" data-index="${idx !== undefined ? idx : ''}" data-position="top" data-tooltip="${escapedTooltip}">${escapedDisplayName}</th>`;
-            });
-            rightTableHtml += `</tr></thead><tbody>`;
-
-            const anotherKeys = Object.keys(anotherGroups).sort((a, b) => { if (a === "기본") return -1; if (b === "기본") return 1; return a.localeCompare(b, undefined, { numeric: true }); });
-            anotherKeys.forEach(illustration => {
-                const grpRows = anotherGroups[illustration]; const locGroups = {};
-                grpRows.forEach(r => { const loc = String(r[4]); const rarity = String(r[2]); const qty = parseInt(r[3]) || 0; if (!locGroups[loc]) locGroups[loc] = { total: 0, procs: {} }; locGroups[loc].total += qty; locGroups[loc].procs[rarity] = (locGroups[loc].procs[rarity] || 0) + qty; });
-                const locKeys = Object.keys(locGroups);
-                locKeys.forEach((loc, idx) => { const d = locGroups[loc]; leftTableHtml += `<tr>`; if (idx === 0) leftTableHtml += `<td rowspan="${locKeys.length}">${escapeHTML(illustration)}</td>`; leftTableHtml += `<td>${escapeHTML(loc)}</td><td>${escapeHTML(d.total)}</td></tr>`; rightTableHtml += `<tr>`; distinctKeys.forEach(key => { const val = d.procs[key] || 0; rightTableHtml += `<td>${escapeHTML(val)}</td>`; }); rightTableHtml += `</tr>`; });
-            });
-            leftTableHtml += `</tbody></table>`; rightTableHtml += `</tbody></table>`;
-            innerHtml += ` <div class="new-card-box"> <div class="summary-split-wrapper"> <div class="summary-left">${escapeHTML(cardNo)}</div> <div class="summary-right"> <table class="summary-table"> <tr><td class="summary-label-cell">보관 위치</td><td class="summary-label-cell">수량</td></tr> <tr><td class="summary-value-cell">${locStr}</td><td class="summary-value-cell">${escapeHTML(totalQty)}</td></tr> <tr><td class="summary-label-cell border-double-top">보유 레어도</td><td class="summary-value-cell border-double-top">${procStr}</td></tr> </table> </div> </div> <div id="detail-${rowId}" class="detail-slide-wrapper"> <div class="split-table-wrapper"> <div class="fixed-side">${leftTableHtml}</div> <div class="scroll-side">${rightTableHtml}</div> </div> </div> <button class="show-more-btn" onclick="toggleNewDetail('detail-${rowId}')"><span>자세히 보기</span><i class="material-icons tiny">keyboard_arrow_down</i></button> </div> `;
-        });
-
-        newHtml += `<div class="target-card-group-content">${innerHtml}</div>`;
-    });
-
-    container.innerHTML = newHtml;
-    M.Tooltip.init(container.querySelectorAll('.tooltipped'), { html: true, margin: 3 });
+    }
+    const meta = cache.get(cid) || (validCid(currentMeta?.cid) === cid && cid ? currentMeta : null);
+    const matchingLocales = number ? localeEntries(meta).filter(entry =>
+        Object.keys(entry.packs || {}).some(value => value.trim().toUpperCase() === number)) : [];
+    const namedLocales = matchingLocales.filter(entry => entry.name === card.name);
+    const source = matchingLocales.length === 1 ? matchingLocales[0] : namedLocales.length === 1 ? namedLocales[0] : null;
+    return { cid, locale: source?.locale || '' };
 }
 
 async function loadUserData() {
@@ -7243,10 +7006,12 @@ async function loadUserData() {
         UserStore.isUserDataSyncDone = true;
         return;
     }
+    const ownerUid = UserStore.user.uid;
     UserStore.isUserDataSyncDone = false; // [추가] 동기화 시작 시 플래그 초기화
     showLoading(true, "내 인벤토리 로딩 중...");
     try {
         const res = await callApi('getUserData');
+        if (UserStore.user?.uid !== ownerUid) return;
         showLoading(false);
 
         // 멤버십 정보가 없더라도 기본 UI 렌더링을 위해 초기화 호출
@@ -7254,7 +7019,6 @@ async function loadUserData() {
 
         // 기타 사용자 설정 및 멤버십 동기화
         if (res && res.settings) {
-            if (res.settings.theme) UserStore.settings.theme = res.settings.theme;
             if (res.settings.isDetailMode !== undefined) UserStore.settings.isDetailMode = res.settings.isDetailMode;
             if (res.settings.hideMembershipVerify !== undefined) UserStore.settings.hideMembershipVerify = res.settings.hideMembershipVerify;
             if (res.settings.membership) UserStore.settings.membership = res.settings.membership;
@@ -7274,16 +7038,23 @@ async function loadUserData() {
 
         if (res && res.success) {
             applyUserData(res);
+            if (!res.settings) loadUserTheme();
+        } else {
+            loadUserTheme(undefined, true);
         }
     } catch (e) {
+        if (UserStore.user?.uid !== ownerUid) return;
+        // 서버 조회 실패는 설정 없음과 다르므로 계정 기록을 임의로 만들지 않는다.
+        loadUserTheme(undefined, true);
         console.error("[Sync] getUserData Error:", e);
         showLoading(false);
     } finally {
+        if (UserStore.user?.uid !== ownerUid) return;
         UserStore.isUserDataSyncDone = true; // 사용자 동기화 완료 플래그 설정
         checkAndHideInitialLoading();
 
         // [추가] 사용자가 현재 보유 현황 페이지의 목록 모드를 보고 있다면, 로그인 성공 후 자동으로 목록을 갱신합니다.
-        if (typeof UIStore.mode !== 'undefined' && UIStore.mode === 'inventory' && 
+        if (typeof UIStore.mode !== 'undefined' && UIStore.mode === 'inventory' &&
             typeof UIStore.inventoryMode !== 'undefined' && UIStore.inventoryMode === 'list') {
             renderInventoryGrid();
         }
@@ -7321,66 +7092,50 @@ function applyMembershipStatus(membership) {
     }
 
     // 상단 헤더 멤버십 인증 버튼 제어
-    const verifyBtn = document.getElementById('membership-verify-btn');
-    if (verifyBtn) {
-        const isHidden = UserStore.settings && UserStore.settings.hideMembershipVerify === true;
-        const isMobileDevice = document.documentElement.classList.contains('is-mobile-device');
-        const shouldShowVerify = !isPremium && !isHidden && !!UserStore.user;
-        verifyBtn.style.display = (shouldShowVerify && !isMobileDevice) ? 'flex' : 'none';
-    }
+    const isHidden = UserStore.settings && UserStore.settings.hideMembershipVerify === true;
+    syncMembershipHeader(!isPremium && !isHidden && !!UserStore.user);
 
     // 환경설정 페이지 UI 갱신 (데이터가 없어도 기본 버튼 노출을 위해 항상 호출)
     renderMembershipSettings(mem);
 }
 
 /**
- * 환경설정 페이지 멤버십 섹션 렌더링
+ * 계정 카드의 역할별 요소 조회. 페이지·헤더·인증 모달과 별도로 관리한다.
  */
-function renderMembershipSettings(membership) {
-    const container = document.getElementById('membership-status-container');
-    if (!container) return;
-
-    const isPremium = (membership && membership.status === 'active');
-    let levelName = membership ? (membership.levelName || '일반 사용자') : '일반 사용자';
-
-    // [보정] 구버전 구문 보정
-    if (levelName === '디스코드 멤버십 회원') {
-        levelName = '유튜브 멤버십';
-    }
-
-    const lastChecked = membership ? new Date(membership.lastChecked).toLocaleString() : '-';
-
-    let html = `
-        <div class="management-row" style="margin-top: 15px; padding-top: 15px; border-top: 1px dotted var(--border-color);">
-            <div class="management-desc">
-                <div style="font-weight: 700; color: var(--text-000); display: flex; align-items: center; gap: 6px;">
-                    멤버십 상태: ${isPremium ? '<span style="color: #00bcd4;">프리미엄 (💎)</span>' : '일반'}
-                </div>
-                <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
-                    현재 등급: ${levelName} <br>
-                    마지막 확인: ${lastChecked}
-                </div>
-            </div>
-            <button class="btn waves-effect management-btn" 
-                    id="sync-membership-btn"
-                    onclick="syncYoutubeMembership()"
-                    style="background-color: var(--bg-header); color: var(--text-000); border: 1px solid var(--border-color); box-shadow: none;">
-                상태 갱신
-            </button>
-        </div>
-    `;
-    container.innerHTML = html;
+function getAccountCardElement(role) {
+    const card = document.querySelector('[data-account-card]');
+    return role ? card?.querySelector(`[data-account="${role}"]`) : card;
 }
 
 /**
- * 설정 페이지 멤버십 상태 갱신 버튼 클릭 핸들러
+ * 서버에서 확정한 멤버십 결과를 계정 카드에 표시한다.
  */
-async function syncYoutubeMembership() {
+function renderMembershipSettings(membership) {
+    const card = getAccountCardElement();
+    const label = getAccountCardElement('membership');
+    if (!card || !label) return;
+
+    const isPremium = membership?.status === 'active';
+    let levelName = '일반';
+    if (isPremium) {
+        levelName = membership.levelName || '유튜브 멤버십';
+        if (levelName === '디스코드 멤버십 회원') levelName = '유튜브 멤버십';
+        if (levelName === '소유자') levelName = '관리자';
+    }
+    label.textContent = levelName;
+    card.classList.toggle('border-theme', isPremium);
+}
+
+/**
+ * 환경설정의 멤버십 확인 버튼: 환경설정 진입과 인증창 열기
+ */
+async function syncYoutubeMembership(source = 'header') {
     if (!UserStore.user) {
         showToast('로그인이 필요합니다.', 'toast-warn');
         return;
     }
-    openMembershipAuthModal();
+    switchToMode('settings');
+    openMembershipAuthModal(source);
 }
 
 /**
@@ -7445,7 +7200,6 @@ function applyUserData(res) {
 
     // 3. UI 갱신
     updateTotals();
-    renderHomeDash();
 
     // 환경 설정 페이지 UI 갱신 (위치 목록 등)
     updateRarityInputs();
@@ -7590,7 +7344,6 @@ function rebuildPackDatabase() {
 
     // 공통 로드 완료 후 렌더링
     isAppConfigured = true;
-    renderHomeDash();
 
     // Pack Search 페이지 자동 검색 플래그 확인
     if (typeof checkAutoSearchAfterInitialLoad === 'function') {
@@ -7622,8 +7375,6 @@ function executeMobileSearchWithOption(e, searchType) {
 }
 
 async function handleContinueRegistration() {
-    M.Modal.getInstance(document.getElementById('add-result-modal')).close();
-    toggleBackgroundInert(false);
 
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
     const subMode = UIStore.chipState.add || addSubMode;
@@ -7690,24 +7441,6 @@ function checkAndHideInitialLoading() {
 }
 
 
-
-function toggleNewDetail(detailId) {
-    const content = document.getElementById(detailId);
-    if (!content) return;
-    const btn = content.nextElementSibling;
-    const textSpan = btn.querySelector('span');
-    const icon = btn.querySelector('i');
-
-    if (content.style.maxHeight) {
-        content.style.maxHeight = null;
-        textSpan.innerText = '자세히 보기';
-        icon.innerText = 'keyboard_arrow_down';
-    } else {
-        content.style.maxHeight = content.scrollHeight + "px";
-        textSpan.innerText = '간략히 보기';
-        icon.innerText = 'keyboard_arrow_up';
-    }
-}
 
 function showLoading(show, html) {
     const overlay = document.getElementById('loading-overlay');
@@ -7867,7 +7600,8 @@ function setupCardSearchDropdown(wrapper, getSuggestions, lookup) {
         lookup(input);
     };
     const render = () => {
-        if (document.activeElement !== input || input.readOnly || input.disabled) { close(); return; }
+        if (document.activeElement !== input || input.readOnly || input.disabled
+            || input.closest('#mobile-entry-bottom-sheet')) { close(); return; }
         UIStore.activeDropdownInput = input;
         currentFocusIdx = -1;
         dropdown.innerHTML = '';
@@ -7911,6 +7645,7 @@ function setupCardSearchDropdown(wrapper, getSuggestions, lookup) {
     input.addEventListener('blur', close);
     input.addEventListener('keydown', event => {
         if (event.isComposing) return;
+        if (input.closest('#mobile-entry-bottom-sheet')) return;
         if (input.readOnly) {
             if (input.dataset.field === 'name' && ['Escape', 'Backspace', 'Delete'].includes(event.key)) {
                 event.preventDefault();
@@ -8144,11 +7879,11 @@ function positionDropdown(localDropdown, wrapper) {
     localDropdown.style.top = (rect.bottom + scrollTop + offset) + 'px';
     localDropdown.style.left = (rect.left + scrollLeft) + 'px';
     if (isDesktopCard) {
-        localDropdown.classList.add('desktop-card-dropdown');
+        localDropdown.classList.add('desktop-card-dropdown', 'border-basic');
         localDropdown.style.width = 'max-content';
         localDropdown.style.minWidth = rect.width + 'px';
     } else {
-        localDropdown.classList.remove('desktop-card-dropdown');
+        localDropdown.classList.remove('desktop-card-dropdown', 'border-basic');
         localDropdown.style.width = rect.width + 'px';
         localDropdown.style.minWidth = '';
     }
@@ -8209,7 +7944,7 @@ function updateInputAutoWidth(inputEl) {
 
 function getQueryTarget(row) {
     if (row && row.classList.contains('mobile-info-card')) {
-        if (currentEditingRowIndex !== -1) {
+        if (row === currentEditingRow) {
             const sheetContainer = document.getElementById('sheet-fields-container');
             if (sheetContainer) return sheetContainer;
         }
@@ -8313,20 +8048,7 @@ function getRowFromInput(el) {
     // 2. 바텀시트 내에 삽입되어 편집 중인 경우
     const isBottomSheetEl = el.closest('#mobile-entry-bottom-sheet');
     if (isBottomSheetEl) {
-        let listContainerId = 'mobile-cards-list-general';
-        if (UIStore.mode === 'add') {
-            if (addSubMode === 'pack') listContainerId = 'mobile-cards-list-pack';
-            else if (addSubMode === 'deck') listContainerId = 'mobile-cards-list-deck';
-        } else if (UIStore.mode === 'move') {
-            listContainerId = 'mobile-cards-list-move';
-        } else if (UIStore.mode === 'discard') {
-            listContainerId = 'mobile-cards-list-discard';
-        }
-        const listContainer = document.getElementById(listContainerId);
-        if (listContainer && currentEditingRowIndex !== -1) {
-            const cards = listContainer.querySelectorAll('.mobile-info-card');
-            return cards[currentEditingRowIndex] || null;
-        }
+        return currentEditingRow;
     }
 
     return null;
@@ -8623,6 +8345,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
     }
 
     const openDropdown = () => {
+        if (input.closest('#mobile-entry-bottom-sheet')) return;
         if (UIStore.pendingBlurFn && UIStore.activeDropdownInput === input) { clearTimeout(UIStore.pendingBlurFn); UIStore.pendingBlurFn = null; }
         if (input.hasAttribute('readonly') && !input.value && (!wrapper.dataset.options || wrapper.dataset.options === "[]") && !isFreeType) return;
         if (input.disabled) return;
@@ -8821,6 +8544,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
 
     input.addEventListener('focus', openDropdown); input.addEventListener('click', openDropdown);
     input.addEventListener('blur', () => {
+        if (input.closest('#mobile-entry-bottom-sheet')) { closeDropdown(); return; }
         if (input.classList.contains('move-card-to') || input.classList.contains('desktop-card-to')) {
             const row = getRowFromInput(input);
             const fromInput = row ? row.querySelector('.move-card-from, .desktop-card-loc, [data-field="loc"]') : null;
@@ -8892,6 +8616,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
         const rawData = JSON.parse(wrapper.dataset.options || "[]"); if (rawData.length === 1 && !isFreeType) { input.value = rawData[0].val; updateInputAutoWidth(input); return; } if (!wrapper.classList.contains('active')) wrapper.classList.add('active'); currentFocusIdx = -1; renderGlobalDropdown(true);
     });
     input.addEventListener('keydown', (e) => {
+        if (input.closest('#mobile-entry-bottom-sheet')) return;
         if (!wrapper.classList.contains('active')) { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { openDropdown(); return; } }
         const items = localDropdown.querySelectorAll('li:not([style*="default"])');
         if (e.key === 'ArrowDown') { e.preventDefault(); currentFocusIdx++; if (currentFocusIdx >= items.length) currentFocusIdx = 0; updateHighlight(items, currentFocusIdx); }
@@ -9220,98 +8945,12 @@ function handleMoveLocChange(input) {
     }
 }
 function showMoveResultModal(moves, isFullSynced) {
-    const modal = document.getElementById('move-result-modal'); const iconArea = document.getElementById('move-icon-area'); const successText = document.getElementById('move-success-text'); const summaryBody = document.getElementById('move-summary-body'); const detailBody = document.getElementById('move-result-body');
-
-    const titleEl = document.getElementById('move-modal-title');
-
-    summaryBody.innerHTML = ''; detailBody.innerHTML = ''; let successCount = 0; let failCount = 0; let successQty = 0;
-
-    moves.forEach(m => {
-        if (m.status === 'fail') { failCount++; }
-        else { successCount++; successQty += m.moveQty; }
-    });
-
-    if (successCount > 0) { titleEl.innerText = "카드 이동 완료!"; }
-    else { titleEl.innerText = "카드 이동 실패!"; }
-
-    modal.dataset.hasSuccess = (successCount > 0) ? "true" : "false";
-
-    if (failCount === 0 && successCount > 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--success-green);">check_circle</i>'; successText.innerHTML = `<span style="color:var(--text-000);">${successQty}장 성공, ${failCount}건 실패</span>`; }
-    else if (successCount === 0 && failCount > 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--error-red);">cancel</i>'; successText.innerHTML = `<span style="color:var(--error-red);">${successQty}장 성공, ${failCount}건 실패</span>`; }
-    else if (successCount > 0 && failCount > 0) { iconArea.innerHTML = '<i class="material-icons" style="color: var(--warning-yellow);">warning</i>'; successText.innerHTML = `<span>${successQty}장 성공, ${failCount}건 실패</span>`; }
-
-    if (isFullSynced) {
-        successText.innerHTML += `<div style="margin-top:8px; color:var(--warning-yellow); font-weight:bold; display:block;">외부 수정이 감지되어 전체 동기화가 진행되었습니다.</div>`;
-    }
-
-    const successMoves = moves.filter(m => m.status !== 'fail');
-    if (successMoves.length > 0) { const nameAgg = {}; successMoves.forEach(m => { if (!nameAgg[m.cardName]) nameAgg[m.cardName] = 0; nameAgg[m.cardName] += m.moveQty; }); for (const [name, qty] of Object.entries(nameAgg)) { summaryBody.innerHTML += `<tr style="background-color: var(--bg-success);"><td>${escapeHTML(name)}</td><td style="color:var(--success-green); font-weight:700;">${escapeHTML(qty)}장</td></tr>`; } }
-
-    const failMoves = moves.filter(m => m.status === 'fail');
-    if (failMoves.length > 0) {
-        const failAgg = {}; failMoves.forEach(m => {
-            let reason = "알 수 없는 오류"; const maxQty = m.maxQty || 0;
-            if (!m.cardName) reason = "카드 이름 오류";
-            else if (!m.cardNo || !cardCacheInstance.getOwnedNumbers().includes(m.cardNo)) reason = "카드 번호 오류";
-            else if (!m.illustration) reason = "일러스트 오류";
-            else if (!m.rarity) reason = "레어도 오류";
-            else if (!m.currentLoc) reason = "보관 위치 오류";
-            else if (!m.targetLoc) reason = "이동 위치 오류";
-            else if (!m.moveQty || m.moveQty < 1 || m.moveQty > maxQty) reason = "수량 오류";
-
-            if (!failAgg[reason]) failAgg[reason] = 0; failAgg[reason]++;
-        });
-        for (const [reason, count] of Object.entries(failAgg)) { summaryBody.innerHTML += `<tr style="background-color: var(--bg-fail);"><td style="color:var(--error-red);">${escapeHTML(reason)}</td><td style="color:var(--error-red); font-weight:700;">${escapeHTML(count)}건</td></tr>`; }
-    }
-
-    moves.forEach((move, idx) => {
-        const tr = document.createElement('tr');
-        let locTxt = `${move.currentLoc} ► ${move.targetLoc}`;
-        let qtyTxt = move.moveQty;
-        let illustrationTxt = move.illustration;
-        let rarityTxt = getLocalizedRarity(move.rarity);
-        let cardNoStyle = ''; let nameStyle = ''; let illustrationStyle = ''; let rarityStyle = ''; let locStyle = ''; let qtyStyle = '';
-
-        if (!move.cardNo || !cardCacheInstance.getOwnedNumbers().includes(move.cardNo)) {
-            move.cardNo = "오류"; cardNoStyle = 'color:var(--error-red); font-weight:700;';
-            illustrationTxt = "-"; rarityTxt = "-"; locTxt = "-"; qtyTxt = "-";
-        }
-        else if (!move.illustration) {
-            illustrationTxt = "미선택"; illustrationStyle = 'color:var(--error-red); font-weight:700;';
-            rarityTxt = "-"; locTxt = "-"; qtyTxt = "-";
-        }
-        else if (!move.rarity) {
-            rarityTxt = "미선택"; rarityStyle = 'color:var(--error-red); font-weight:700;';
-            locTxt = "-"; qtyTxt = "-";
-        }
-        else if (!move.currentLoc) {
-            locTxt = "보관 위치 오류"; locStyle = 'color:var(--error-red); font-weight:700;';
-            qtyTxt = "-";
-        }
-        else if (!move.targetLoc) {
-            locTxt = "이동 위치 오류"; locStyle = 'color:var(--error-red); font-weight:700;';
-            qtyTxt = "-";
-        }
-        else if (!move.moveQty || move.moveQty < 1) {
-            qtyTxt = "오류"; qtyStyle = 'color:var(--error-red); font-weight:700;';
-        }
-
-        tr.innerHTML = `<td>${idx + 1}</td><td style="${nameStyle}">${escapeHTML(move.cardName)}</td><td style="${cardNoStyle}">${escapeHTML(move.cardNo)}</td><td style="${illustrationStyle}">${escapeHTML(illustrationTxt)}</td><td style="${rarityStyle}">${escapeHTML(rarityTxt)}</td><td style="${locStyle}">${escapeHTML(locTxt)}</td><td style="${qtyStyle}">${escapeHTML(qtyTxt)}</td>`;
-        detailBody.appendChild(tr);
-    });
-
-    // applyModalDetailUI에서 레이아웃을 결정하므로 개별 display 및 icon 설정 제거
-    toggleBackgroundInert(true); M.Modal.getInstance(modal).open();
-    // 사용자 설정에 맞게 상세/요약 레이아웃 초기화
-    setTimeout(() => applyModalDetailUI(UserStore.settings.isDetailMode), 50);
+    showManagementResult('move', moves, null, isFullSynced);
 }
 
 async function finishMoveProcess() {
     const modal = document.getElementById('move-result-modal');
     const hasSuccess = modal.dataset.hasSuccess === "true";
-
-    M.Modal.getInstance(modal).close();
-    toggleBackgroundInert(false);
 
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
     const containerId = isMobile ? 'mobile-cards-list-move' : 'desktop-cards-list-move';
@@ -9352,6 +8991,7 @@ async function finishMoveProcess() {
 }
 
 async function submitMoveEntries() {
+    if (managementRequestPending) return;
     const submitBtn = document.getElementById('move-submit-main-btn');
     if (submitBtn && submitBtn.classList.contains('disabled')) return;
 
@@ -9403,6 +9043,7 @@ async function submitMoveEntries() {
     }
 
     const moves = [];
+    const submittedRows = [];
     let failCount = 0;
 
     entries.forEach(item => {
@@ -9419,8 +9060,8 @@ async function submitMoveEntries() {
         if (!cardNo) return;
 
         let isValid = true;
-        if (!rarity || !currentLoc || !targetLoc || !moveQty || moveQty < 1) isValid = false;
-        if (moveQty > maxQty) isValid = false;
+        if (!cardName || !illustration || !rarity || !currentLoc || !targetLoc || !Number.isSafeInteger(Number(moveQty)) || Number(moveQty) < 1) isValid = false;
+        if (moveQty > maxQty || currentLoc === targetLoc) isValid = false;
 
         if (!isValid) {
             failCount++;
@@ -9428,7 +9069,9 @@ async function submitMoveEntries() {
         } else {
             el.dataset.moveStatus = 'pending';
         }
-        moves.push({ cardNo, cardName, rarity, illustration: illustration, currentLoc, targetLoc, moveQty, maxQty, status: isValid ? 'pending' : 'fail' });
+        moves.push({ cardNo, cid: findCidByNameOrNo(cardName, cardNo), cardName, rarity, illustration, currentLoc, targetLoc, moveQty, maxQty, status: isValid ? 'pending' : 'fail',
+            failReason: isValid ? null : !cardName ? 'invalid_no' : !illustration ? 'no_illustration' : !rarity ? 'no_rarity' : !currentLoc ? 'no_loc' : !targetLoc ? 'no_target_loc' : currentLoc === targetLoc ? 'same_loc' : moveQty > maxQty ? 'insufficient_qty' : 'invalid_qty' });
+        if (isValid) submittedRows.push({ log: moves[moves.length - 1], el, statusKey: 'moveStatus' });
     });
 
     if (moves.length === 0) { showToast('이동할 카드가 없습니다.', 'toast-warn'); return; }
@@ -9440,33 +9083,14 @@ async function submitMoveEntries() {
     }
     if (failCount === moves.length) { showMoveResultModal(moves); return; }
 
-    showLoading(true, "카드 이동 중...");
-    const pendingMoves = moves.filter(m => m.status === 'pending');
-    try {
-        const res = await callApi('moveCards', buildAuthPayload(), { moves: pendingMoves });
-        showLoading(false);
-        if (res.success) {
-            updateLocalInventory(res.updatedItems);
-            if (res.locations !== undefined) {
-                cardCacheInstance.setSummary(res.amount, res.locations, res.rarities);
-                updateTotals();
-                renderHomeDash();
-            }
-            syncCounter++;
+    const pendingMoves = moves.filter(move => move.status === 'pending');
+    const response = await requestManagementOperation('moveCards', { moves: pendingMoves }, submittedRows, '카드 이동 중...');
+    if (response) showMoveResultModal(moves);
 
-            entries.forEach(item => { if (item.el.dataset.moveStatus === 'pending') item.el.dataset.moveStatus = 'success'; });
-            moves.forEach(m => { if (m.status === 'pending') m.status = 'success'; });
-            showMoveResultModal(moves);
-        } else {
-            entries.forEach(item => { if (item.el.dataset.moveStatus === 'pending') item.el.dataset.moveStatus = 'fail'; });
-        }
-    } catch (e) {
-        showLoading(false);
-        entries.forEach(item => { if (item.el.dataset.moveStatus === 'pending') item.el.dataset.moveStatus = 'fail'; });
-    }
 }
 
 async function submitBulkMoveEntries() {
+    if (managementRequestPending) return;
     const fromInput = document.getElementById('rename-from-input');
     const toInput = document.getElementById('rename-to-input');
 
@@ -9491,72 +9115,19 @@ async function submitBulkMoveEntries() {
         return;
     }
 
-    showLoading(true, "일괄 이동 대상 조회 중...");
     const moves = [];
-
-    try {
-        // Firestore 직접 조회 대신 이미 클라이언트 캐시에 로드된 inventory 인메모리 캐시 데이터를 즉시 활용
-        const inventory = cardCacheInstance._inventory || [];
-        
-        inventory.forEach(row => {
-            const cardName = row[0];
-            const cardNo = row[1];
-            const rarity = row[2];
-            const qty = row[3];
-            const loc = row[4];
-            const illustration = row[5];
-
-            if (loc === fromLoc && qty > 0) {
-                moves.push({
-                    cardNo: cardNo,
-                    cardName: cardName || "Unknown",
-                    rarity: rarity || "",
-                    illustration: illustration || "",
-                    currentLoc: fromLoc,
-                    targetLoc: toLoc,
-                    moveQty: qty,
-                    maxQty: qty,
-                    status: 'pending'
-                });
-            }
-        });
-
-        if (moves.length === 0) {
-            showLoading(false);
-            showToast('이동할 카드가 없습니다.', 'toast-warn');
-            return;
-        }
-
-        // 3. API 전송
-        showLoading(true, "카드 일괄 이동 중...");
-        const res = await callApi('moveCards', buildAuthPayload(), { moves });
-
-        showLoading(false);
-        if (res.success) {
-            updateLocalInventory(res.updatedItems);
-            if (res.locations !== undefined) {
-                cardCacheInstance.setSummary(res.amount, res.locations, res.rarities);
-                updateTotals();
-                renderHomeDash();
-            }
-            syncCounter++;
-
-            moves.forEach(m => { m.status = 'success'; });
-
-            // 모드 해제
-            toggleRenameMode();
-
-            // 결과 창 표시
-            showMoveResultModal(moves);
-        } else {
-            moves.forEach(m => { m.status = 'fail'; });
-            showMoveResultModal(moves);
-        }
-    } catch (error) {
-        console.error("Bulk move error:", error);
-        showLoading(false);
-        showToast('일괄 이동 중 오류가 발생했습니다.', 'toast-error');
+    for (const row of cardCacheInstance._inventory || []) {
+        if (row[4] !== fromLoc || row[3] <= 0) continue;
+        moves.push({ cid: row[6] || findCidByNameOrNo(row[0], row[1]), cardNo: row[1], cardName: row[0] || 'Unknown', rarity: row[2] || '',
+            illustration: row[5] || '', currentLoc: fromLoc, targetLoc: toLoc,
+            moveQty: row[3], maxQty: row[3], status: 'pending' });
     }
+    if (!moves.length) { showToast('이동할 카드가 없습니다.', 'toast-warn'); return; }
+    const response = await requestManagementOperation('moveCards', { moves }, moves.map(log => ({ log })), '카드 일괄 이동 중...');
+    if (!response) return;
+    if (moves.every(move => move.status === 'success')) toggleRenameMode();
+    showMoveResultModal(moves);
+
 }
 
 function adjustStepQty(btn, delta) {
@@ -9641,15 +9212,15 @@ function updateDashboardStats() {
         let locHtml = "";
         const locKeys = Object.keys(locations).sort((a, b) => locations[b].length - locations[a].length);
         if (locKeys.length === 0) {
-            locHtml = '<div style="width:100%; padding:20px; text-align:center; color:var(--text-muted); border-bottom:1px solid var(--border-color);">데이터가 없습니다.</div>';
+            locHtml = '<div class="ui-stat-empty color-text-002">데이터가 없습니다.</div>';
         } else {
             locKeys.forEach((loc, idx) => {
                 const count = locations[loc].length;
                 const hiddenClass = idx >= 3 ? "is-hidden" : "";
-                locHtml += `<div class="stat-item ${hiddenClass}"><span class="stat-name">${loc}</span><span class="stat-cnt">${count}종</span></div>`;
+                locHtml += `<div class="stat-item ${hiddenClass}"><span class="stat-name color-text-001">${loc}</span><span class="stat-cnt ui-chip color-tint-theme shape-capsule">${count}종</span></div>`;
             });
             if (locKeys.length > 3) {
-                locHtml += `<button class="stat-more-btn" onclick="toggleStatSection(this)"><span>더보기</span><i class="material-icons">expand_more</i></button>`;
+                locHtml += `<button class="stat-more-btn ui-button color-theme-001" onclick="toggleStatSection(this)"><span>더보기</span><i class="material-icons">expand_more</i></button>`;
             }
         }
         locStats.innerHTML = locHtml;
@@ -9659,15 +9230,15 @@ function updateDashboardStats() {
         let rareHtml = "";
         const rareKeys = Object.keys(rarities).sort((a, b) => compareRarity(b, a));
         if (rareKeys.length === 0) {
-            rareHtml = '<div style="width:100%; padding:20px; text-align:center; color:var(--text-muted); border-bottom:1px solid var(--border-color);">데이터가 없습니다.</div>';
+            rareHtml = '<div class="ui-stat-empty color-text-002">데이터가 없습니다.</div>';
         } else {
             rareKeys.forEach((rare, idx) => {
                 const count = rarities[rare];
                 const hiddenClass = idx >= 3 ? "is-hidden" : "";
-                rareHtml += `<div class="stat-item ${hiddenClass}"><span class="stat-name">${getLocalizedRarity(rare)}</span><span class="stat-cnt">${count}장</span></div>`;
+                rareHtml += `<div class="stat-item ${hiddenClass}"><span class="stat-name color-text-001">${getLocalizedRarity(rare)}</span><span class="stat-cnt ui-chip color-tint-theme shape-capsule">${count}장</span></div>`;
             });
             if (rareKeys.length > 3) {
-                rareHtml += `<button class="stat-more-btn" onclick="toggleStatSection(this)"><span>더보기</span><i class="material-icons">expand_more</i></button>`;
+                rareHtml += `<button class="stat-more-btn ui-button color-theme-001" onclick="toggleStatSection(this)"><span>더보기</span><i class="material-icons">expand_more</i></button>`;
             }
         }
         rareStats.innerHTML = rareHtml;
@@ -9700,7 +9271,7 @@ function switchInventoryMode(mode, instant) {
 
     const forms = ['dashboard', 'list'];
     const wrapper = document.getElementById('inventory-mode-forms');
-    const segmentControl = document.querySelector('#app-page-inventory .segment-control');
+    const segmentControl = document.querySelector('#app-page-inventory .ui-segment');
     if (!wrapper) return;
 
     if (instant && segmentControl) {
@@ -9709,15 +9280,7 @@ function switchInventoryMode(mode, instant) {
 
     forms.forEach(f => {
         const el = document.getElementById(`form-inventory-${f}`);
-        if (!el) return;
-
-        if (f === mode) {
-            el.classList.remove('anim-hidden');
-            el.classList.add('anim-active');
-        } else {
-            el.classList.remove('anim-active');
-            el.classList.add('anim-hidden');
-        }
+        setModePanelActive(el, f === mode);
     });
 
     if (mode === 'list') {
@@ -10032,8 +9595,7 @@ function resetDeckMode(clearInput = false) {
     // 하단 컨테이너 축소 애니메이션 트리거
     const tableContainer = document.getElementById('manage-table-container');
     if (tableContainer) {
-        tableContainer.classList.remove('anim-active');
-        tableContainer.classList.add('anim-hidden');
+        setModePanelActive(tableContainer, false);
     }
 
     if (clearInput) {
@@ -10261,8 +9823,7 @@ async function generateDeckRowsNew() {
     // 하단 컨테이너 확장 애니메이션 트리거
     const tableContainer = document.getElementById('manage-table-container');
     if (tableContainer) {
-        tableContainer.classList.remove('anim-hidden');
-        tableContainer.classList.add('anim-active');
+        setModePanelActive(tableContainer, true);
     }
 
     if (container) {
@@ -10332,8 +9893,7 @@ function resetPackMode(clearInput = false) {
     // 하단 컨테이너 축소 애니메이션 트리거
     const tableContainer = document.getElementById('manage-table-container');
     if (tableContainer) {
-        tableContainer.classList.remove('anim-active');
-        tableContainer.classList.add('anim-hidden');
+        setModePanelActive(tableContainer, false);
     }
 
     if (clearInput) {
@@ -10737,8 +10297,7 @@ async function generatePackRowsNew(totalCards, packName, packId) {
     // 하단 컨테이너 확장 애니메이션 트리거
     const tableContainer = document.getElementById('manage-table-container');
     if (tableContainer) {
-        tableContainer.classList.remove('anim-hidden');
-        tableContainer.classList.add('anim-active');
+        setModePanelActive(tableContainer, true);
     }
 
     if (container) {
@@ -10999,6 +10558,117 @@ async function applyPackCardResults(cards) {
 // Firebase Auth 연동 및 UI 동작 제어 로직
 // ==========================================
 
+let authStateRevision = 0;
+let pendingRegistrationUser = null;
+let pendingConsentVersions = null;
+let registrationSaving = false;
+let loginInProgress = false;
+
+async function handleFirebaseAuthState(user) {
+    const revision = ++authStateRevision;
+    pendingRegistrationUser = null;
+    pendingConsentVersions = null;
+    if (!user) {
+        applyServiceAuthState(null);
+        M.Modal.getInstance(document.getElementById('signup-modal'))?.close();
+        return;
+    }
+    // 다른 계정의 조회·보유 정보가 새 계정에 노출되지 않도록 먼저 분리한다.
+    if (UserStore.user && UserStore.user.uid !== user.uid) applyServiceAuthState(null);
+    try {
+        const status = await callApi('getRegistrationStatus');
+        if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return;
+        if (!status?.success || typeof status.registered !== 'boolean') throw new Error('가입 상태 조회 실패');
+        M.Modal.getInstance(document.getElementById('auth-modal'))?.close();
+        if (status.registered) {
+            applyServiceAuthState(user);
+        } else {
+            applyServiceAuthState(null);
+            pendingRegistrationUser = user;
+            pendingConsentVersions = status.consentVersions;
+            document.getElementById('terms-agree-cb').checked = false;
+            document.getElementById('privacy-agree-cb').checked = false;
+            const message = document.getElementById('signup-status');
+            message.textContent = '';
+            message.hidden = true;
+            setRegistrationSaving(false);
+            getAppModal(document.getElementById('signup-modal')).open();
+        }
+    } catch (_) {
+        if (revision !== authStateRevision) return;
+        applyServiceAuthState(null);
+        showToast('가입 상태를 확인하지 못했습니다. 다시 로그인해 주세요.', 'toast-error');
+        await firebase.auth().signOut().catch(() => {
+            showToast('로그아웃하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
+        });
+    }
+}
+
+function toggleRegistrationButton() {
+    const button = document.getElementById('signup-complete-btn');
+    if (button) button.disabled = registrationSaving || !pendingRegistrationUser
+        || !document.getElementById('terms-agree-cb')?.checked
+        || !document.getElementById('privacy-agree-cb')?.checked;
+}
+
+function setRegistrationSaving(saving) {
+    registrationSaving = saving;
+    const modal = document.getElementById('signup-modal');
+    modal.setAttribute('aria-busy', String(saving));
+    modal.querySelectorAll('[data-signup-cancel], input').forEach(control => { control.disabled = saving; });
+    const instance = M.Modal.getInstance(modal);
+    if (instance) instance.options.dismissible = !saving;
+    document.getElementById('signup-complete-btn').textContent = saving ? '가입 처리 중…' : '동의하고 가입';
+    toggleRegistrationButton();
+}
+
+async function completeServiceRegistration() {
+    if (registrationSaving || !pendingRegistrationUser || document.getElementById('signup-complete-btn').disabled) return;
+    const user = pendingRegistrationUser;
+    const revision = authStateRevision;
+    const message = document.getElementById('signup-status');
+    setRegistrationSaving(true);
+    message.textContent = '서비스 가입을 처리하고 있습니다.';
+    message.hidden = false;
+    try {
+        const result = await callApi('completeRegistration', {}, {
+            agreements: { terms: true, privacy: true }, consentVersions: pendingConsentVersions,
+        });
+        if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return;
+        if (!result?.success || result.registered !== true) throw new Error('가입 완료 실패');
+        pendingRegistrationUser = null;
+        pendingConsentVersions = null;
+        setRegistrationSaving(false);
+        M.Modal.getInstance(document.getElementById('signup-modal'))?.close();
+        applyServiceAuthState(user);
+    } catch (error) {
+        if (revision !== authStateRevision) return;
+        if (error.code === 'CONSENT_VERSION_CHANGED') {
+            const status = await callApi('getRegistrationStatus').catch(() => null);
+            if (revision !== authStateRevision) return;
+            pendingConsentVersions = status?.consentVersions || null;
+            document.getElementById('terms-agree-cb').checked = false;
+            document.getElementById('privacy-agree-cb').checked = false;
+            message.textContent = '문서가 변경되었습니다. 다시 확인하고 동의해 주세요.';
+        } else {
+            message.textContent = '가입을 완료하지 못했습니다. 다시 시도하거나 취소해 주세요.';
+        }
+    } finally {
+        if (revision === authStateRevision) setRegistrationSaving(false);
+    }
+}
+
+function cancelServiceRegistration() {
+    if (!pendingRegistrationUser || registrationSaving) return;
+    pendingRegistrationUser = null;
+    pendingConsentVersions = null;
+    ++authStateRevision;
+    toggleRegistrationButton();
+    firebase.auth().signOut().catch(() => {
+        showToast('로그아웃하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
+    });
+}
+
 function initFirebaseAuth() {
     if (typeof firebase === 'undefined' || !firebase.auth) {
         setTimeout(initFirebaseAuth, 200); // SDK 로드 대기
@@ -11019,8 +10689,7 @@ function initFirebaseAuth() {
 
     // 리다이렉트 로그인 복귀 시 발생하는 예외 처리
     firebase.auth().getRedirectResult().catch(function (error) {
-        console.error("Redirect Login Error:", error);
-        showToast('로그인 실패: ' + error.message, 'toast-error');
+        showToast('로그인하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
     });
 
     // Safari 최적화: Auth 토큰을 변수에 사전 저장 — 로그인/갱신/로그아웃 시 자동 업데이트
@@ -11038,73 +10707,7 @@ function initFirebaseAuth() {
     });
 
     firebase.auth().onAuthStateChanged(function (user) {
-        window.isAuthInitialized = true;
-        UserStore.user = user;
-        const authNavBtn = document.getElementById('auth-nav-btn');
-        const authIcon = document.getElementById('auth-icon');
-        const authText = document.getElementById('auth-text');
-
-        const homeUnauthContent = document.getElementById('home-unauth-content');
-        const homeAuthContent = document.getElementById('home-auth-content');
-
-        if (user) {
-            // 비활동 자동 로그아웃 감지 시작 (30분)
-            AutoLogoutManager.start();
-
-            // 로그인 상태 UI (이미 구현됨)
-            if (authIcon) authIcon.textContent = 'link';
-            if (authText) authText.textContent = '로그인';
-            if (authNavBtn) authNavBtn.dataset.tooltip = '로그인 완료';
-
-            if (homeUnauthContent) homeUnauthContent.style.display = 'none';
-            if (homeAuthContent) homeAuthContent.style.display = 'block';
-
-            loadUserData();
-
-            // 로그인 성공 시 로그인 모달/바텀시트 자동으로 닫기
-            const isMobileDevice = document.documentElement.classList.contains('is-mobile-device');
-            const modalId = isMobileDevice ? 'mobile-auth-modal' : 'auth-modal';
-            const modalElem = document.getElementById(modalId);
-            if (modalElem) {
-                const instance = M.Modal.getInstance(modalElem);
-                if (instance) instance.close();
-            }
-        } else {
-            // 비활동 자동 로그아웃 감지 중단
-            AutoLogoutManager.stop();
-
-            // 비로그인 상태 UI
-            if (authIcon) authIcon.textContent = 'link_off';
-            if (authText) authText.textContent = '로그인';
-            if (authNavBtn) authNavBtn.dataset.tooltip = '로그인 필요';
-
-            if (homeUnauthContent) homeUnauthContent.style.display = 'block';
-            if (homeAuthContent) homeAuthContent.style.display = 'none';
-
-            // [추가] Guest 사용자는 추가 동기화 대기 없음
-            UserStore.isUserDataSyncDone = true;
-            checkAndHideInitialLoading();
-
-            updateProviderUI('google', false, 0);
-            updateProviderUI('twitter', false, 0);
-
-            // [추가] 비로그인 상태로 전환 시 보유 현황 목록 모드에 있다면 로그인 유도 UI로 즉시 갱신
-            if (typeof UIStore.mode !== 'undefined' && UIStore.mode === 'inventory' && 
-                typeof UIStore.inventoryMode !== 'undefined' && UIStore.inventoryMode === 'list') {
-                renderInventoryGrid();
-            }
-        }
-
-        // 헤더 및 연동 정보 렌더링 호출 (user가 null이어도 호출하여 UI 초기화)
-        renderLinkedAccounts(user);
-
-        // 인증 상태 변경 시 툴팁 표시 여부 재계산
-        if (typeof handleTooltipDisplay === 'function') {
-            handleTooltipDisplay();
-        }
-
-        // 인증 초기화 완료 후 통합 로딩 종료 체크
-        checkAndHideInitialLoading();
+        handleFirebaseAuthState(user);
     });
 
     // 사이드바 확장 상태일 때 인증 툴팁 제거 (데스크톱 뷰)
@@ -11128,14 +10731,92 @@ function initFirebaseAuth() {
     handleTooltipDisplay();
 }
 
+function applyServiceAuthState(user) {
+    window.isAuthInitialized = true;
+    const previousOwner = UserStore.user?.uid || null;
+    UserStore.user = user;
+    loadUserTheme(undefined, true);
+    if (previousOwner !== (user?.uid || null)) {
+        cardCacheInstance.clearAll();
+        clearTimeout(inventoryMigrationTimer);
+        delete UserStore.settings.membership;
+        UserStore.settings.hideMembershipVerify = false;
+        document.querySelectorAll('.target-inventory-section').forEach(section => renderOwnedCardsToContainer([], section));
+    }
+    const authNavBtn = document.getElementById('auth-nav-btn');
+    const authIcon = document.getElementById('auth-icon');
+    const authText = document.getElementById('auth-text');
+
+    const homeUnauthContent = document.getElementById('home-unauth-content');
+    const homeAuthContent = document.getElementById('home-auth-content');
+
+    if (user) {
+        // 비활동 자동 로그아웃 감지 시작 (30분)
+            if (AutoLogoutManager.start() === false) return;
+
+        // 로그인 상태 UI (이미 구현됨)
+        if (authIcon) authIcon.textContent = 'link';
+        if (authText) authText.textContent = '로그인';
+        if (authNavBtn) authNavBtn.dataset.tooltip = '로그인 완료';
+
+        if (homeUnauthContent) homeUnauthContent.hidden = true;
+        if (homeAuthContent) homeAuthContent.hidden = false;
+
+        loadUserData();
+
+        // 로그인 성공 시 로그인 모달/바텀시트 자동으로 닫기
+        const modalId = 'auth-modal';
+        const modalElem = document.getElementById(modalId);
+        if (modalElem) {
+            const instance = M.Modal.getInstance(modalElem);
+            if (instance) instance.close();
+        }
+    } else {
+        // 비활동 자동 로그아웃 감지 중단
+        AutoLogoutManager.stop();
+
+        // 비로그인 상태 UI
+        if (authIcon) authIcon.textContent = 'link_off';
+        if (authText) authText.textContent = '로그인';
+        if (authNavBtn) authNavBtn.dataset.tooltip = '로그인 필요';
+
+        if (homeUnauthContent) homeUnauthContent.hidden = false;
+        if (homeAuthContent) homeAuthContent.hidden = true;
+
+        // [추가] Guest 사용자는 추가 동기화 대기 없음
+        UserStore.isUserDataSyncDone = true;
+        checkAndHideInitialLoading();
+
+        updateProviderUI('google', false, 0);
+        updateProviderUI('twitter', false, 0);
+
+        // [추가] 비로그인 상태로 전환 시 보유 현황 목록 모드에 있다면 로그인 유도 UI로 즉시 갱신
+        if (typeof UIStore.mode !== 'undefined' && UIStore.mode === 'inventory' &&
+            typeof UIStore.inventoryMode !== 'undefined' && UIStore.inventoryMode === 'list') {
+            renderInventoryGrid();
+        }
+    }
+
+    // 헤더 및 연동 정보 렌더링 호출 (user가 null이어도 호출하여 UI 초기화)
+    renderLinkedAccounts(user);
+
+    // 인증 상태 변경 시 툴팁 표시 여부 재계산
+    if (typeof handleTooltipDisplay === 'function') {
+        handleTooltipDisplay();
+    }
+
+    // 인증 초기화 완료 후 통합 로딩 종료 체크
+    checkAndHideInitialLoading();
+}
+
 let currentNoticeIndex = -1; // 모바일 공지 상세 보기 인덱스
 
 function openNoticeModal(targetDate) {
+    // 팝업 안의 '더 보기'는 모달을 열 때 숨겨지므로 헤더 버튼을 복귀점으로 쓴다.
+    const trigger = document.getElementById('noti-btn');
     // 알림 팝업 닫기
-    const popup = document.getElementById('noti-popup');
-    if (popup) popup.classList.remove('active');
+    closeNotiPopup();
 
-    toggleBackgroundInert(true);
 
     // 모바일 기기인 경우 전용 모드 실행
     if (document.documentElement.classList.contains('is-mobile-device')) {
@@ -11143,11 +10824,11 @@ function openNoticeModal(targetDate) {
             // 특정 날짜가 전달된 경우 해당 날짜의 첫 번째 공지 상세 보기
             const idx = notices.findIndex(n => n.date === targetDate);
             if (idx !== -1) {
-                openNoticeDetailMode(idx);
+                openNoticeDetailMode(idx, trigger);
                 return;
             }
         }
-        openNoticeListMode();
+        openNoticeListMode(trigger);
         return;
     }
 
@@ -11160,7 +10841,7 @@ function openNoticeModal(targetDate) {
     if (notices.length === 0) {
         dateListContainer.innerHTML = '<div style="padding:20px; color:var(--text-muted); text-align:center;">공지사항이 없습니다.</div>';
         contentArea.innerHTML = '<div style="color:var(--text-muted); text-align:center; margin-top:100px;">등록된 공지사항이 없습니다.</div>';
-        instance.open();
+        instance.open(trigger ? [trigger] : undefined);
         return;
     }
 
@@ -11190,7 +10871,7 @@ function openNoticeModal(targetDate) {
         dateListContainer.appendChild(item);
     });
 
-    instance.open();
+    instance.open(trigger ? [trigger] : undefined);
 
     // 초기 날짜 선택 로직
     if (dates.length > 0) {
@@ -11203,28 +10884,22 @@ function openNoticeModal(targetDate) {
 /**
  * 모바일: 공지 목록 모달 열기
  */
-function openNoticeListMode() {
+function openNoticeListMode(trigger) {
     const listModal = document.getElementById('notice-list-modal');
     const detailModal = document.getElementById('notice-detail-modal');
     if (!listModal) return;
 
-    let listInstance = M.Modal.getInstance(listModal);
-    if (!listInstance) {
-        listInstance = M.Modal.init(listModal, getCommonModalOptions());
-    }
+    const listInstance = getAppModal(listModal);
 
     const detailInstance = M.Modal.getInstance(detailModal);
 
     updateMobileNoticeList();
 
-    listInstance.open();
-
-    // 전환 시퀀스: 목록이 다 열리면 상세 창 닫기
-    listInstance.options.onOpenEnd = () => {
-        if (detailInstance && detailInstance.isOpen) {
-            detailInstance.close();
-        }
-    };
+    // 공통 onOpenEnd 이후 한 번만 실행되는 화면 교체 훅.
+    modalAfterOpen.set(listModal, () => {
+        if (detailInstance && detailInstance.isOpen) detailInstance.close();
+    });
+    listInstance.open(trigger ? [trigger] : undefined);
 }
 
 const NOTICE_ALLOWED_TAGS = new Set([
@@ -11278,7 +10953,7 @@ function sanitizeNoticeHtml(content) {
 /**
  * 모바일: 개별 공지 상세 모달 열기
  */
-function openNoticeDetailMode(index) {
+function openNoticeDetailMode(index, trigger) {
     if (index < 0 || index >= notices.length) return;
     currentNoticeIndex = index;
 
@@ -11286,10 +10961,7 @@ function openNoticeDetailMode(index) {
     const detailModal = document.getElementById('notice-detail-modal');
     if (!detailModal) return;
 
-    let detailInstance = M.Modal.getInstance(detailModal);
-    if (!detailInstance) {
-        detailInstance = M.Modal.init(detailModal, getCommonModalOptions());
-    }
+    const detailInstance = getAppModal(detailModal);
 
     const listInstance = M.Modal.getInstance(listModal);
 
@@ -11300,16 +10972,11 @@ function openNoticeDetailMode(index) {
     document.getElementById('mobile-detail-title').innerText = noti.title;
     document.getElementById('mobile-notice-content-body').innerHTML = sanitizeNoticeHtml(noti.content);
 
-    detailInstance.open();
-
-    // 전환 시퀀스: 상세가 다 열리면 목록 창 닫기
-    detailInstance.options.onOpenEnd = () => {
-        if (listInstance && listInstance.isOpen) {
-            listInstance.close();
-        }
-        // 읽음 처리
+    modalAfterOpen.set(detailModal, () => {
+        if (listInstance && listInstance.isOpen) listInstance.close();
         markNoticeAsRead(noti.date);
-    };
+    });
+    detailInstance.open(trigger ? [trigger] : undefined);
 }
 
 /**
@@ -11421,21 +11088,54 @@ async function startYoutubeMembershipVerify() {
 function getCommonModalOptions() {
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
     return {
+        dismissible: true,
         opacity: 0.4,
         startingTop: '10%',
         endingTop: '10%',
         inDuration: isMobile ? 350 : 300,
         outDuration: isMobile ? 250 : 200,
-        onOpenStart: function (el) {
-            if (isMobile) document.documentElement.classList.add('modal-open');
+        onOpenStart: function (el, trigger) {
+            if (el.classList.contains('ui-overlay')) {
+                this.options.inDuration = this.options.outDuration = globalThis.AppOverlays?.duration() ?? 200;
+            }
+            beginModalLifecycle(el, trigger, this.$overlay?.[0]);
         },
         onOpenEnd: function (el) {
+            if (!this.isOpen) return;
             if (isMobile) el.style.top = '';
+            const afterOpen = modalAfterOpen.get(el);
+            modalAfterOpen.delete(el);
+            if (afterOpen) afterOpen();
         },
         onCloseStart: function (el) {
-            if (isMobile) document.documentElement.classList.remove('modal-open');
-            if (el.id === 'auth-modal' || el.id === 'mobile-auth-modal' || el.id === 'membership-auth-modal' || el.id === 'notice-modal' || el.id === 'notice-list-modal' || el.id === 'notice-detail-modal') {
-                toggleBackgroundInert(false);
+            beginModalClose(el);
+            if (el.id === 'signup-modal') cancelServiceRegistration();
+            if (el.id === 'migration-modal') resetDataTransferValidation();
+        },
+        onCloseEnd: function (el) {
+            if (this.isOpen || !modalStates.get(el)?.closing) return;
+            try {
+                // 기능별 후처리는 공통 잠금/초점 처리와 분리해 기존 시점에 실행한다.
+                if (el.id === 'terms-modal' || el.id === 'privacy-modal') {
+                    const currentHash = window.location.hash;
+                    if (currentHash === '#terms' || currentHash === '#privacy') {
+                        const targetHash = UIStore.lastHashBeforeModal || '';
+                        window.history.pushState(null, null, window.location.pathname + window.location.search + targetHash);
+                        UIStore.lastHashBeforeModal = '';
+                    }
+                }
+                if (el.id === 'membership-auth-modal') resetMembershipVerifyModal();
+                if (el.id === 'add-result-modal') handleContinueRegistration();
+                if (el.id === 'move-result-modal') finishMoveProcess();
+                if (el.id === 'discard-result-modal') handleContinueDiscard();
+                if (el.id === 'legacy-migration-modal') {
+                    sessionStorage.removeItem('ygo_redirect_legacy');
+                    const cleanUrl = window.location.protocol + '//' + window.location.host + window.location.pathname + window.location.hash;
+                    window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+                }
+            } finally {
+                // 성공 행 정리 후에도 존재하는 대상으로 초점을 복귀한다.
+                finishModalLifecycle(el);
             }
         }
     };
@@ -11501,11 +11201,9 @@ function renderLinkedAccounts(user) {
     const authIconElem = authCapsuleElem ? authCapsuleElem.querySelector('.auth-icon') : null;
 
     if (authTextElem && authCapsuleElem) {
-        const verifyBtn = document.getElementById('membership-verify-btn');
-        const isMobileDevice = document.documentElement.classList.contains('is-mobile-device');
-
         if (user) {
-            authTextElem.textContent = '로그아웃';
+            authTextElem.textContent = '내 계정';
+            authCapsuleElem.setAttribute('aria-label', '내 계정: 환경설정으로 이동');
             authCapsuleElem.classList.add('is-logged-in');
 
             // 멤버십 확인 버튼 표시 제어 (프리미엄이 아니고, 숨기기 설정이 false일 때만 표시)
@@ -11514,13 +11212,7 @@ function renderLinkedAccounts(user) {
             const isHidden = UserStore.settings.hideMembershipVerify === true;
             const shouldShowVerify = !isPremium && !isHidden;
 
-            if (verifyBtn) {
-                // 모바일이 아닐 때만 버튼 노출 (CSS에서도 강제 숨김 처리됨)
-                verifyBtn.style.display = (shouldShowVerify && !isMobileDevice) ? 'flex' : 'none';
-            }
-
-            // 멤버십 인증이 필요한 경우 프로필 버튼에 알림 점 표시
-            authCapsuleElem.classList.toggle('has-noti', shouldShowVerify);
+            syncMembershipHeader(shouldShowVerify);
 
             // 멤버십 여부에 따른 아이콘 변경
             if (isPremium) {
@@ -11530,58 +11222,34 @@ function renderLinkedAccounts(user) {
             }
         } else {
             authTextElem.textContent = '로그인';
+            authCapsuleElem.setAttribute('aria-label', '로그인');
             authCapsuleElem.classList.remove('is-logged-in');
             authCapsuleElem.classList.remove('has-noti'); // 비로그인 시 알림 제거
             if (authIconElem) authIconElem.textContent = 'account_circle';
 
             // 멤버십 확인 버튼 숨김
-            if (verifyBtn) verifyBtn.style.display = 'none';
+            syncMembershipHeader(false);
         }
     }
 
     // 환경설정 페이지 계정 카드 표시 제어
-    const infoCard = document.getElementById('user-info-card');
+    const infoCard = getAccountCardElement();
     if (infoCard) {
-        if (user) {
-            infoCard.style.display = 'block';
-            // 실제 데이터 렌더링은 loadUserData 직후에 수행됨
-        } else {
-            infoCard.style.display = 'none';
+        infoCard.hidden = !user;
+        // 실제 데이터 렌더링은 loadUserData 직후에 수행한다.
+        if (!user) {
+            getAccountCardElement('nickname-display').hidden = false;
+            getAccountCardElement('nickname-edit').hidden = true;
+            getAccountCardElement('nickname').textContent = '게스트';
+            getAccountCardElement('joined').textContent = '가입일: -';
+            getAccountCardElement('nickname-input').value = '';
+            renderMembershipSettings(null);
         }
     }
 
-    if (!user) {
-        // 로그아웃 상태일 때 환경 설정 UI 초기화
-        const linkedListElem = document.getElementById('linked-accounts-list');
-        if (linkedListElem) linkedListElem.innerHTML = '<div style="color: var(--text-muted); text-align: center;">연결된 외부 서비스가 없습니다.</div>';
-        return;
-    }
+    if (!user) return;
 
-    // 로그아웃 모달 내 연결 계정 리스트 갱신
     const activeProviders = user.providerData.map(p => p.providerId);
-    let htmlStr = '';
-
-    const providerMap = {
-        'google.com': { name: 'GOOGLE', idField: 'email' },
-        'twitter.com': { name: 'X (Twitter)', idField: 'displayName' }
-    };
-
-
-    user.providerData.forEach(pData => {
-        const info = providerMap[pData.providerId];
-        if (info) {
-            let identifier = pData[info.idField] || pData.displayName || pData.uid;
-            htmlStr += `<div style="display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px dotted rgba(0,0,0,0.1); padding-bottom: 4px;">
-                <span style="font-weight: 700; color: var(--text-001); width: 80px;">${info.name}</span>
-                <span style="color: var(--text-000); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${identifier}</span>
-            </div>`;
-        }
-    });
-
-    const linkedListElem = document.getElementById('linked-accounts-list');
-    if (linkedListElem) {
-        linkedListElem.innerHTML = htmlStr || '<div style="color: var(--text-muted); text-align: center;">연결된 외부 서비스가 없습니다.</div>';
-    }
 
     // 환경 설정 페이지 UI 업데이트 (동기화)
     const isGoogleLinked = activeProviders.includes('google.com');
@@ -11598,26 +11266,23 @@ function renderLinkedAccounts(user) {
 function updateUserInfoCard(user, userData) {
     if (!user) return;
 
-    const infoCard = document.getElementById('user-info-card');
-    const nicknameElem = document.getElementById('display-nickname');
-    const joinedElem = document.getElementById('display-joined-date');
+    const infoCard = getAccountCardElement();
+    const nicknameElem = getAccountCardElement('nickname');
+    const joinedElem = getAccountCardElement('joined');
 
     if (!infoCard) return;
 
-    // 멤버십 강조 (테두리)
-    if (document.body.classList.contains('is-premium')) {
-        infoCard.classList.add('is-premium');
-    } else {
-        infoCard.classList.remove('is-premium');
-    }
+    renderMembershipSettings(UserStore.settings?.membership);
 
     // 닉네임 우선순위: Nickname 필드 > 사용자 UID (계획에 따른 닉네임 기본값)
     const nickname = userData.Nickname || user.uid;
     if (nicknameElem) nicknameElem.textContent = nickname;
 
     // 가입일 표시
+    if (joinedElem) joinedElem.textContent = '가입일: -';
     if (joinedElem && userData.createdAt) {
         const date = userData.createdAt.toDate ? userData.createdAt.toDate() : new Date(userData.createdAt);
+        if (Number.isNaN(date.getTime())) return;
         const yyyy = date.getFullYear();
         const mm = String(date.getMonth() + 1).padStart(2, '0');
         const dd = String(date.getDate()).padStart(2, '0');
@@ -11628,25 +11293,26 @@ function updateUserInfoCard(user, userData) {
 }
 
 /**
- * 닉네임 수정 모달 토글 (인라인 편집)
+ * 닉네임 인라인 편집 전환 및 포커스 관리
  */
 function toggleNicknameEdit(isEdit) {
     if (!UserStore.user) return;
 
-    const displayWrapper = document.getElementById('nickname-display-wrapper');
-    const editWrapper = document.getElementById('nickname-edit-wrapper');
-    const editInput = document.getElementById('nickname-edit-input');
-    const currentName = document.getElementById('display-nickname').textContent;
+    const displayWrapper = getAccountCardElement('nickname-display');
+    const editWrapper = getAccountCardElement('nickname-edit');
+    const editInput = getAccountCardElement('nickname-input');
+    const nickname = getAccountCardElement('nickname');
+    if (!displayWrapper || !editWrapper || !editInput || !nickname) return;
+    const currentName = nickname.textContent;
 
+    displayWrapper.hidden = isEdit;
+    editWrapper.hidden = !isEdit;
     if (isEdit) {
-        displayWrapper.style.display = 'none';
-        editWrapper.style.display = 'flex';
         editInput.value = ''; // 입력창 비움
         editInput.placeholder = currentName; // 기존 닉네임을 플레이스홀더로
         editInput.focus();
     } else {
-        displayWrapper.style.display = 'flex';
-        editWrapper.style.display = 'none';
+        getAccountCardElement('nickname-edit-button')?.focus();
     }
 }
 
@@ -11654,9 +11320,11 @@ function toggleNicknameEdit(isEdit) {
  * 닉네임 수정 확인
  */
 function confirmNicknameEdit() {
-    const editInput = document.getElementById('nickname-edit-input');
+    const editInput = getAccountCardElement('nickname-input');
+    const nickname = getAccountCardElement('nickname');
+    if (!UserStore.user || !editInput || !nickname) return;
     const newName = editInput.value.trim();
-    const currentName = document.getElementById('display-nickname').textContent;
+    const currentName = nickname.textContent;
 
     if (newName === "" || newName === currentName) {
         toggleNicknameEdit(false); // 변경 없으면 그냥 닫기
@@ -11723,244 +11391,73 @@ function getProviderInstance(providerName) {
 }
 
 function toggleAuthModal(showGuide = false) {
-    const isMobileDevice = document.documentElement.classList.contains('is-mobile-device');
-    const modalId = isMobileDevice ? 'mobile-auth-modal' : 'auth-modal';
-    const modalElem = document.getElementById(modalId);
+    if (UserStore.user) {
+        switchToMode('settings');
+        return;
+    }
+    const modalElem = document.getElementById('auth-modal');
     if (!modalElem) return;
 
-    let instance = M.Modal.getInstance(modalElem);
-    if (!instance) {
-        instance = M.Modal.init(modalElem, getCommonModalOptions());
+    const guide = document.getElementById('login-guide-msg');
+    const introduction = document.getElementById('login-sub-msg');
+    if (guide) guide.hidden = !showGuide;
+    if (introduction) introduction.hidden = showGuide;
+    if (pendingRegistrationUser) {
+        getAppModal(document.getElementById('signup-modal')).open();
+        return;
     }
-
-    const guideMsg = document.getElementById('login-guide-msg');
-    const mobileGuideMsg = document.getElementById('mobile-login-guide-msg');
-    const mobileSubMsg = document.getElementById('mobile-login-sub-msg');
-
-    if (UserStore.user) {
-        if (guideMsg) guideMsg.style.display = 'none';
-        if (mobileGuideMsg) mobileGuideMsg.style.display = 'none';
-        if (mobileSubMsg) mobileSubMsg.style.display = 'block';
-
-        if (isMobileDevice) {
-            document.getElementById('mobile-login-view').style.display = 'none';
-            document.getElementById('mobile-logout-view').style.display = 'block';
-            renderMobileLinkedAccounts(UserStore.user);
-        } else {
-            document.getElementById('login-view').style.display = 'none';
-            document.getElementById('logout-view').style.display = 'block';
-            renderLinkedAccounts(UserStore.user);
-        }
-    } else {
-        if (guideMsg) guideMsg.style.display = showGuide ? 'block' : 'none';
-        if (mobileGuideMsg) mobileGuideMsg.style.display = showGuide ? 'block' : 'none';
-        if (mobileSubMsg) mobileSubMsg.style.display = showGuide ? 'none' : 'block';
-
-        if (isMobileDevice) {
-            document.getElementById('mobile-login-view').style.display = 'block';
-            document.getElementById('mobile-logout-view').style.display = 'none';
-            document.getElementById('mobile-privacy-agree-cb').checked = false;
-            document.getElementById('mobile-terms-agree-cb').checked = false;
-            document.getElementById('mobile-google-login-btn').classList.add('disabled');
-            const twBtn = document.getElementById('mobile-twitter-login-btn');
-            if (twBtn) twBtn.classList.add('disabled');
-        } else {
-            document.getElementById('login-view').style.display = 'block';
-            document.getElementById('logout-view').style.display = 'none';
-            document.getElementById('privacy-agree-cb').checked = false;
-            document.getElementById('terms-agree-cb').checked = false;
-            document.getElementById('google-login-btn').classList.add('disabled');
-            const twBtn = document.getElementById('twitter-login-btn');
-            if (twBtn) twBtn.classList.add('disabled');
-        }
-    }
-
-    toggleBackgroundInert(true);
-    instance.open();
-}
-
-function renderMobileLinkedAccounts(user) {
-    if (!user) return;
-    
-    const activeProviders = user.providerData.map(p => p.providerId);
-    const isGoogleLinked = activeProviders.includes('google.com');
-    
-    // [상단] 계정 정보 업데이트 (가장 우선되는 provider 정보 사용)
-    const providerMap = {
-        'google.com': { 
-            name: 'Google 계정', 
-            htmlIcon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="1.5rem" height="1.5rem"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z" /><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z" /><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z" /><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z" /></svg>`,
-            idField: 'email' 
-        },
-        'twitter.com': { 
-            name: 'X (Twitter) 계정', 
-            htmlIcon: `<i class="fa-brands fa-x-twitter" style="font-size: 1.5rem; color: var(--text-000);"></i>`,
-            idField: 'displayName' 
-        }
-    };
-    
-    let mainProvider = user.providerData[0];
-    const googleProvider = user.providerData.find(p => p.providerId === 'google.com');
-    if (googleProvider) mainProvider = googleProvider; // 구글 우선
-    
-    if (mainProvider) {
-        const info = providerMap[mainProvider.providerId];
-        const identifier = mainProvider[info ? info.idField : 'email'] || mainProvider.displayName || mainProvider.uid;
-        
-        const iconElem = document.getElementById('mobile-account-icon');
-        if (info && info.htmlIcon) {
-            iconElem.innerHTML = info.htmlIcon;
-        } else {
-            iconElem.innerHTML = `<i class="material-icons" style="font-size: 1.5rem;">account_circle</i>`;
-        }
-        
-        document.getElementById('mobile-account-provider').innerText = info ? info.name : mainProvider.providerId;
-        document.getElementById('mobile-account-identifier').innerText = identifier;
-    }
-
-    // [하단] 구글 연동 상태에 따른 뷰 표시 분기
-    const googlePromoView = document.getElementById('mobile-google-promo-view');
-    const membershipPromoView = document.getElementById('mobile-membership-promo-view');
-    
-    if (isGoogleLinked) {
-        googlePromoView.style.display = 'none';
-        
-        // 숨기기 설정 확인
-        const isPremium = document.body.classList.contains('is-premium');
-        const isHidden = UserStore.settings.hideMembershipVerify === true;
-        
-        if (isPremium || isHidden) {
-            membershipPromoView.style.display = 'none';
-        } else {
-            membershipPromoView.style.display = 'block';
-        }
-    } else {
-        googlePromoView.style.display = 'block';
-        membershipPromoView.style.display = 'none';
-    }
-}
-
-function toggleLoginBtnMobile() {
-    const termsCb = document.getElementById('mobile-terms-agree-cb');
-    const privacyCb = document.getElementById('mobile-privacy-agree-cb');
-    const gBtn = document.getElementById('mobile-google-login-btn');
-    const tBtn = document.getElementById('mobile-twitter-login-btn');
-
-    const isAllAgreed = (termsCb && termsCb.checked) && (privacyCb && privacyCb.checked);
-
-    if (isAllAgreed) {
-        if (gBtn) gBtn.classList.remove('disabled');
-        if (tBtn) tBtn.classList.remove('disabled');
-    } else {
-        if (gBtn) gBtn.classList.add('disabled');
-        if (tBtn) tBtn.classList.add('disabled');
-    }
+    toggleLoginBtn();
+    getAppModal(modalElem).open();
 }
 
 function toggleLoginBtn() {
-    const termsCb = document.getElementById('terms-agree-cb');
-    const privacyCb = document.getElementById('privacy-agree-cb');
-    const gBtn = document.getElementById('google-login-btn');
-    const tBtn = document.getElementById('twitter-login-btn');
-
-    const isAllAgreed = (termsCb && termsCb.checked) && (privacyCb && privacyCb.checked);
-
-    if (isAllAgreed) {
-        if (gBtn) gBtn.classList.remove('disabled');
-        if (tBtn) tBtn.classList.remove('disabled');
-    } else {
-        if (gBtn) gBtn.classList.add('disabled');
-        if (tBtn) tBtn.classList.add('disabled');
+    for (const id of ['google-login-btn', 'twitter-login-btn']) {
+        const button = document.getElementById(id);
+        if (button) button.disabled = loginInProgress;
     }
 }
 
-function signInWithProvider(providerName) {
-    const isMobileDevice = document.documentElement.classList.contains('is-mobile-device');
-    const btnId = isMobileDevice
-        ? (providerName === 'google' ? 'mobile-google-login-btn' : 'mobile-twitter-login-btn')
-        : (providerName === 'google' ? 'google-login-btn' : 'twitter-login-btn');
-    const btn = document.getElementById(btnId);
-    if (!btn || btn.classList.contains('disabled')) return;
-
-    if (typeof firebase === 'undefined' || !firebase.auth) {
-        return;
-    }
-
+async function signInWithProvider(providerName) {
+    const btn = document.getElementById(providerName === 'google' ? 'google-login-btn' : 'twitter-login-btn');
+    if (!btn || btn.disabled || typeof firebase === 'undefined' || !firebase.auth) return;
     const provider = getProviderInstance(providerName);
     if (!provider) return;
-
-    // 로컬 환경인 경우 세션 연동을 위해 signInWithPopup을 사용하고, 실서버 환경인 경우 COOP 경고 방지를 위해 signInWithRedirect를 사용
-    if (IS_LOCAL_DEV) {
-        firebase.auth().signInWithPopup(provider).then(async (result) => {
-            // 로컬 팝업 로그인 성공 시 로그인 모달/바텀시트 자동 종료
-            const modalId = isMobileDevice ? 'mobile-auth-modal' : 'auth-modal';
-            const modalElem = document.getElementById(modalId);
-            if (modalElem) {
-                const instance = M.Modal.getInstance(modalElem);
-                if (instance) instance.close();
-            }
-        }).catch((error) => {
-            console.error("Login Error:", error);
-            showToast('로그인 실패: ' + error.message, 'toast-error');
-        });
-    } else {
-        firebase.auth().signInWithRedirect(provider).catch((error) => {
-            console.error("Login Error:", error);
-            showToast('로그인 실패: ' + error.message, 'toast-error');
-        });
+    loginInProgress = true;
+    toggleLoginBtn();
+    try {
+        if (IS_LOCAL_DEV) await firebase.auth().signInWithPopup(provider);
+        else await firebase.auth().signInWithRedirect(provider);
+        // 가입 여부와 화면 전환은 onAuthStateChanged에서만 처리한다.
+    } catch (_) {
+        showToast('로그인하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
+    } finally {
+        loginInProgress = false;
+        toggleLoginBtn();
     }
 }
 
 /**
  * 유튜브 멤버십 인증 모달 오픈
  */
-function openMembershipAuthModal() {
+function openMembershipAuthModal(source = 'header') {
     if (!UserStore.user) {
         showToast('로그인이 필요합니다.', 'toast-warn');
         return;
     }
-
-    // 현재 유저의 연동 상태 뱃지 업데이트
-    const badgeContainer = document.getElementById('membership-current-status-badge');
+    resetMembershipVerifyModal();
+    const hideButton = document.getElementById('never-show-membership-verify');
+    const hideFooter = document.getElementById('membership-hide-footer');
+    if (hideButton) hideButton.hidden = source === 'settings';
+    if (hideFooter) hideFooter.hidden = source === 'settings';
+    const membership = UserStore.settings?.membership;
+    const active = membership?.status === 'active';
     const discordBadge = document.getElementById('badge-discord-linked');
     const youtubeBadge = document.getElementById('badge-youtube-linked');
+    if (discordBadge) discordBadge.hidden = !(active && membership.type === 'discord');
+    if (youtubeBadge) youtubeBadge.hidden = !(active && membership.type === 'csv');
 
-    if (discordBadge) discordBadge.style.display = 'none';
-    if (youtubeBadge) youtubeBadge.style.display = 'none';
-
-    const membership = UserStore.settings && UserStore.settings.membership;
-
-    if (membership && membership.status === 'active') {
-        const typeName = membership.type === 'discord' ? '멤버십 인증 완료' : '유튜브 채널 (CSV)';
-
-        if (badgeContainer) {
-            badgeContainer.innerHTML = `<span style="background: rgba(0,188,212,0.12); color: var(--theme-000); border: 1px solid var(--theme-000); padding: 4px 12px; border-radius: 20px; font-weight: 700; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px;">
-                <i class="material-icons" style="font-size: 1rem;">check_circle</i> ${typeName}
-            </span>`;
-        }
-
-        if (membership.type === 'discord' && discordBadge) {
-            discordBadge.style.display = 'inline-block';
-        } else if (membership.type === 'csv' && youtubeBadge) {
-            youtubeBadge.style.display = 'inline-block';
-        }
-    } else {
-        if (badgeContainer) {
-            badgeContainer.innerHTML = `<span style="background: var(--bg-surface); color: var(--text-muted); border: 1px solid var(--border-color); padding: 4px 12px; border-radius: 20px; font-weight: 600; font-size: 0.82rem;">
-                현재 연동된 멤버십이 없습니다.
-            </span>`;
-        }
-    }
-
-    const modalElem = document.getElementById('membership-auth-modal');
-    if (modalElem) {
-        let instance = M.Modal.getInstance(modalElem);
-        if (!instance) {
-            instance = M.Modal.init(modalElem, typeof getCommonModalOptions === 'function' ? getCommonModalOptions() : {});
-        }
-        if (typeof toggleBackgroundInert === 'function') toggleBackgroundInert(true);
-        instance.open();
-    }
+    const modal = document.getElementById('membership-auth-modal');
+    if (modal) getAppModal(modal).open();
 }
 
 /**
@@ -12049,86 +11546,36 @@ async function handleDiscordOAuthCallback() {
  */
 let membershipHideClickCount = 0;
 async function handleNeverShowMembership() {
-    const btn = document.getElementById('never-show-membership-verify');
-    if (!btn) return;
-
+    const button = document.getElementById('never-show-membership-verify');
+    if (!button || button.hidden || button.disabled || !UserStore.user) return;
+    const guide = document.getElementById('membership-hide-guide');
     if (membershipHideClickCount === 0) {
-        // 1단계 클릭: 문구 변경
         membershipHideClickCount = 1;
-        btn.innerHTML = '환경 설정에서도 멤버십 인증을 할 수 있습니다.<br>(진행하려면 한 번 더 눌러주세요.)';
-        btn.style.color = 'var(--text-001)';
-        btn.style.fontSize = '0.8rem';
-        btn.style.lineHeight = '1.4';
-    } else {
-        // 2단계 클릭: DB 저장 및 버튼 숨김
-        if (!UserStore.user) return;
-
-        try {
-            await saveUserSetting('hideMembershipVerify', true);
-
-            // 데스크탑 모달 닫기
-            const modalInstance = M.Modal.getInstance(document.getElementById('membership-auth-modal'));
-            if (modalInstance) modalInstance.close();
-
-            // 모바일 모달 닫기 추가
-            const mobileModalInstance = M.Modal.getInstance(document.getElementById('mobile-auth-modal'));
-            if (mobileModalInstance) mobileModalInstance.close();
-
-            // 즉시 UI 업데이트: 버튼 숨김 및 알림 점 제거
-            const verifyBtn = document.getElementById('membership-verify-btn');
-            if (verifyBtn) verifyBtn.style.display = 'none';
-            const authCapsuleElem = document.getElementById('auth-capsule-btn');
-            if (authCapsuleElem) authCapsuleElem.classList.remove('has-noti');
-
-            // 카운트 초기화
-            resetMembershipVerifyModal();
-        } catch (err) {
-            console.error("Failed to save hide setting:", err);
-            showToast('설정 저장에 실패했습니다.', 'toast-error');
-        }
+        if (guide) guide.hidden = false;
+        button.textContent = '숨기기 확인';
+        return;
+    }
+    button.disabled = true;
+    try {
+        await saveUserSetting('hideMembershipVerify', true);
+        const instance = M.Modal.getInstance(document.getElementById('membership-auth-modal'));
+        if (instance) instance.close();
+        syncMembershipHeader(false);
+        resetMembershipVerifyModal();
+    } catch (error) {
+        showToast('설정 저장에 실패했습니다.', 'toast-error');
+    } finally {
+        button.disabled = false;
     }
 }
 
-let mobileMembershipHideClickCount = 0;
-async function handleNeverShowMembershipMobile() {
-    const btn = document.getElementById('mobile-never-show-membership');
-    if (!btn) return;
-
-    if (mobileMembershipHideClickCount === 0) {
-        mobileMembershipHideClickCount = 1;
-        btn.innerHTML = '환경 설정에서도 멤버십 인증을 할 수 있습니다.<br>(진행하려면 한 번 더 눌러주세요.)';
-        btn.style.color = 'var(--text-001)';
-    } else {
-        if (!UserStore.user) return;
-        try {
-            await saveUserSetting('hideMembershipVerify', true);
-            const mobileModalInstance = M.Modal.getInstance(document.getElementById('mobile-auth-modal'));
-            if (mobileModalInstance) mobileModalInstance.close();
-            
-            const authCapsuleElem = document.getElementById('auth-capsule-btn');
-            if (authCapsuleElem) authCapsuleElem.classList.remove('has-noti');
-            
-            mobileMembershipHideClickCount = 0;
-            btn.textContent = '다시 표시하지 않음';
-            btn.style.color = 'var(--text-001)';
-        } catch (err) {
-            showToast('설정 저장에 실패했습니다.', 'toast-error');
-        }
-    }
-}
-
-/**
- * 모달 상태 초기화 (닫힐 때 호출 권장)
- */
+/** 닫기 방법과 관계없이 다음 열림은 첫 확인 단계에서 시작한다. */
 function resetMembershipVerifyModal() {
     membershipHideClickCount = 0;
-    const btn = document.getElementById('never-show-membership-verify');
-    if (btn) {
-        btn.textContent = '다시 표시하지 않음';
-        btn.style.color = ''; // 기본 스타일로 복구
-        btn.style.fontSize = '';
-        btn.style.lineHeight = '';
-    }
+    const button = document.getElementById('never-show-membership-verify');
+    if (button) button.textContent = '다시 표시하지 않음';
+    const guide = document.getElementById('membership-hide-guide');
+    if (guide) guide.hidden = true;
 }
 
 function toggleProviderLink(providerName) {
@@ -12194,72 +11641,53 @@ function deleteAccount() {
  * 데이터 삭제 확인 모달 오픈
  */
 function openDataClearModal() {
-    if (!checkAuthBeforeAction()) return;
-    const modalElem = document.getElementById('data-clear-confirm-modal');
-    if (modalElem) M.Modal.getInstance(modalElem).open();
+    if (dataClearBusy || migrationState.busy || !checkAuthBeforeAction()) return;
+    const message = document.getElementById('data-clear-status-msg');
+    message.textContent = '';
+    message.hidden = true;
+    getAppModal(document.getElementById('data-clear-confirm-modal')).open();
 }
 
-/**
- * 데이터 삭제 실행
- */
 async function executeDataClear() {
-    if (!UserStore.user) return;
-
-    const execBtn = document.getElementById('data-clear-exec-btn');
-    const spinner = document.getElementById('data-clear-spinner');
-
+    if (dataClearBusy || migrationState.busy || !checkAuthBeforeAction()) return;
+    const user = UserStore.user;
+    const message = document.getElementById('data-clear-status-msg');
+    dataClearBusy = true;
+    setDataTransferBusy('data-clear-confirm-modal', true);
+    message.className = 'color-text-001';
+    message.textContent = '보유 카드를 삭제하는 중입니다. 완료될 때까지 창을 닫을 수 없습니다.';
+    message.hidden = false;
+    let result;
     try {
-        // 로딩 상태 활성화
-        if (execBtn) execBtn.classList.add('disabled');
-        if (spinner) spinner.style.display = 'block';
-
-        const idToken = await UserStore.user.getIdToken();
-        const response = await fetch(FIREBASE_CONFIG.ENDPOINTS.clearUserData, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${idToken}`
-            },
-            body: JSON.stringify({})
-        });
-
-        // 응답 상태 확인
-        if (!response.ok) {
-            throw new Error(`HTTP Error: ${response.status}`);
-        }
-
-        const result = await response.json();
-        if (result.success) {
-            // 성공 시 확인 모달 닫고 결과 모달 오픈
-            const confirmModal = M.Modal.getInstance(document.getElementById('data-clear-confirm-modal'));
-            if (confirmModal) confirmModal.close();
-
-            const successModal = M.Modal.getInstance(document.getElementById('data-clear-success-modal'));
-            if (successModal) successModal.open();
-
-            // 로컬 캐시 및 UI 초기화
-            cardCacheInstance.clearAll();
-            await loadUserData(); // getUserData -> loadUserData (ReferenceError 해결)
-            renderHomeDash();
-        } else {
-            showToast(result.message || '데이터 삭제에 실패했습니다.', 'toast-error');
-        }
+        result = await callApi('clearUserData', {}, {});
+        if (UserStore.user === user && !result?.success) throw new Error(result?.message || '보유 카드를 삭제하지 못했습니다.');
     } catch (error) {
-        console.error("Data Clear Error:", error);
-        showToast('서버 통신 중 오류가 발생했습니다.', 'toast-error');
+        result = null;
+        if (UserStore.user === user) {
+            message.className = 'color-text-red';
+            message.textContent = error.message || '서버 통신 중 오류가 발생했습니다.';
+        }
     } finally {
-        // 로딩 상태 해제
-        if (execBtn) execBtn.classList.remove('disabled');
-        if (spinner) spinner.style.display = 'none';
+        setDataTransferBusy('data-clear-confirm-modal', false);
+        dataClearBusy = false;
     }
+    if (UserStore.user !== user) {
+        M.Modal.getInstance(document.getElementById('data-clear-confirm-modal')).close();
+        return;
+    }
+    if (!result?.success) return;
+    M.Modal.getInstance(document.getElementById('data-clear-confirm-modal')).close();
+    getAppModal(document.getElementById('data-clear-success-modal')).open();
+    cardCacheInstance.clearAll();
+    try { await loadUserData(); }
+    catch (_) { if (UserStore.user === user) showToast('삭제는 완료되었습니다. 보유 정보 새로고침을 다시 시도해주세요.', 'toast-warn'); }
 }
 
 function signOutCurrentUser() {
     AutoLogoutManager.stop();
     if (typeof firebase !== 'undefined' && firebase.auth) {
         firebase.auth().signOut().then(() => {
-            const isMobileDevice = document.documentElement.classList.contains('is-mobile-device');
-            const modalId = isMobileDevice ? 'mobile-auth-modal' : 'auth-modal';
+            const modalId = 'auth-modal';
             const modalElem = document.getElementById(modalId);
             const instance = M.Modal.getInstance(modalElem);
             if (instance) instance.close();
@@ -12378,29 +11806,56 @@ function markDateAsRead(date) {
     }
 }
 
-function toggleNotiPopup(event) {
-    if (event) event.stopPropagation();
+function closeNotiPopup() {
     const popup = document.getElementById('noti-popup');
-    if (!popup) return;
-
-    const isActive = popup.classList.contains('active');
-
-    // 다른 요소를 클릭했을 때 팝업을 닫기 위한 일회성 리스너
-    if (!isActive) {
-        popup.classList.add('active');
-        renderNotiPopup();
-
-        const closePopup = (e) => {
-            if (!popup.contains(e.target)) {
-                popup.classList.remove('active');
-                document.removeEventListener('click', closePopup);
-            }
-        };
-        document.addEventListener('click', closePopup);
+    if (!popup || (!popup.classList.contains('active') && !isManagedSheetOpen(popup))) return;
+    popup.classList.remove('active');
+    document.getElementById('noti-btn')?.setAttribute('aria-expanded', 'false');
+    if (popup.classList.contains('ui-overlay--sheet')) {
+        closeManagedSheet(popup, { backdrop: document.getElementById('noti-popup-backdrop') });
     } else {
-        popup.classList.remove('active');
+        globalThis.AppOverlays.closePopup(popup);
     }
 }
+
+function toggleNotiPopup(event) {
+    event?.stopPropagation();
+    const popup = document.getElementById('noti-popup');
+    if (!popup) return;
+    if (popup.classList.contains('active') || isManagedSheetOpen(popup)) return closeNotiPopup();
+    const mobile = document.documentElement.classList.contains('is-mobile-device');
+    popup.classList.toggle('ui-overlay--sheet', mobile);
+    popup.classList.toggle('ui-overlay--popup', !mobile);
+    popup.classList.toggle('shape-rounded-lg', mobile);
+    popup.classList.toggle('shape-rounded003', !mobile);
+    popup.classList.toggle('shadow-mobile-sheet', mobile);
+    popup.classList.toggle('shadow-medium', !mobile);
+    renderNotiPopup();
+    const trigger = document.getElementById('noti-btn');
+    trigger?.setAttribute('aria-expanded', 'true');
+    if (mobile) {
+        popup.style.removeProperty('left');
+        popup.style.removeProperty('top');
+        openManagedSheet(popup, { backdrop: document.getElementById('noti-popup-backdrop'), trigger, onDismiss: closeNotiPopup });
+    } else {
+        popup.classList.add('active');
+        globalThis.AppOverlays.openPopup(popup, trigger);
+    }
+}
+
+document.addEventListener('click', event => {
+    const popup = document.getElementById('noti-popup');
+    if (popup?.classList.contains('ui-overlay--popup') && !popup.contains(event.target)
+        && !document.getElementById('noti-btn')?.contains(event.target)) closeNotiPopup();
+});
+document.addEventListener('keydown', event => {
+    const popup = document.getElementById('noti-popup');
+    if (event.key === 'Escape' && popup?.classList.contains('active') && popup.classList.contains('ui-overlay--popup')) {
+        event.preventDefault();
+        closeNotiPopup();
+        document.getElementById('noti-btn')?.focus({ preventScroll: true });
+    }
+});
 
 function renderNotiPopup() {
     const listContainer = document.getElementById('noti-list-container');
@@ -12434,7 +11889,7 @@ function updateNotiBadge() {
 
     // 신규 공지가 하나라도 있는지 확인 (최신 8개 검사는 isNoticeNew 내에서 처리됨)
     const hasUnreadNew = notices.slice(0, 8).some(noti => isNoticeNew(noti));
-    badge.style.display = hasUnreadNew ? 'block' : 'none';
+    badge.hidden = !hasUnreadNew;
 }
 /**
  * 데스크탑: 날짜별 공지 내용 렌더링
@@ -12651,302 +12106,242 @@ window.AdminManager = {
 /**
  * [전환] 마이그레이션 모달 내 탭 전환 (파일/구글 시트)
  */
-function toggleMigrationTab(mode) {
-    const fileContent = document.getElementById('mig-content-file');
-    const sheetContent = document.getElementById('mig-content-sheet');
-    const statusMsg = document.getElementById('migration-status-msg');
+// 가져오기 창의 검증·실행 수명주기. 이전 파일/링크/계정의 응답을 새 창에 적용하지 않는다.
+let pendingMigrationData = null;
+const migrationState = { revision: 0, mode: 'file', reader: null, sheet: null, owner: null, busy: false };
+let dataClearBusy = false;
+const dataTransferLocks = new Map();
 
-    if (mode === 'file') {
-        fileContent.style.display = 'block';
-        sheetContent.style.display = 'none';
-        handleMigrationFileUpload({ target: document.getElementById('migration-file-input') }); // 기존 선택 파일 체크
-    } else {
-        fileContent.style.display = 'none';
-        sheetContent.style.display = 'block';
-        validateMigrationLink(); // 기존 입력 링크 체크
+function setDataTransferBusy(id, busy) {
+    const modal = document.getElementById(id);
+    const instance = M.Modal.getInstance(modal);
+    if (busy && !dataTransferLocks.has(id)) {
+        const controls = [...modal.querySelectorAll('button, input, select, textarea')].map(control => [control, control.disabled]);
+        dataTransferLocks.set(id, { controls, dismissible: instance.options.dismissible });
+        controls.forEach(([control]) => { control.disabled = true; });
+        instance.options.dismissible = false;
+    } else if (!busy && dataTransferLocks.has(id)) {
+        const lock = dataTransferLocks.get(id);
+        lock.controls.forEach(([control, disabled]) => { control.disabled = disabled; });
+        instance.options.dismissible = lock.dismissible;
+        dataTransferLocks.delete(id);
     }
-    statusMsg.innerHTML = '';
+    modal.setAttribute('aria-busy', String(busy));
+    const spinner = document.getElementById(id === 'migration-modal' ? 'migration-spinner' : 'data-clear-spinner');
+    spinner.hidden = !busy;
 }
 
-/**
- * [파일] 마이그레이션용 엑셀/CSV 파일 업로드 및 검증
- */
-let pendingMigrationData = null; // 업로드된 임시 데이터 저장
+function setMigrationMessage(text, color = 'color-text-001', icon = '') {
+    const msg = document.getElementById('migration-status-msg');
+    msg.textContent = text;
+    msg.hidden = !text;
+    msg.className = color;
+    const fileGuide = document.getElementById('migration-file-guide');
+    fileGuide.hidden = migrationState.mode === 'file' && Boolean(text) && color === 'color-text-red';
+    const mark = document.getElementById('migration-valid-mark');
+    mark.textContent = '';
+    if (icon) {
+        const node = document.createElement('i');
+        node.className = `material-icons ${color}`;
+        node.textContent = icon;
+        mark.appendChild(node);
+    }
+}
+
+function resetDataTransferValidation() {
+    if (migrationState.busy) return;
+    migrationState.revision++;
+    clearTimeout(migrationValidationTimeout);
+    const reader = migrationState.reader;
+    migrationState.reader = null;
+    if (reader?.readyState === 1) reader.abort();
+    pendingMigrationData = null;
+    migrationState.sheet = null;
+    migrationState.owner = null;
+    document.getElementById('migration-exec-btn').disabled = true;
+    document.getElementById('migration-spinner').hidden = true;
+    setMigrationMessage('');
+}
+
+function migrationPreviewMessage(preview) {
+    let message = `검증 완료: ${preview.data?.length ?? preview.rowCount}개 항목 · ${preview.totalQty.toLocaleString()}장.`;
+    if (preview.legacyQuantity) message += ' 수량 열이 없어 행마다 1장으로 처리합니다.';
+    if (preview.skippedZeroCount) message += ` 수량 0인 ${preview.skippedZeroCount}개 행은 제외합니다.`;
+    return message;
+}
+
+function toggleMigrationTab(mode) {
+    if (migrationState.busy) return;
+    resetDataTransferValidation();
+    migrationState.mode = mode === 'sheet' ? 'sheet' : 'file';
+    const isSheet = migrationState.mode === 'sheet';
+    document.getElementById('mig-content-file').hidden = isSheet;
+    document.getElementById('mig-content-sheet').hidden = !isSheet;
+    document.getElementById('mig-mode-file').checked = !isSheet;
+    document.getElementById('mig-mode-sheet').checked = isSheet;
+    if (isSheet) validateMigrationLink();
+    else handleMigrationFileUpload({ target: document.getElementById('migration-file-input') });
+}
 
 function handleMigrationFileUpload(event) {
+    if (migrationState.busy || migrationState.mode !== 'file') return;
     const file = event.target.files?.[0];
-    const fileNameElem = document.getElementById('mig-file-name');
-    const execBtn = document.getElementById('migration-exec-btn');
-    const statusMsg = document.getElementById('migration-status-msg');
-
-    if (!file) {
-        pendingMigrationData = null;
-        execBtn.classList.add('disabled');
-        return;
-    }
-
-    fileNameElem.textContent = file.name;
-    const reader = new FileReader();
-    reader.onload = function (e) {
+    if (!file) return;
+    resetDataTransferValidation();
+    const revision = migrationState.revision, user = UserStore.user;
+    const current = () => revision === migrationState.revision && migrationState.mode === 'file'
+        && UserStore.user === user && event.target.files?.[0] === file;
+    document.getElementById('mig-file-name').textContent = file.name;
+    setMigrationMessage('파일을 확인하는 중…');
+    const reader = migrationState.reader = new FileReader();
+    reader.onload = event => {
+        if (!current()) return;
         try {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-
-            // 1. MyCard 시트 존재 여부 확인
-            if (!workbook.SheetNames.includes('MyCard')) {
-                throw new Error('"MyCard" 시트를 찾을 수 없습니다.');
-            }
-
-            const sheet = workbook.Sheets['MyCard'];
-            const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-            if (jsonData.length < 1) throw new Error('데이터가 없는 빈 파일입니다.');
-
-            // 2. 헤더 행 유효성 검사
-            const headers = jsonData[0].map(h => String(h || "").trim());
-            const requiredHeaders = ["카드 이름", "카드 번호", "레어도", "보관 위치", "일러스트"];
-            const missing = requiredHeaders.filter(h => !headers.includes(h));
-
-            if (missing.length > 0) {
-                throw new Error(`필수 항목이 누락되었습니다: ${missing.join(', ')}`);
-            }
-
-            statusMsg.innerHTML = '파일 검증 완료. 이관을 진행할 수 있습니다.';
-            statusMsg.className = 'status-msg success';
-            statusMsg.style.color = 'var(--success-green)';
-            execBtn.classList.remove('disabled');
-
-            // 전송용 데이터 정제 (JSON 배열)
-            const rows = XLSX.utils.sheet_to_json(sheet); // 객체 배열로 변환
-            pendingMigrationData = rows.map(r => ({
-                name: r["카드 이름"],
-                no: r["카드 번호"],
-                rare: r["레어도"],
-                loc: r["보관 위치"],
-                illust: r["일러스트"]
-            }));
-
+            const bytes = new Uint8Array(event.target.result);
+            let rows;
+            if (/\.csv$/i.test(file.name)) {
+                let decoded;
+                try { decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+                catch (_) { throw new Error('UTF-8 형식의 CSV 파일을 선택해주세요.'); }
+                rows = AppDataTransfer.parseCsv(decoded);
+            } else if (/\.xlsx?$/i.test(file.name)) {
+                const workbook = XLSX.read(bytes, { type: 'array' });
+                if (!workbook.SheetNames.includes('MyCard')) throw new Error('"MyCard" 시트를 찾을 수 없습니다.');
+                rows = XLSX.utils.sheet_to_json(workbook.Sheets.MyCard, { header: 1 });
+            } else throw new Error('Excel 또는 UTF-8 CSV 파일을 선택해주세요.');
+            const preview = AppDataTransfer.parseRows(rows);
+            pendingMigrationData = preview.data;
+            migrationState.owner = user;
+            setMigrationMessage(migrationPreviewMessage(preview), preview.legacyQuantity || preview.skippedZeroCount ? 'color-text-001' : 'color-text-theme', 'check_circle');
+            document.getElementById('migration-exec-btn').disabled = false;
         } catch (error) {
-            statusMsg.innerHTML = error.message;
-            statusMsg.className = 'status-msg error';
-            statusMsg.style.color = 'var(--error-red)';
-            execBtn.classList.add('disabled');
             pendingMigrationData = null;
-        }
+            const message = error.message.startsWith('가져올 카드가 없습니다.')
+                ? error.message : '양식에 맞는 파일을 골라주세요.';
+            setMigrationMessage(message, 'color-text-red', 'error');
+        } finally { if (current()) migrationState.reader = null; }
     };
+    reader.onerror = () => { if (current()) setMigrationMessage('파일을 읽지 못했습니다. 다시 선택해주세요.', 'color-text-red', 'error'); };
     reader.readAsArrayBuffer(file);
 }
 
 function openMigrationModal(mode = 'sheet') {
-    const modalElem = document.getElementById('migration-modal');
-    if (!modalElem) return;
-
-    // [버그 수정] 모달 오픈 시 초기화 로직 보강
+    if (migrationState.busy || dataClearBusy) return;
+    const modal = document.getElementById('migration-modal');
+    resetDataTransferValidation();
     document.getElementById('migration-sheet-url').value = '';
     document.getElementById('migration-file-input').value = '';
-    document.getElementById('migration-valid-mark').className = 'valid-icon';
-    document.getElementById('migration-status-msg').className = 'status-msg';
-    document.getElementById('migration-status-msg').innerHTML = '';
-    document.getElementById('migration-exec-btn').classList.add('disabled');
-    document.getElementById('mig-file-name').textContent = '파일 선택 (xlsx, csv)';
-
-    const spinner = document.getElementById('migration-spinner');
-    if (spinner) spinner.style.display = 'none';
-
-    // 전달된 모드에 따라 탭 설정 (기본: sheet)
-    const isSheet = mode === 'sheet';
-    document.getElementById('mig-mode-sheet').checked = isSheet;
-    document.getElementById('mig-mode-file').checked = !isSheet;
+    document.getElementById('mig-file-name').textContent = '파일 선택';
     toggleMigrationTab(mode);
+    getAppModal(modal).open();
+}
 
-    M.Modal.getInstance(modalElem).open();
+function getMigrationSheetId(value) {
+    try {
+        const url = new URL(value);
+        if (url.protocol !== 'https:' || url.hostname !== 'docs.google.com') return null;
+        return url.pathname.match(/^\/spreadsheets\/d\/([\w-]{25,})(?:\/|$)/)?.[1] || null;
+    } catch (_) { return null; }
 }
 
 function validateMigrationLink() {
-    clearTimeout(migrationValidationTimeout);
+    if (migrationState.busy || migrationState.mode !== 'sheet') return;
+    resetDataTransferValidation();
     const input = document.getElementById('migration-sheet-url');
-    const url = input.value.trim();
-    const mark = document.getElementById('migration-valid-mark');
-    const msg = document.getElementById('migration-status-msg');
-    const execBtn = document.getElementById('migration-exec-btn');
-
-    // 초기화: 클래스 및 버튼 상태
-    input.classList.remove('state-error', 'state-warning', 'state-success');
-    execBtn.classList.add('disabled');
-
-    if (!url) {
-        mark.innerHTML = '';
-        msg.innerHTML = '';
-        return;
-    }
-
-    // 로컬 에뮬레이터 개발 환경 차단 및 안내 처리
-    if (IS_LOCAL_DEV) {
-        mark.innerHTML = '<i class="material-icons" style="color: var(--warning-yellow)">warning</i>';
-        msg.innerHTML = '로컬 환경에선 구글 시트에 접속할 수 없습니다.';
-        msg.style.color = 'var(--warning-yellow)';
-        input.classList.add('state-warning');
-        return;
-    }
-
-    // Google Sheets URL 패턴 검증 (/spreadsheets/d/[ID]/...)
-    const match = url.match(/docs\.google\.com\/spreadsheets\/d\/([-\w]{25,})/);
-
-    if (!match) {
-        mark.innerHTML = '<i class="material-icons" style="color: var(--error-red)">cancel</i>';
-        msg.innerHTML = '올바르지 않은 링크 형식입니다.';
-        msg.style.color = 'var(--error-red)';
-        input.classList.add('state-error');
-        return;
-    }
-
-    // 검증 중 상태 (스피너 노출)
-    mark.innerHTML = '<div class="loading-spinner"></div>';
-    msg.innerHTML = '시트 정보 조회 중...';
-    msg.style.color = 'var(--text-001)';
-
+    const url = input.value.trim(), id = getMigrationSheetId(url);
+    if (!url) return;
+    if (!id) { setMigrationMessage('올바른 구글 시트 링크를 입력해주세요.', 'color-text-red', 'error'); return; }
+    const revision = migrationState.revision, user = UserStore.user;
+    const current = () => revision === migrationState.revision && migrationState.mode === 'sheet'
+        && UserStore.user === user && input.value.trim() === url;
+    setMigrationMessage('시트와 수량을 확인하는 중…');
     migrationValidationTimeout = setTimeout(async () => {
         try {
-            // [참고] callApi 대신 직접 fetch를 사용하여 마이그레이션 전용 검증 수행 (ssId 파라미터 제외를 위해) -- 혹은 callApi 활용
-            // 여기서는 기존 callApi 로직을 재활용하되, 필요한 정보만 추출
-            const res = await callApi('checkSheet', { targetId: match[1] });
-
-            input.classList.remove('state-error', 'state-warning', 'state-success');
-
-            if (res && res.status === 'OK') {
-                // 초록: 조회 성공
-                mark.innerHTML = '<i class="material-icons" style="color: var(--success-green)">check_circle</i>';
-                msg.innerHTML = `조회 성공: ${res.sheetName || '구글 시트'}`;
-                msg.style.color = 'var(--success-green)';
-                input.classList.add('state-success');
-                execBtn.classList.remove('disabled'); // 성공 시에만 활성화
-            } else if (res && res.status === 'NO_ACCESS') {
-                // 노랑: 읽기 권한 없음
-                mark.innerHTML = '<i class="material-icons" style="color: var(--warning-yellow)">warning</i>';
-                msg.innerHTML = '읽기 권한이 없습니다. 공유 설정을 확인해주세요.';
-                msg.style.color = 'var(--warning-yellow)';
-                input.classList.add('state-warning');
-            } else {
-                // 빨강: 존재하지 않거나 기타 오류
-                mark.innerHTML = '<i class="material-icons" style="color: var(--error-red)">error</i>';
-                msg.innerHTML = '파일을 찾을 수 없거나 접근할 수 없습니다.';
-                msg.style.color = 'var(--error-red)';
-                input.classList.add('state-error');
-            }
-        } catch (e) {
-            console.error("Link validation error:", e);
-            mark.innerHTML = '<i class="material-icons" style="color: var(--error-red)">error</i>';
-            msg.innerHTML = '연결 확인 실패';
-            msg.style.color = 'var(--error-red)';
-            input.classList.add('state-error');
+            const result = await callApi('checkSheet', { targetId: id });
+            if (!current()) return;
+            if (result?.status === 'OK' && result.fingerprint && Number.isSafeInteger(result.totalQty) && result.totalQty > 0) {
+                migrationState.sheet = { id, url, fingerprint: result.fingerprint };
+                migrationState.owner = user;
+                setMigrationMessage(migrationPreviewMessage(result), result.legacyQuantity || result.skippedZeroCount ? 'color-text-001' : 'color-text-theme', 'check_circle');
+                document.getElementById('migration-exec-btn').disabled = false;
+            } else if (result?.status === 'NO_ACCESS') {
+                setMigrationMessage('읽기 권한이 없습니다. 시트 공유 설정을 확인해주세요.', 'color-text-001', 'warning');
+            } else setMigrationMessage(result?.message || '시트 데이터를 확인할 수 없습니다. 서버의 가져오기 기능을 확인해주세요.', 'color-text-red', 'error');
+        } catch (_) {
+            if (current()) setMigrationMessage('시트 연결 확인에 실패했습니다. 다시 확인해주세요.', 'color-text-red', 'error');
         }
     }, 500);
 }
 
 async function executeMigration() {
+    if (migrationState.busy || dataClearBusy || document.getElementById('migration-exec-btn').disabled) return;
     if (!checkAuthBeforeAction()) return;
-
-    const activeMode = document.querySelector('input[name="migration-mode"]:checked').value;
-    const execBtn = document.getElementById('migration-exec-btn');
-    const statusMsg = document.getElementById('migration-status-msg');
-    const spinner = document.getElementById('migration-spinner');
-
-    let payload = {};
-
-    let action = '';
-    if (activeMode === 'sheet') {
-        const url = document.getElementById('migration-sheet-url').value.trim();
-        const match = url.match(/docs\.google\.com\/spreadsheets\/d\/([-\w]{25,})/);
-        if (!match) return;
-        payload.spreadsheetId = match[1];
-        action = 'migrateFromSheet';
-    } else {
-        if (!pendingMigrationData) return;
-        payload.data = pendingMigrationData;
-        action = 'migrateFromData';
+    if (migrationState.owner !== UserStore.user) {
+        resetDataTransferValidation();
+        setMigrationMessage('계정이 변경되었습니다. 파일 또는 시트 주소를 다시 확인해주세요.', 'color-text-001');
+        return;
     }
-
+    const fileMode = migrationState.mode === 'file';
+    if (fileMode ? !pendingMigrationData : !migrationState.sheet
+        || migrationState.sheet.url !== document.getElementById('migration-sheet-url').value.trim()) return;
+    const payload = fileMode ? { data: pendingMigrationData } : {
+        spreadsheetId: migrationState.sheet.id, fingerprint: migrationState.sheet.fingerprint
+    };
+    const user = UserStore.user;
+    migrationState.busy = true;
+    setDataTransferBusy('migration-modal', true);
+    setMigrationMessage('카드 데이터를 가져오는 중입니다. 완료될 때까지 창을 닫을 수 없습니다.');
+    let result;
     try {
-        execBtn.classList.add('disabled');
-        if (spinner) spinner.style.display = 'block';
-        statusMsg.innerHTML = '데이터 이관 중...';
-        statusMsg.className = 'status-msg';
-
-        // callApi 헬퍼 함수를 활용하여 동적으로 엔드포인트를 호출하고, 인증 토큰 및 App Check 세팅을 위임
-        const result = await callApi(action, {}, payload);
-
-        if (result && result.success) {
-            const modalElem = document.getElementById('migration-modal');
-            if (modalElem) M.Modal.getInstance(modalElem).close();
-
-            showMigrationResultModal(result);
-
-            // [버그 수정] 로컬 캐시 초기화 및 내 인벤토리 데이터 재로드
-            cardCacheInstance.clearAll();
-            await loadUserData();
-            renderHomeDash();
-        } else {
-            statusMsg.innerHTML = result.message || '마이그레이션에 실패했습니다.';
-            statusMsg.className = 'status-msg error';
-            execBtn.classList.remove('disabled');
-        }
+        result = await callApi(fileMode ? 'migrateFromData' : 'migrateFromSheet', {}, payload);
+        if (UserStore.user === user && !result?.success) throw new Error(result?.message || '가져오기에 실패했습니다.');
     } catch (error) {
-        console.error('Migration error:', error);
-        statusMsg.innerHTML = '서버 통신 중 오류가 발생했습니다.';
-        statusMsg.className = 'status-msg error';
-        execBtn.classList.remove('disabled');
+        if (UserStore.user === user) {
+            if (error.code === 'SHEET_CHANGED') {
+                migrationState.sheet = null;
+                const lock = dataTransferLocks.get('migration-modal');
+                lock.controls = lock.controls.map(([control, disabled]) => [control, control.id === 'migration-exec-btn' ? true : disabled]);
+            }
+            setMigrationMessage(error.message || '서버 통신 중 오류가 발생했습니다.', 'color-text-red', 'error');
+        }
+        result = null;
     } finally {
-        if (spinner) spinner.style.display = 'none';
+        setDataTransferBusy('migration-modal', false);
+        migrationState.busy = false;
     }
+    if (UserStore.user !== user) { resetDataTransferValidation(); return; }
+    if (!result?.success) return;
+    M.Modal.getInstance(document.getElementById('migration-modal')).close();
+    showMigrationResultModal(result);
+    cardCacheInstance.clearAll();
+    try { await loadUserData(); }
+    catch (_) { if (UserStore.user === user) showToast('가져오기는 완료되었습니다. 보유 정보 새로고침을 다시 시도해주세요.', 'toast-warn'); }
 }
 
-/**
- * 마이그레이션 결과 모달 렌더링 (심플 버전: 5행 제한)
- */
+function toggleMigrationResultView(view) {
+    AppManagementResults.setView(document.getElementById('migration-result-modal'), view);
+}
+
 function showMigrationResultModal(result) {
-    const modalElem = document.getElementById('migration-result-modal');
-    if (!modalElem) return;
-
-    const summaryBody = document.getElementById('migration-summary-body');
-    const successText = document.getElementById('migration-success-text');
-    const iconArea = document.getElementById('migration-icon-area');
-
-    if (!summaryBody || !successText || !iconArea) return;
-
-    // 초기화
-    summaryBody.innerHTML = '';
-    iconArea.innerHTML = '<div class="success-checkmark"><div class="check-icon"><span class="icon-line line-tip"></span><span class="icon-line line-long"></span><div class="icon-circle"></div><div class="icon-fix"></div></div></div>';
-
-    const items = result.updatedItems || [];
-    const totalCount = items.length;
-
-    successText.innerHTML = `총 <strong>${result.importedCount || totalCount}</strong>개의 데이터를 성공적으로 이관했습니다.`;
-
-    // 상위 5개만 렌더링
-    const displayItems = items.slice(0, 5);
-    displayItems.forEach(item => {
-        const row = `<tr>
-            <td style="width:70%; text-align:left; padding:12px 15px; border-bottom:1px solid var(--border-color);">${item.name}</td>
-            <td style="width:30%; text-align:right; padding:12px 15px; border-bottom:1px solid var(--border-color); color:var(--theme-000); font-weight:700;">+${item.qty}장</td>
-        </tr>`;
-        summaryBody.insertAdjacentHTML('beforeend', row);
+    const modal = document.getElementById('migration-result-modal');
+    const items = Array.isArray(result.importedItems)
+        ? result.importedItems.map((item, index) => ({ ...item, no: index + 1, status: 'success', processedQty: item.qty })) : [];
+    AppManagementResults.render(modal, items, {
+        formatIllustration: IllustrationImages.label, formatRarity: getLocalizedRarity
     });
-
-    // 6개째부터는 요약 표시
-    if (totalCount > 5) {
-        const remainingItems = items.slice(5);
-        const remainingKinds = remainingItems.length;
-        const remainingQty = remainingItems.reduce((acc, curr) => acc + (curr.qty || 0), 0);
-
-        const summaryRow = `<tr class="summary-extra-row">
-            <td colspan="2" style="text-align:center; padding:15px; color:var(--text-001); font-size:0.9rem; background:color-mix(in srgb, var(--theme-000) 5%, transparent); border-top:1px solid var(--border-color);">
-                그 외 <strong>${remainingKinds}종</strong> | <strong>${remainingQty}장</strong>
-            </td>
-        </tr>`;
-        summaryBody.insertAdjacentHTML('beforeend', summaryRow);
+    if (!Array.isArray(result.importedItems)) {
+        // updatedItems는 최종 보유량이다. 추가량이나 성공 집계를 추정하지 않는다.
+        document.getElementById('migration-success-text').textContent = '가져오기가 완료되었습니다. 이 서버 응답에서는 추가 매수와 상세 집계를 확인할 수 없습니다.';
     }
+    toggleMigrationResultView('summary');
+    getAppModal(modal).open();
+}
 
-    M.Modal.getInstance(modalElem).open();
+function openLegacyDataImport() {
+    if (!checkAuthBeforeAction()) return;
+    M.Modal.getInstance(document.getElementById('legacy-migration-modal')).close();
+    switchToMode('settings');
+    openMigrationModal('file');
 }
 
 function checkAuthBeforeAction() {
@@ -12961,64 +12356,6 @@ function checkAuthBeforeAction() {
 
 
 // Firebase 인증 초기화(initFirebaseAuth)는 initApp에서 통합 호출됩니다.
-
-/**
- * 홈 화면 대시보드 렌더링
- */
-function renderHomeDash() {
-    const locStats = document.getElementById('location-stats');
-    const rareStats = document.getElementById('rarity-stats');
-    if (!locStats || !rareStats) return;
-
-    const locations = cardCacheInstance.getLocationsMap();
-    const rarities = cardCacheInstance.getRaritiesMap();
-
-    // 1. 위치별 현황
-    let locHtml = "";
-    const locKeys = Object.keys(locations).sort();
-    if (locKeys.length === 0) {
-        locHtml = '<div style="width:100%; padding:20px; text-align:center; color:var(--text-muted); border-bottom:1px solid var(--border-color);">데이터가 없습니다.</div>';
-    } else {
-        locKeys.forEach((loc, idx) => {
-            const list = locations[loc] || [];
-            const count = list.length;
-            const hiddenClass = idx >= 3 ? "is-hidden" : "";
-            locHtml += `<div class="stat-item ${hiddenClass}"><span class="stat-name">${loc}</span><span class="stat-cnt">${count}종</span></div>`;
-        });
-        if (locKeys.length > 3) {
-            locHtml += `<button class="stat-more-btn" onclick="toggleStatSection(this)">
-                            <span>더보기</span><i class="material-icons">expand_more</i>
-                        </button>`;
-        }
-    }
-    locStats.innerHTML = locHtml;
-
-    // 2. 레어도별 현황
-    let rareHtml = "";
-    const rareKeys = Object.keys(rarities).sort(compareRarity);
-    if (rareKeys.length === 0) {
-        rareHtml = '<div style="width:100%; padding:20px; text-align:center; color:var(--text-muted); border-bottom:1px solid var(--border-color);">데이터가 없습니다.</div>';
-    } else {
-        rareKeys.forEach((rare, idx) => {
-            const count = rarities[rare];
-            const hiddenClass = idx >= 3 ? "is-hidden" : "";
-            rareHtml += `<div class="stat-item ${hiddenClass}"><span class="stat-name">${getLocalizedRarity(rare)}</span><span class="stat-cnt">${count}장</span></div>`;
-        });
-        if (rareKeys.length > 3) {
-            rareHtml += `<button class="stat-more-btn" onclick="toggleStatSection(this)">
-                            <span>더보기</span><i class="material-icons">expand_more</i>
-                        </button>`;
-        }
-    }
-    rareStats.innerHTML = rareHtml;
-
-    // 3. 보유 종류 업데이트
-    const kindCount = cardCacheInstance.getOwnedNumbers().length;
-    const kindElem = document.getElementById('kind-cards');
-    if (kindElem) kindElem.innerText = kindCount;
-}
-
-
 
 /**
  * 대시보드 통계 섹션 더보기/접기 토글
@@ -13162,43 +12499,23 @@ function openExportModal() {
         qtyElem.textContent = totalAmount.toLocaleString() + '장';
     }
     const modalElem = document.getElementById('export-modal');
-    if (modalElem) M.Modal.getInstance(modalElem).open();
+    if (modalElem) getAppModal(modalElem).open();
 }
 
 /**
  * 보유 인벤토리 데이터를 CSV 파일로 내보내기
  */
 function exportInventoryToCSV() {
+    if (!checkAuthBeforeAction()) return;
     const data = cardCacheInstance.getInventory();
     if (!data || data.length === 0) {
         showToast('내보낼 데이터가 없습니다.', 'toast-warn');
         return;
     }
 
-    // CSV 헤더
-    const headers = ['카드 이름', '카드 번호', '레어도', '수량', '보관 위치', '일러스트'];
-
-    // 데이터 행 변환
-    const csvRows = data.map(row => {
-        const rarity = typeof getLocalizedRarity === 'function' ? getLocalizedRarity(row[2]) : row[2];
-        const illust = row[5] || '기본';
-
-        const formattedRow = [
-            row[0], // 이름
-            row[1], // 번호
-            rarity, // 레어도
-            row[3], // 수량
-            row[4], // 위치
-            illust  // 일러스트
-        ];
-
-        return formattedRow.map(field => {
-            const str = String(field).replace(/"/g, '""');
-            return `"${str}"`;
-        }).join(',');
-    });
-
-    const csvContent = '\uFEFF' + headers.join(',') + '\n' + csvRows.join('\n');
+    const csvContent = AppDataTransfer.toCsv(data.map(row => [
+        row[0], row[1], getLocalizedRarity(row[2]), row[3], row[4], row[5]
+    ]));
 
     // [사용자 요청] 크롬 호환성을 위한 정석적인 다운로드 로직 적용
     // 1. Blob 생성 (BOM 포함)
@@ -13218,7 +12535,7 @@ function exportInventoryToCSV() {
     // 5. href 및 download 속성 할당
     a.href = url;
     a.download = fileName;
-    a.style.display = 'none';
+    a.hidden = true;
 
     // 6. document.body에 명시적으로 추가 (크롬에서 download 속성 활성화를 위해 필수)
     document.body.appendChild(a);
@@ -13282,37 +12599,19 @@ function handleManageUI(mode) {
     const autoLocInfo = document.getElementById('manage-auto-loc-container');
 
     if (mode === 'add') {
-        if (autoLocInfo) {
-            autoLocInfo.classList.remove('anim-hidden');
-            autoLocInfo.classList.add('anim-active');
-        }
         if (addSubMode === 'general') targetId = 'general-mode-wrapper';
         else if (addSubMode === 'pack') targetId = 'form-pack-add';
         else if (addSubMode === 'deck') targetId = 'form-deck-add';
     } else if (mode === 'move') {
-        if (autoLocInfo) {
-            autoLocInfo.classList.remove('anim-active');
-            autoLocInfo.classList.add('anim-hidden');
-        }
         targetId = 'manage-move-wrapper';
     } else if (mode === 'discard') {
-        if (autoLocInfo) {
-            autoLocInfo.classList.remove('anim-active');
-            autoLocInfo.classList.add('anim-hidden');
-        }
         targetId = 'manage-discard-wrapper';
     }
+    setModePanelActive(autoLocInfo, mode === 'add');
 
     // 크로스페이드 처리 (CSS transition: height에 맡김)
     forms.forEach(f => {
-        if (!f) return;
-        if (f.id === targetId) {
-            f.classList.remove('anim-hidden');
-            f.classList.add('anim-active');
-        } else {
-            f.classList.remove('anim-active');
-            f.classList.add('anim-hidden');
-        }
+        setModePanelActive(f, f?.id === targetId);
     });
 
     // 탭 전환 시 표 상태 보존 및 하단 컨테이너 연동
@@ -13327,19 +12626,15 @@ function handleManageUI(mode) {
         if (mode === 'add') {
             if (addSubMode === 'pack' && typeof PackDeckStore.isPackTableGenerated !== 'undefined' && PackDeckStore.isPackTableGenerated) {
                 if (packArea) packArea.style.display = '';
-                tableContainer.classList.remove('anim-hidden');
-                tableContainer.classList.add('anim-active');
+                setModePanelActive(tableContainer, true);
             } else if (addSubMode === 'deck' && typeof PackDeckStore.isDeckTableGenerated !== 'undefined' && PackDeckStore.isDeckTableGenerated) {
                 if (deckArea) deckArea.style.display = '';
-                tableContainer.classList.remove('anim-hidden');
-                tableContainer.classList.add('anim-active');
+                setModePanelActive(tableContainer, true);
             } else {
-                tableContainer.classList.remove('anim-active');
-                tableContainer.classList.add('anim-hidden');
+                setModePanelActive(tableContainer, false);
             }
         } else {
-            tableContainer.classList.remove('anim-active');
-            tableContainer.classList.add('anim-hidden');
+            setModePanelActive(tableContainer, false);
         }
     }
 
@@ -13688,6 +12983,17 @@ function toggleRenameMode() {
 
 
 
+// 행을 다시 만들지 않고 표시 순서에 맞는 공통 색상·접합 상태만 갱신한다.
+function updateManagementCardStack(cards) {
+    cards.forEach((card, idx) => {
+        card.classList.add('ui-stack-card', 'shape-rounded003');
+        card.classList.toggle('color-card-odd', idx % 2 === 0);
+        card.classList.toggle('color-card-even', idx % 2 !== 0);
+        card.classList.toggle('is-joined-before', idx > 0);
+        card.classList.toggle('is-joined-after', idx < cards.length - 1);
+    });
+}
+
 function getMobileCardHtml(idx, nextNum, data) {
     const isMove = (UIStore.mode === 'move');
     const isDiscard = (UIStore.mode === 'discard');
@@ -13750,10 +13056,10 @@ function getMobileCardHtml(idx, nextNum, data) {
     `;
 
     return `
-        <div class="mobile-info-card" data-index="${idx}">
+        <div class="mobile-info-card ui-stack-card shape-rounded003 ${idx % 2 === 0 ? 'color-card-odd' : 'color-card-even'}" data-index="${idx}">
             <div class="card-row-top">
                 <span class="card-num-badge">${nextNum}</span>
-                <span class="card-num-divider">|</span>
+                <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
                 <span class="card-title-text" onclick="openEditBottomSheet(${idx})">${displayName}</span>
                 <span class="card-code-text" onclick="openEditBottomSheet(${idx})">${cardNo || '미입력'}</span>
                 <div class="card-actions">
@@ -13943,6 +13249,7 @@ function renderMobileCardsFromData(dataArray) {
             updateMobileCardDisplay(cardEl);
         }
     });
+    updateManagementCardStack(listContainer.querySelectorAll('.mobile-info-card'));
 }
 
 function renderMobileCards() {
@@ -14030,6 +13337,7 @@ function mobileAddEntry(mode, subMode, initialData = null) {
 
         updateMobileCardDisplay(cardEl);
     }
+    updateManagementCardStack(listContainer.querySelectorAll('.mobile-info-card'));
     return cardEl;
 }
 
@@ -14063,6 +13371,7 @@ function reindexMobileCards(listContainer) {
         const rowBot = card.querySelector('.card-row-bottom');
         if (rowBot) rowBot.setAttribute('onclick', `openEditBottomSheet(${idx})`);
     });
+    updateManagementCardStack(cards);
 }
 
 function handleMobileAddCardClick() {
@@ -14264,7 +13573,6 @@ async function submitDeleteLocation() {
             if (res.locations !== undefined) {
                 cardCacheInstance.setSummary(res.amount, res.locations, res.rarities);
                 updateTotals();
-                renderHomeDash();
             }
             syncCounter++;
             toggleDeleteLocationMode();
@@ -14282,10 +13590,15 @@ async function submitDeleteLocation() {
 // 모바일 전용 검색 오버레이 로직
 // ==========================================
 
+let mobileSearchOpenFrame = null;
+let mobileSearchCloseTimer = null;
+
 function openMobileSearch() {
     const overlay = document.getElementById('mobile-search-overlay');
     const input = document.getElementById('mobile-card-search');
     if (!overlay || !input) return;
+    cancelAnimationFrame(mobileSearchOpenFrame);
+    clearTimeout(mobileSearchCloseTimer);
 
     // 히스토리 추가하여 뒤로가기로 닫을 수 있게 처리
     const currentState = history.state || {};
@@ -14294,15 +13607,16 @@ function openMobileSearch() {
     }
 
     overlay.style.display = 'flex';
-    // 애니메이션 프레임 보장
-    requestAnimationFrame(() => {
+    // display:none에서 복귀한 닫힘 상태를 먼저 계산하여 상단 이동·배경 페이드를 시작한다.
+    void overlay.offsetHeight;
+    mobileSearchOpenFrame = requestAnimationFrame(() => {
         overlay.classList.add('active');
     });
 
     // 입력값 초기화 및 포커스
     input.value = '';
     const clearBtn = document.getElementById('mobile-search-clear-btn');
-    if(clearBtn) clearBtn.style.display = 'none';
+    if (clearBtn) clearBtn.hidden = true;
     
     // 최근 검색어 먼저 표시
     showMobileRecentInDropdown();
@@ -14326,6 +13640,9 @@ function closeMobileSearch(fromPopState = false) {
     const input = document.getElementById('mobile-card-search');
     if (!overlay) return;
 
+    cancelAnimationFrame(mobileSearchOpenFrame);
+    clearTimeout(mobileSearchCloseTimer);
+
     overlay.classList.remove('active');
     
     // 하단 탭바 원래 모드에 맞게 복원
@@ -14333,12 +13650,12 @@ function closeMobileSearch(fromPopState = false) {
         updateActiveNav(UIStore.mode);
     }
     
-    setTimeout(() => {
+    mobileSearchCloseTimer = setTimeout(() => {
         overlay.style.display = 'none';
         if (input) input.value = '';
         const dropdown = document.getElementById('mobile-custom-dropdown');
         if (dropdown) dropdown.classList.remove('active');
-    }, 400); // CSS transition 시간 (0.4s)
+    }, globalThis.AppOverlays?.duration() ?? 200); // 배경·상단 전환과 동일한 종료 시점
 
     if (!fromPopState) {
         const currentState = history.state || {};
@@ -14357,8 +13674,8 @@ function appendMobileRecentHistory(list, recent) {
     const li = document.createElement('li');
     li.className = 'mobile-recent-container';
     
-    const chipsWrapper = document.createElement('div');
-    chipsWrapper.className = 'recent-chips-wrapper';
+    const actions = document.createElement('div');
+    actions.className = 'recent-search-actions';
 
     recent.slice(0, 10).forEach(r => {
         const keyword = typeof r === 'string' ? r : r.keyword;
@@ -14368,23 +13685,24 @@ function appendMobileRecentHistory(list, recent) {
         const isOwned = isTarget && (searchType === 'number'
             ? ownedNumbers.has(String(keyword).trim().toUpperCase())
             : ownedNames.has(String(keyword).trim()));
-        const colorClass = !isTarget ? 'ui-color--search-general'
-            : isOwned ? 'ui-color--card-owned' : 'ui-color--card-unowned';
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = `ui-button ui-chip ui-shape-capsule ${colorClass} recent-chip`;
-        chip.innerText = keyword;
-        chip.addEventListener('click', (e) => {
+        const appearance = isTarget
+            ? `shape-capsule ${isOwned ? 'color-tint-theme' : 'color-tint-neutral'}`
+            : 'ui-button--text color-text-001';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `ui-button recent-search-button ${appearance}`;
+        button.innerText = keyword;
+        button.addEventListener('click', (e) => {
             e.stopPropagation();
             executeMobileSearch(keyword, searchType, isTarget);
         });
-        chipsWrapper.appendChild(chip);
+        actions.appendChild(button);
     });
-    li.appendChild(chipsWrapper);
+    li.appendChild(actions);
 
     const deleteIcon = document.createElement('button');
     deleteIcon.type = 'button';
-    deleteIcon.className = 'ui-button ui-button--text ui-button--text-secondary clear-all-icon';
+    deleteIcon.className = 'ui-button ui-button--text color-text-002 clear-all-icon';
     deleteIcon.setAttribute('aria-label', '전체 검색 기록 삭제');
     deleteIcon.innerHTML = '<i class="material-icons" aria-hidden="true">delete</i>';
     deleteIcon.onclick = clearMobileAllRecent;
@@ -14449,7 +13767,9 @@ async function executeMobileSearch(query, searchType = 'auto', forcedIsTarget = 
     }
     
     try {
-        await startSearch(true, searchType, forcedIsTarget);
+        const pendingSearch = startSearch(false, searchType, forcedIsTarget);
+        closeMobileSearch(true);
+        await pendingSearch;
     } finally {
         UIStore.isMobileSearchInProgress = false;
         if (mSearchBtn) {
@@ -14460,8 +13780,6 @@ async function executeMobileSearch(query, searchType = 'auto', forcedIsTarget = 
             }
         }
     }
-    
-    closeMobileSearch();
 }
 
 function initMobileSearchListeners() {
@@ -14483,11 +13801,11 @@ function initMobileSearchListeners() {
         mSearchInput.addEventListener('input', (e) => {
             const val = e.target.value.trim();
             if (val) {
-                if (mClearBtn) mClearBtn.style.display = 'block';
+                if (mClearBtn) mClearBtn.hidden = false;
                 debouncedMobileFilter(val);
             } else {
                 debouncedMobileFilter.cancel && debouncedMobileFilter.cancel();
-                if (mClearBtn) mClearBtn.style.display = 'none';
+                if (mClearBtn) mClearBtn.hidden = true;
                 showMobileRecentInDropdown();
             }
         });
@@ -14520,7 +13838,7 @@ function initMobileSearchListeners() {
         mClearBtn.addEventListener('click', (e) => {
             e.preventDefault();
             mSearchInput.value = '';
-            mClearBtn.style.display = 'none';
+            mClearBtn.hidden = true;
             showMobileRecentInDropdown();
             mSearchInput.focus();
         });
@@ -14546,6 +13864,7 @@ function initMobileSearchListeners() {
    [모바일 개편] 모바일 카드 뷰, 바텀 시트 및 입력 오버레이 로직
    ========================================================================== */
 
+let currentEditingRow = null;    // 원본 입력 노드를 돌려줄 소유 행
 let currentEditingRowIndex = -1; // 현재 바텀 시트에서 편집 중인 테이블 행 인덱스 (0-based)
 let activeOverlayType = '';       // 현재 활성화된 오버레이 종류 ('name', 'no', 'loc', 'qty')
 let qtyPickerSelectedVal = 1;     // 수량 조절 오버레이 내 선택된 임시 값
@@ -14576,23 +13895,12 @@ function openEditBottomSheet(idx) {
     const sheetContainer = document.getElementById('sheet-fields-container');
     if (!sheetContainer) return;
 
-    // 1. 이미 다른 카드를 편집 중이었다면, 해당 필드 뭉치를 원래 카드로 복구
-    if (currentEditingRowIndex !== -1 && currentEditingRowIndex !== idx) {
-        const prevCard = cards[currentEditingRowIndex];
-        const activeFields = sheetContainer.querySelector('.mobile-card-fields');
-        if (prevCard && activeFields) {
-            // ID 속성들 제거하여 원래 카드 내부의 DOM 격리
-            const inputs = activeFields.querySelectorAll('input[id^="sheet-card-"]');
-            inputs.forEach(inp => inp.removeAttribute('id'));
-            const wraps = activeFields.querySelectorAll('div[id^="wrap-sheet-"]');
-            wraps.forEach(w => w.removeAttribute('id'));
-
-            prevCard.appendChild(activeFields);
-            activeFields.style.display = 'none';
-            updateMobileCardDisplay(prevCard);
-        }
+    // 행 전환 전에 자식의 값을 확정하고 원본 노드를 원래 소유자에게 반환한다.
+    if (currentEditingRow && currentEditingRow !== row) {
+        closeEntrySheetChildren();
+        returnEditingFields();
     }
-
+    currentEditingRow = row;
     currentEditingRowIndex = idx;
 
     // 2. 대상 카드의 가상 입력란을 바텀시트로 물리적 이동 (Append)
@@ -14659,73 +13967,56 @@ function openEditBottomSheet(idx) {
         nextBtn.innerHTML = `<i class="material-icons">keyboard_arrow_right</i>`;
     }
 
-    // 5. 바텀 시트 노출 애니메이션
-    const overlay = document.getElementById('bottom-sheet-overlay');
+    prevBtn.disabled = idx === 0;
+    nextBtn.setAttribute('aria-label', idx === cards.length - 1 ? '카드 행 추가' : '다음 카드');
+
     const sheet = document.getElementById('mobile-entry-bottom-sheet');
-    overlay.style.display = 'block';
-    sheet.style.display = 'flex';
-    document.documentElement.classList.add('nav-hidden');
-    requestAnimationFrame(() => {
-        overlay.classList.add('active');
-        sheet.classList.add('active');
-    });
+    // 같은 시트 내 행 전환은 기존 진입점과 수명주기를 유지한다.
+    if (!isManagedSheetOpen(sheet)) {
+        openManagedSheet(sheet, {
+            backdrop: document.getElementById('bottom-sheet-overlay'),
+            trigger: row.querySelector('.btn-card-action.edit')
+        });
+    }
+}
+
+function closeEntrySheetChildren() {
+    // 수량은 닫기가 확정이다. 동적 ID와 편집 소유자가 유효할 때 먼저 반영한다.
+    closeQtyOverlay();
+    closeSheetOverlay();
+    closeSheetDropdownSelect();
+    IllustrationPicker.close(false, false);
+}
+
+function returnEditingFields() {
+    const fields = document.getElementById('sheet-fields-container')?.querySelector('.mobile-card-fields');
+    if (currentEditingRow && fields) {
+        fields.querySelectorAll('input').forEach(input => {
+            input.setAttribute('readonly', 'true');
+            delete input.dataset.lockedForName;
+            delete input.dataset.errorRetry;
+            delete input.dataset.prevCardNo;
+        });
+        delete currentEditingRow.dataset.searchMode;
+        fields.querySelectorAll('input[id^="sheet-card-"], div[id^="wrap-sheet-"]').forEach(el => el.removeAttribute('id'));
+        currentEditingRow.appendChild(fields);
+        fields.style.display = 'none';
+        updateMobileCardDisplay(currentEditingRow);
+    }
+    const sheet = document.getElementById('mobile-entry-bottom-sheet');
+    if (sheet) delete sheet.dataset.searchMode;
 }
 
 function closeEntryBottomSheet() {
-    IllustrationPicker.close(false, false);
-    const listContainer = getActiveMobileListContainer();
-    const sheetContainer = document.getElementById('sheet-fields-container');
-    const overlay = document.getElementById('bottom-sheet-overlay');
     const sheet = document.getElementById('mobile-entry-bottom-sheet');
-
-    document.documentElement.classList.remove('nav-hidden');
-
-    if (listContainer && sheetContainer && currentEditingRowIndex !== -1) {
-        const cards = listContainer.querySelectorAll('.mobile-info-card');
-        const row = cards[currentEditingRowIndex];
-        const fields = sheetContainer.querySelector('.mobile-card-fields');
-        if (row && fields) {
-            // [동적 readonly 토글] 모바일 카드로 반환될 때는 모든 인풋들을 readonly 상태로 재잠금
-            const allInputs = fields.querySelectorAll('input');
-            allInputs.forEach(inp => {
-                inp.setAttribute('readonly', 'true');
-                // 바텀시트 닫기 시 잔류 dataset 초기화 (lockedForName 잔류 시 재오픈 후 번호 조회 차단 버그 방지)
-                delete inp.dataset.lockedForName;
-                delete inp.dataset.errorRetry;
-                delete inp.dataset.prevCardNo;
-            });
-
-            // row의 searchMode만 초기화 (닫지 않으면 이름/번호 모드가 고정되는 버그 방지)
-            // 주의: row.dataset.cardData는 재오픈 시 드롭다운 복원에 필요하므로 삭제하지 않음
-            delete row.dataset.searchMode;
-
-            // ID 속성들 제거하여 DOM 격리 유지
-            const inputs = fields.querySelectorAll('input[id^="sheet-card-"]');
-            inputs.forEach(inp => inp.removeAttribute('id'));
-            const wraps = fields.querySelectorAll('div[id^="wrap-sheet-"]');
-            wraps.forEach(w => w.removeAttribute('id'));
-
-            // 가상 입력란을 원래 모바일 카드로 복원
-            row.appendChild(fields);
-            fields.style.display = 'none';
-            // 카드 표기값 리액티브 업데이트
-            updateMobileCardDisplay(row);
-        }
-    }
-
+    if (!isManagedSheetOpen(sheet)) return;
+    closeEntrySheetChildren();
+    closeManagedSheet(sheet, {
+        backdrop: document.getElementById('bottom-sheet-overlay')
+    });
+    returnEditingFields();
+    currentEditingRow = null;
     currentEditingRowIndex = -1;
-
-    // 바텀시트 자체(container 역할)의 searchMode 초기화
-    if (sheet) delete sheet.dataset.searchMode;
-
-    if (overlay && sheet) {
-        overlay.classList.remove('active');
-        sheet.classList.remove('active');
-        setTimeout(() => {
-            overlay.style.display = 'none';
-            sheet.style.display = 'none';
-        }, 350);
-    }
 }
 
 
@@ -14735,24 +14026,7 @@ function navigateSheetCard(direction) {
     if (!listContainer) return;
 
     const cards = listContainer.querySelectorAll('.mobile-info-card');
-    const row = cards[currentEditingRowIndex];
-    if (row) {
-        delete row.dataset.searchMode;
-        // 주의: row.dataset.cardData는 재오픈 시 드롭다운 복원에 필요하므로 삭제하지 않음
-        const fields = row.querySelector('.mobile-card-fields');
-        if (fields) {
-            const allInputs = fields.querySelectorAll('input');
-            allInputs.forEach(inp => {
-                delete inp.dataset.lockedForName;
-                delete inp.dataset.errorRetry;
-                delete inp.dataset.prevCardNo;
-            });
-        }
-    }
-    const sheet = document.getElementById('mobile-entry-bottom-sheet');
-    if (sheet) {
-        delete sheet.dataset.searchMode;
-    }
+    if (!currentEditingRow) return;
 
     const targetIdx = currentEditingRowIndex + direction;
 
@@ -14767,16 +14041,15 @@ function navigateSheetCard(direction) {
             // 맨 마지막 카드에서 다음을 누를 때 카드 추가 및 바텀시트 전환
             mobileAddEntry(UIStore.mode, addSubMode);
             reindexMobileCards(listContainer);
-            setTimeout(() => {
-                const updatedCards = listContainer.querySelectorAll('.mobile-info-card');
-                openEditBottomSheet(updatedCards.length - 1);
-            }, 50);
+            const updatedCards = listContainer.querySelectorAll('.mobile-info-card');
+            openEditBottomSheet(updatedCards.length - 1);
         }
     }
 }
 
 // 7. 입력 오버레이 제어
 function openSheetOverlay(type) {
+    if (!currentEditingRow) return;
     if (type === 'no') {
         const sheetNo = document.getElementById('sheet-card-no');
         if (sheetNo && sheetNo.dataset.lockedForName === 'true') {
@@ -14784,13 +14057,14 @@ function openSheetOverlay(type) {
         }
     }
 
-    activeOverlayType = type;
     const overlay = document.getElementById('mobile-sheet-input-overlay');
     const input = document.getElementById('overlay-search-input');
     const clearBtn = document.getElementById('overlay-clear-btn');
     const list = document.getElementById('overlay-suggestions-list');
 
     if (!overlay || !input || !list) return;
+    input._cancelSuggestions?.();
+    activeOverlayType = type;
 
     input.value = '';
     clearBtn.style.display = 'none';
@@ -14829,21 +14103,17 @@ function openSheetOverlay(type) {
         return;
     }
 
-    overlay.style.display = 'flex';
-    requestAnimationFrame(() => {
-        overlay.classList.add('active');
-        input.focus();
+    overlay.setAttribute('aria-label', input.placeholder);
+    input.setAttribute('aria-label', input.placeholder);
+    openManagedSheet(overlay, {
+        trigger: document.getElementById('sheet-card-' + type), initialFocus: input
     });
 }
 
 function closeSheetOverlay() {
-    const overlay = document.getElementById('mobile-sheet-input-overlay');
-    if (overlay) {
-        overlay.classList.remove('active');
-        setTimeout(() => {
-            overlay.style.display = 'none';
-        }, 300);
-    }
+    document.getElementById('overlay-search-input')?._cancelSuggestions?.();
+    closeManagedSheet(document.getElementById('mobile-sheet-input-overlay'));
+    activeOverlayType = '';
 }
 
 function clearOverlayInput() {
@@ -14867,21 +14137,7 @@ function showOverlaySuggestions(query) {
     const isMove = (UIStore.mode === 'move');
     const isDiscard = (UIStore.mode === 'discard');
 
-    // 현재 편집 중인 원본 행 구하기
-    let editingRow = null;
-    if (currentEditingRowIndex !== -1) {
-        const isMobile = document.documentElement.classList.contains('is-mobile-device');
-        const subMode = (UIStore.mode === 'add') ? (addSubMode || 'general') : UIStore.mode;
-        const containerId = isMobile 
-            ? `mobile-cards-list-${subMode}` 
-            : `desktop-cards-list-${subMode}`;
-        const container = document.getElementById(containerId);
-        if (container) {
-            const cardClass = isMobile ? '.mobile-info-card' : '.desktop-info-card';
-            const cards = container.querySelectorAll(cardClass);
-            editingRow = cards[currentEditingRowIndex];
-        }
-    }
+    const editingRow = currentEditingRow;
 
     if (activeOverlayType === 'name') {
         if (!normalizedQuery && !isMove && !isDiscard) return;
@@ -14942,6 +14198,8 @@ function showOverlaySuggestions(query) {
         matches.forEach(name => {
             const li = document.createElement('li');
             li.innerText = name;
+            li.setAttribute('role', 'button');
+            li.tabIndex = 0;
             li.onclick = () => selectOverlayItem(name);
             list.appendChild(li);
         });
@@ -15030,6 +14288,8 @@ function showOverlaySuggestions(query) {
         matches.forEach(no => {
             const li = document.createElement('li');
             li.innerText = no;
+            li.setAttribute('role', 'button');
+            li.tabIndex = 0;
             li.onclick = () => selectOverlayItem(no);
             list.appendChild(li);
         });
@@ -15062,6 +14322,8 @@ function showOverlaySuggestions(query) {
                     const text = typeof opt === 'object' ? opt.text : opt;
                     const li = document.createElement('li');
                     li.innerText = text;
+                    li.setAttribute('role', 'button');
+                    li.tabIndex = 0;
                     li.onclick = () => selectOverlayItem(val);
                     list.appendChild(li);
                 });
@@ -15091,6 +14353,8 @@ function showOverlaySuggestions(query) {
             matches.forEach(loc => {
                 const li = document.createElement('li');
                 li.innerText = loc;
+                li.setAttribute('role', 'button');
+                li.tabIndex = 0;
                 li.onclick = () => selectOverlayItem(loc);
                 list.appendChild(li);
             });
@@ -15100,11 +14364,8 @@ function showOverlaySuggestions(query) {
 
 // 오버레이 아이템 선택 핸들러
 function selectOverlayItem(value) {
-    const listContainer = getActiveMobileListContainer();
-    if (!listContainer) return;
-
-    const cards = listContainer.querySelectorAll('.mobile-info-card');
-    const row = cards[currentEditingRowIndex];
+    if (!isManagedSheetOpen(document.getElementById('mobile-sheet-input-overlay')) || !currentEditingRow) return;
+    const row = currentEditingRow;
     if (!row) return;
 
     const isMove = (UIStore.mode === 'move');
@@ -15227,7 +14488,7 @@ function openQtyOverlay(currentVal) {
     const overlay = document.getElementById('mobile-sheet-qty-overlay');
     const picker = document.getElementById('qty-picker-scroll-area');
 
-    if (!overlay || !picker) return;
+    if (!overlay || !picker || !currentEditingRow) return;
 
     // 카드 정보 바텀시트와 동일한 높이 적용
     const entrySheet = document.getElementById('mobile-entry-bottom-sheet');
@@ -15239,7 +14500,7 @@ function openQtyOverlay(currentVal) {
         }
     }
 
-    let val = parseInt(currentVal) || 1;
+    let val = Math.max(1, parseInt(currentVal) || 1);
     const maxQty = getCurrentMaxQty();
     if (val > maxQty) val = maxQty;
     
@@ -15252,6 +14513,17 @@ function openQtyOverlay(currentVal) {
         item.className = 'qty-picker-item' + (i === val ? ' selected' : '');
         item.innerText = i;
         item.dataset.val = i;
+        item.setAttribute('role', 'button');
+        item.setAttribute('aria-label', `${i}장`);
+        item.tabIndex = i === val ? 0 : -1;
+        item.onkeydown = event => {
+            const direction = { ArrowUp: -1, ArrowDown: 1, Home: -maxQty, End: maxQty }[event.key];
+            if (direction === undefined) return;
+            event.preventDefault();
+            const next = Math.max(1, Math.min(maxQty, i + direction));
+            selectQtyFromPicker(next);
+            focusModalReturnTarget(picker.querySelector(`.qty-picker-item[data-val="${next}"]`));
+        };
         item.onclick = () => {
             if (item.classList.contains('selected')) {
                 startQtyInlineInput(item);
@@ -15262,58 +14534,31 @@ function openQtyOverlay(currentVal) {
         picker.appendChild(item);
     }
 
-    overlay.style.display = 'flex';
-    requestAnimationFrame(() => {
-        overlay.classList.add('active');
-        // 선택된 값 스크롤 위치 이동
-        setTimeout(() => {
-            const selectedItem = picker.querySelector('.qty-picker-item.selected');
-            if (selectedItem) {
-                picker.scrollTop = selectedItem.offsetTop - picker.clientHeight / 2 + selectedItem.clientHeight / 2;
-            }
-        }, 50);
+    openManagedSheet(overlay, {
+        backdrop: overlay.querySelector('.ui-overlay__backdrop'),
+        trigger: document.getElementById('sheet-card-qty'),
+        onOpen: () => selectQtyFromPicker(val)
     });
 }
 
 function closeQtyOverlay() {
     const overlay = document.getElementById('mobile-sheet-qty-overlay');
-    if (overlay) {
-        // 값 확정 및 동기화
-        let qtyClass = '.page-card-qty';
-        if (UIStore.mode === 'move') {
-            qtyClass = '.move-card-qty';
-        } else if (UIStore.mode === 'discard') {
-            qtyClass = '.discard-card-qty';
-        }
-
-        const listContainer = getActiveMobileListContainer();
-        if (listContainer) {
-            const cards = listContainer.querySelectorAll('.mobile-info-card');
-            const row = cards[currentEditingRowIndex];
-
-            if (row) {
-                const qtyStr = String(qtyPickerSelectedVal);
-                document.getElementById('sheet-card-qty').value = qtyStr;
-                const originalQty = row.querySelector(qtyClass);
-                if (originalQty) {
-                    originalQty.value = qtyStr;
-                    recalcSiblingRowQtys(row);
-                    renderMobileCards();
-                }
-            }
-        }
-
-        overlay.classList.remove('active');
-        setTimeout(() => {
-            overlay.style.display = 'none';
-        }, 300);
+    if (!isManagedSheetOpen(overlay)) return;
+    const inlineInput = document.getElementById('qty-inline-input');
+    if (inlineInput && inlineInput.style.display !== 'none') finishQtyInlineInput(inlineInput);
+    const input = document.getElementById('sheet-card-qty');
+    if (currentEditingRow && input) {
+        input.value = String(Math.max(1, Math.min(getCurrentMaxQty(), qtyPickerSelectedVal)));
+        recalcSiblingRowQtys(currentEditingRow);
     }
+    closeManagedSheet(overlay, { backdrop: overlay.querySelector('.ui-overlay__backdrop') });
 }
 
 function selectQtyFromPicker(i) {
     qtyPickerSelectedVal = i;
     const picker = document.getElementById('qty-picker-scroll-area');
     picker.querySelectorAll('.qty-picker-item').forEach(item => {
+        item.tabIndex = parseInt(item.dataset.val) === i ? 0 : -1;
         if (parseInt(item.dataset.val) === i) {
             item.classList.add('selected');
         } else {
@@ -15352,7 +14597,7 @@ function startQtyInlineInput(selectedItem) {
 }
 
 function finishQtyInlineInput(input) {
-    if (!input) return;
+    if (!input || input.style.display === 'none') return;
     let val = parseInt(input.value);
     const maxQty = getCurrentMaxQty();
     if (isNaN(val) || val < 1) val = 1;
@@ -15403,6 +14648,7 @@ function handleQtyInlineInput(input) {
 }
 
 function handleQtyPickerScroll(picker) {
+    if (!isManagedSheetOpen(document.getElementById('mobile-sheet-qty-overlay'))) return;
     const items = picker.querySelectorAll('.qty-picker-item');
     const pickerCenter = picker.scrollTop + picker.clientHeight / 2;
     let closestItem = null;
@@ -15420,7 +14666,10 @@ function handleQtyPickerScroll(picker) {
     if (closestItem) {
         const val = parseInt(closestItem.dataset.val);
         qtyPickerSelectedVal = val;
-        items.forEach(it => it.classList.remove('selected'));
+        items.forEach(it => {
+            it.classList.remove('selected');
+            it.tabIndex = it === closestItem ? 0 : -1;
+        });
         closestItem.classList.add('selected');
     }
 }
@@ -15595,6 +14844,7 @@ function clearBottomSheetField(type, event) {
 }
 
 function openSheetDropdownOverlay(type) {
+    if (!currentEditingRow) return;
     if (type === 'illust') {
         const input = document.getElementById('sheet-card-illust');
         const wrapper = document.getElementById('wrap-sheet-illust');
@@ -15642,17 +14892,17 @@ function openSheetDropdownOverlay(type) {
             if (displayText === currentVal || val === currentVal) {
                 li.classList.add('selected');
             }
+            li.setAttribute('role', 'button');
+            li.tabIndex = 0;
             li.onclick = () => {
                 selectSheetDropdownItem(type, val, raw, displayText);
             };
             optionsList.appendChild(li);
         });
 
-        dropdownOverlay.style.display = 'block';
-        dropdownSheet.style.display = 'flex';
-        requestAnimationFrame(() => {
-            dropdownOverlay.classList.add('active');
-            dropdownSheet.classList.add('active');
+        openManagedSheet(dropdownSheet, {
+            backdrop: dropdownOverlay,
+            trigger: wrap.querySelector('input')
         });
     } catch (e) {
         console.error(e);
@@ -15660,26 +14910,15 @@ function openSheetDropdownOverlay(type) {
 }
 
 function closeSheetDropdownSelect() {
-    const dropdownSheet = document.getElementById('mobile-sheet-dropdown-select');
-    const dropdownOverlay = document.getElementById('sheet-dropdown-overlay');
-    if (dropdownSheet && dropdownOverlay) {
-        dropdownOverlay.classList.remove('active');
-        dropdownSheet.classList.remove('active');
-        setTimeout(() => {
-            dropdownOverlay.style.display = 'none';
-            dropdownSheet.style.display = 'none';
-        }, 350);
-    }
+    closeManagedSheet(document.getElementById('mobile-sheet-dropdown-select'), {
+        backdrop: document.getElementById('sheet-dropdown-overlay')
+    });
 }
 
 function selectSheetDropdownItem(type, val, raw, text) {
     if (currentEditingRowIndex === -1) return;
 
-    const listContainer = getActiveMobileListContainer();
-    if (!listContainer) return;
-
-    const cards = listContainer.querySelectorAll('.mobile-info-card');
-    const row = cards[currentEditingRowIndex];
+    const row = currentEditingRow;
     if (!row) return;
 
     const isMove = (UIStore.mode === 'move');
@@ -15740,8 +14979,9 @@ function initOverlaySearchListeners() {
         overlayInput._isInputBound = true;
 
         const debouncedShowSuggestions = debounce((val) => {
-            showOverlaySuggestions(val);
+            if (isManagedSheetOpen(document.getElementById('mobile-sheet-input-overlay'))) showOverlaySuggestions(val);
         }, 100);
+        overlayInput._cancelSuggestions = () => debouncedShowSuggestions.cancel();
 
         overlayInput.addEventListener('input', (e) => {
             if (activeOverlayType === 'no') {
@@ -15876,6 +15116,7 @@ function renderDesktopCardsFromData(dataArray) {
             restoreDesktopDropdownOptions(cardEl, data);
         }
     });
+    updateManagementCardStack(listContainer.querySelectorAll('.desktop-info-card'));
 }
 
 
@@ -15910,6 +15151,7 @@ function reindexDesktopCards(listContainer) {
             }
         }
     });
+    updateManagementCardStack(cards);
 }
 
 function restoreDesktopDropdownOptions(cardEl, data) {
@@ -16053,20 +15295,20 @@ function renderDesktopCards() {
 function getDesktopCardHtml(mode, subMode, idx, nextNum) {
     if (mode === 'move') {
         return `
-            <div class="desktop-info-card" data-index="${idx}">
+            <div class="desktop-info-card ui-stack-card shape-rounded003 ${idx % 2 === 0 ? 'color-card-odd' : 'color-card-even'}" data-index="${idx}">
                 <div class="card-row-top" style="display:flex; align-items:center; width:100%; gap:12px; position:relative; padding-left:30px; box-sizing:border-box;">
                     <div style="position:absolute; left:0; display:flex; align-items:center; width:30px; height:100%;">
                         <div style="position:absolute; left:0; width:14px; display:flex; align-items:center; justify-content:center;">
                             <span class="card-num-badge">${nextNum}</span>
                         </div>
-                        <span class="card-num-divider" style="position:absolute; left:22px; margin:0 !important;">|</span>
+                        <span class="card-num-divider color-text-table" aria-hidden="true" style="position:absolute; left:22px; margin:0 !important;">|</span>
                     </div>
                     <div class="custom-select-wrapper no-arrow" style="max-width:50%; flex:1; position:relative;">
-                        <input type="text" class="desktop-card-input desktop-card-name custom-input" data-field="name" placeholder="카드 이름" style="font-weight:700; text-align:left !important; padding:0 24px 0 8px !important;" oninput="handleCardNameInput(this)" onblur="fetchCardByName(this)" onkeydown="if(event.isComposing && (event.key==='Enter' || event.key==='Tab')) { event.preventDefault(); return; } if(this.hasAttribute('readonly') && (event.key==='Escape' || event.key==='Backspace' || event.key==='Delete')) { clearPageNameAndNo(this); event.preventDefault(); return; } if(event.key==='Enter') { this.blur(); }" autocomplete="off">
+                        <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" style="font-weight:700; text-align:left !important; padding:0 24px 0 8px !important;" oninput="handleCardNameInput(this)" onblur="fetchCardByName(this)" onkeydown="if(event.isComposing && (event.key==='Enter' || event.key==='Tab')) { event.preventDefault(); return; } if(this.hasAttribute('readonly') && (event.key==='Escape' || event.key==='Backspace' || event.key==='Delete')) { clearPageNameAndNo(this); event.preventDefault(); return; } if(event.key==='Enter') { this.blur(); }" autocomplete="off">
                         <i class="material-icons clear-name-btn" onclick="clearPageNameAndNo(this)" style="display:none; position:absolute; right:6px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.1rem; color:var(--text-muted);">cancel</i>
                     </div>
                     <div class="custom-select-wrapper no-arrow" style="margin-left:auto; width:120px; flex-shrink:0;">
-                        <input type="text" class="desktop-card-input desktop-card-no custom-input" data-field="no" placeholder="카드 번호" style="font-family:monospace; text-transform:uppercase; text-align:right !important; padding:0 28px 0 8px !important;" oninput="handleCardNoInput(this)" onblur="fetchCardByNumber(this)" onkeydown="if(event.key==='Enter' && !this.closest('.custom-select-wrapper').classList.contains('active')) fetchCardByNumber(this)" autocomplete="off">
+                        <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" style="font-family:monospace; text-transform:uppercase; text-align:right !important; padding:0 28px 0 8px !important;" oninput="handleCardNoInput(this)" onblur="fetchCardByNumber(this)" onkeydown="if(event.key==='Enter' && !this.closest('.custom-select-wrapper').classList.contains('active')) fetchCardByNumber(this)" autocomplete="off">
                         <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px; display:none;">arrow_drop_down</i>
                     </div>
                     <div class="card-actions" style="display:flex; gap:6px; flex-shrink:0; width:72px;">
@@ -16075,25 +15317,25 @@ function getDesktopCardHtml(mode, subMode, idx, nextNum) {
                 </div>
                 <div class="card-row-bottom" style="display:flex; align-items:center; gap:12px; width:100%; padding-left:30px; box-sizing:border-box;">
                     <div class="custom-select-wrapper no-option" style="width:80px; flex-shrink:0;" data-type="strict">
-                        <input type="text" class="desktop-card-input desktop-card-illust custom-input" data-field="illust" placeholder="일러스트" style="text-align:left !important; padding:0 8px !important;" readonly>
+                        <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" placeholder="일러스트" style="text-align:left !important; padding:0 8px !important;" readonly>
                         <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
                     </div>
                     <div class="custom-select-wrapper no-option" style="width:90px; flex:none;" data-type="strict">
-                        <input type="text" class="desktop-card-input desktop-card-rare custom-input" data-field="rare" placeholder="레어도" style="text-align:left !important; padding:0 8px !important;" readonly>
+                        <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" style="text-align:left !important; padding:0 8px !important;" readonly>
                         <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
                     </div>
                     <div style="margin-left:auto; display:flex; gap:6px; align-items:center; flex:none; max-width:320px; justify-content:flex-end;">
                         <div class="custom-select-wrapper no-option" style="width:120px; flex:none;" data-type="strict" id="desktop-wrap-move-from-${nextNum}">
-                            <input type="text" class="desktop-card-input desktop-card-loc custom-input" data-field="loc" placeholder="보관 위치" style="text-align:right !important; padding:0 28px 0 8px !important;" readonly>
+                            <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="보관 위치" style="text-align:right !important; padding:0 28px 0 8px !important;" readonly>
                             <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
                         </div>
                         <i class="material-icons loc-arrow" style="font-size:1rem; color:var(--text-table); flex-shrink:0;">arrow_forward</i>
                         <div class="custom-select-wrapper" style="width:120px; flex:none;" data-type="free" id="desktop-wrap-move-to-${nextNum}">
-                            <input type="text" class="desktop-card-input desktop-card-to custom-input" data-field="to" placeholder="이동 위치" style="text-align:right !important; padding:0 28px 0 8px !important;">
+                            <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-to custom-input" data-field="to" placeholder="이동 위치" style="text-align:right !important; padding:0 28px 0 8px !important;">
                             <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
                         </div>
                     </div>
-                    <div class="desktop-qty-wrapper" style="width:72px; height:30px; flex-shrink:0; display:flex; align-items:center; border:1px solid transparent; border-radius:16px; background:transparent; padding:0 4px; box-sizing:border-box; gap:2px;">
+                    <div class="desktop-qty-wrapper border-cardinput" style="width:72px; height:30px; flex-shrink:0; display:flex; align-items:center; border-radius:16px; background:transparent; padding:0 4px; box-sizing:border-box; gap:2px;">
                         <input type="number" class="desktop-card-input desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly style="flex:1; width:0; border:none !important; background:transparent !important; text-align:right !important; padding:0 !important; outline:none !important; font-size:0.85rem;" oninput="handleCardQtyInput(this)" onfocus="updateMoveRowMaxQty(this)">
                         <span style="font-size:0.85rem; font-weight:700; color:var(--text-table); flex-shrink:0; pointer-events:none; margin-right:2px;">장</span>
                         <div class="desktop-qty-controls" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; gap:1px; flex-shrink:0;">
@@ -16118,20 +15360,20 @@ function getDesktopCardHtml(mode, subMode, idx, nextNum) {
     const locReadonly = isDiscard ? "readonly" : "";
 
     return `
-        <div class="desktop-info-card" data-index="${idx}">
+        <div class="desktop-info-card ui-stack-card shape-rounded003 ${idx % 2 === 0 ? 'color-card-odd' : 'color-card-even'}" data-index="${idx}">
             <div class="card-row-top" style="display:flex; align-items:center; width:100%; gap:12px; position:relative; padding-left:30px; box-sizing:border-box;">
                 <div style="position:absolute; left:0; display:flex; align-items:center; width:30px; height:100%;">
                     <div style="position:absolute; left:0; width:14px; display:flex; align-items:center; justify-content:center;">
                         <span class="card-num-badge">${nextNum}</span>
                     </div>
-                    <span class="card-num-divider" style="position:absolute; left:22px; margin:0 !important;">|</span>
+                    <span class="card-num-divider color-text-table" aria-hidden="true" style="position:absolute; left:22px; margin:0 !important;">|</span>
                 </div>
                 <div class="custom-select-wrapper no-arrow" style="max-width:50%; flex:1; position:relative;">
-                    <input type="text" class="desktop-card-input desktop-card-name custom-input" data-field="name" placeholder="카드 이름" style="font-weight:700; text-align:left !important; padding:0 24px 0 8px !important;" oninput="handleCardNameInput(this)" onblur="fetchCardByName(this)" onkeydown="if(event.isComposing && (event.key==='Enter' || event.key==='Tab')) { event.preventDefault(); return; } if(this.hasAttribute('readonly') && (event.key==='Escape' || event.key==='Backspace' || event.key==='Delete')) { clearPageNameAndNo(this); event.preventDefault(); return; } if(event.key==='Enter') { this.blur(); }" autocomplete="off">
+                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" style="font-weight:700; text-align:left !important; padding:0 24px 0 8px !important;" oninput="handleCardNameInput(this)" onblur="fetchCardByName(this)" onkeydown="if(event.isComposing && (event.key==='Enter' || event.key==='Tab')) { event.preventDefault(); return; } if(this.hasAttribute('readonly') && (event.key==='Escape' || event.key==='Backspace' || event.key==='Delete')) { clearPageNameAndNo(this); event.preventDefault(); return; } if(event.key==='Enter') { this.blur(); }" autocomplete="off">
                     <i class="material-icons clear-name-btn" onclick="clearPageNameAndNo(this)" style="display:none; position:absolute; right:6px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.1rem; color:var(--text-muted);">cancel</i>
                 </div>
                 <div class="custom-select-wrapper no-arrow" style="margin-left:auto; width:120px; flex-shrink:0;">
-                    <input type="text" class="desktop-card-input desktop-card-no custom-input" data-field="no" placeholder="카드 번호" style="font-family:monospace; text-transform:uppercase; text-align:right !important; padding:0 28px 0 8px !important;" oninput="handleCardNoInput(this)" onblur="fetchCardByNumber(this)" onkeydown="if(event.key==='Enter' && !this.closest('.custom-select-wrapper').classList.contains('active')) fetchCardByNumber(this)" autocomplete="off">
+                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" style="font-family:monospace; text-transform:uppercase; text-align:right !important; padding:0 28px 0 8px !important;" oninput="handleCardNoInput(this)" onblur="fetchCardByNumber(this)" onkeydown="if(event.key==='Enter' && !this.closest('.custom-select-wrapper').classList.contains('active')) fetchCardByNumber(this)" autocomplete="off">
                     <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px; display:none;">arrow_drop_down</i>
                 </div>
                 <div class="card-actions" style="display:flex; gap:6px; flex-shrink:0; width:72px;">
@@ -16140,18 +15382,18 @@ function getDesktopCardHtml(mode, subMode, idx, nextNum) {
             </div>
             <div class="card-row-bottom" style="display:flex; align-items:center; gap:12px; width:100%; padding-left:30px; box-sizing:border-box;">
                 <div class="custom-select-wrapper no-option" style="width:80px; flex-shrink:0;" data-type="strict">
-                    <input type="text" class="desktop-card-input desktop-card-illust custom-input" data-field="illust" placeholder="일러스트" style="text-align:left !important; padding:0 8px !important;" readonly>
+                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" placeholder="일러스트" style="text-align:left !important; padding:0 8px !important;" readonly>
                     <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
                 </div>
                 <div class="custom-select-wrapper no-option" style="width:90px; flex:none;" data-type="strict">
-                    <input type="text" class="desktop-card-input desktop-card-rare custom-input" data-field="rare" placeholder="레어도" style="text-align:left !important; padding:0 8px !important;" readonly>
+                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" style="text-align:left !important; padding:0 8px !important;" readonly>
                     <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
                 </div>
                 <div class="custom-select-wrapper${mode === 'discard' ? ' no-option' : ''}" style="margin-left:auto; width:120px; flex:none;" data-type="${mode === 'add' ? 'free' : 'strict'}" id="desktop-wrap-${mode}-${idx}">
-                    <input type="text" class="desktop-card-input desktop-card-loc custom-input" data-field="loc" placeholder="${locPlaceholder}" style="text-align:right !important; padding:0 28px 0 8px !important;" ${locReadonly}>
+                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="${locPlaceholder}" style="text-align:right !important; padding:0 28px 0 8px !important;" ${locReadonly}>
                     <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
                 </div>
-                <div class="desktop-qty-wrapper" style="width:72px; height:30px; flex-shrink:0; display:flex; align-items:center; border:1px solid transparent; border-radius:16px; background:transparent; padding:0 4px; box-sizing:border-box; gap:2px;">
+                <div class="desktop-qty-wrapper border-cardinput" style="width:72px; height:30px; flex-shrink:0; display:flex; align-items:center; border-radius:16px; background:transparent; padding:0 4px; box-sizing:border-box; gap:2px;">
                     <input type="number" class="desktop-card-input desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly style="flex:1; width:0; border:none !important; background:transparent !important; text-align:right !important; padding:0 !important; outline:none !important; font-size:0.85rem;" oninput="handleCardQtyInput(this)">
                     <span style="font-size:0.85rem; font-weight:700; color:var(--text-table); flex-shrink:0; pointer-events:none; margin-right:2px;">장</span>
                     <div class="desktop-qty-controls" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; gap:1px; flex-shrink:0;">
@@ -16424,7 +15666,7 @@ function restorePendingFormData() {
                     const area = document.getElementById('pack-table-area');
                     if (area) area.style.display = 'block';
                     const container = document.getElementById('manage-table-container');
-                    if (container) container.classList.add('anim-active');
+                    setModePanelActive(container, true);
                 }
             } else if (isDeck) {
                 const deckCodeInput = document.getElementById('deck-code-input');
@@ -16437,7 +15679,7 @@ function restorePendingFormData() {
                     const area = document.getElementById('deck-table-area');
                     if (area) area.style.display = 'block';
                     const container = document.getElementById('manage-table-container');
-                    if (container) container.classList.add('anim-active');
+                    setModePanelActive(container, true);
                 }
             }
         } else if (payload.mode === 'move') {
@@ -16458,21 +15700,177 @@ function restorePendingFormData() {
     }, 500);
 }
 
-/**
- * FAQ & 카드 보관 팁 세그먼트 탭 전환 함수 (캡슐 라디오 및 다국어 지원)
- * @param {string} tabName - 'faq' 또는 'tips'
- */
-window.switchFaqTab = function(tabName) {
-    const faqRadio = document.getElementById('faq-radio-faq');
-    const tipsRadio = document.getElementById('faq-radio-tips');
+// FAQ 번역 원본은 초기 HTML에 두고, 초기화 후에는 같은 12개 항목을 재사용한다.
+let faqResources = null;
 
-    if (tabName === 'faq') {
-        if (faqRadio) faqRadio.checked = true;
-        document.querySelectorAll('.faq-tab-content-faq').forEach(el => el.style.display = 'flex');
-        document.querySelectorAll('.faq-tab-content-tips').forEach(el => el.style.display = 'none');
-    } else if (tabName === 'tips') {
-        if (tipsRadio) tipsRadio.checked = true;
-        document.querySelectorAll('.faq-tab-content-tips').forEach(el => el.style.display = 'flex');
-        document.querySelectorAll('.faq-tab-content-faq').forEach(el => el.style.display = 'none');
+function initFaqResources() {
+    if (faqResources) return faqResources;
+    const section = document.getElementById('home-faq-section');
+    if (!section) return null;
+    const groups = Array.from(section.querySelectorAll('.home-resources__language'));
+    const container = groups.find(group => group.dataset.lang === 'ko');
+    if (!container) return null;
+    const translations = new Map(groups.map(group => [group.dataset.lang, {
+        lang: group.lang,
+        panels: Array.from(group.querySelectorAll('[data-resource-panel]')).map(panel => ({
+            name: panel.dataset.resourcePanel,
+            items: Array.from(panel.querySelectorAll('details')).map(item => ({
+                title: item.querySelector('summary > span').cloneNode(true),
+                body: item.querySelector('.ui-disclosure__body').cloneNode(true),
+            })),
+        })),
+    }]));
+    const panels = Array.from(container.querySelectorAll('[data-resource-panel]'));
+    const selected = document.getElementById('faq-radio-tips')?.checked ? 'tips' : 'faq';
+    panels.forEach(panel => {
+        panel.id = `home-resources-${panel.dataset.resourcePanel}`;
+        const radio = document.getElementById(`faq-radio-${panel.dataset.resourcePanel}`);
+        radio?.setAttribute('aria-controls', panel.id);
+        panel.hidden = panel.dataset.resourcePanel !== selected;
+    });
+    // 번역을 보관한 뒤 중복 표시용 DOM만 제거한다. 실제 항목·summary·본문 노드는 유지한다.
+    groups.forEach(group => { if (group !== container) group.remove(); });
+    container.classList.add('home-resources__language--live');
+    faqResources = { container, panels, translations, selected, language: 'ko', transition: null, disclosures: new Map() };
+    panels.forEach(panel => panel.querySelectorAll('details').forEach(item => {
+        item.querySelector('summary').addEventListener('click', event => {
+            if (event.defaultPrevented || event.button > 0) return;
+            event.preventDefault();
+            toggleFaqDisclosure(faqResources, item);
+        });
+    }));
+    // 화면 너비나 답변 높이가 전환 도중 변하면 고정 높이를 남기지 않고 현재 선택으로 정착한다.
+    if (typeof ResizeObserver !== 'undefined') {
+        const observer = new ResizeObserver(() => {
+            const state = faqResources;
+            state.disclosures.forEach((running, item) => {
+                if (Math.abs(item.getBoundingClientRect().width - running.width) > 1) {
+                    finishFaqDisclosure(state, item);
+                }
+            });
+            const running = state.transition;
+            if (!running) return;
+            const active = state.panels.find(panel => panel.dataset.resourcePanel === state.selected);
+            if (Math.abs(active.getBoundingClientRect().height - running.height) > 1
+                || Math.abs(state.container.getBoundingClientRect().width - running.width) > 1) {
+                finishFaqTransition(state);
+            }
+        });
+        panels.forEach(panel => observer.observe(panel));
     }
+    return faqResources;
+}
+
+function finishFaqTransition(state) {
+    const running = state.transition;
+    state.transition = null;
+    running?.animations.forEach(animation => animation.cancel());
+    state.container.classList.remove('home-resources__language--switching');
+    state.panels.forEach(panel => {
+        panel.classList.remove('home-resources__panel--leaving');
+        panel.hidden = panel.dataset.resourcePanel !== state.selected;
+        panel.inert = panel.hidden;
+    });
+}
+
+function finishFaqDisclosure(state, item) {
+    const running = state.disclosures.get(item);
+    if (!running) return;
+    state.disclosures.delete(item);
+    item.open = running.open;
+    running.animation.cancel();
+    item.classList.remove('ui-disclosure--closing');
+    item.querySelector('.ui-disclosure__body').inert = false;
+}
+
+function toggleFaqDisclosure(state, item) {
+    finishFaqTransition(state);
+    const running = state.disclosures.get(item);
+    const open = !(running ? running.open : item.open);
+    const fromHeight = item.getBoundingClientRect().height;
+    finishFaqDisclosure(state, item);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !item.animate) {
+        item.open = open;
+        return;
+    }
+    // 닫힘 중에도 본문을 그리되 키보드 탐색에서는 제외한다.
+    item.open = true;
+    const height = open ? item.getBoundingClientRect().height : item.querySelector('summary').getBoundingClientRect().height;
+    if (!open) item.classList.add('ui-disclosure--closing');
+    item.querySelector('.ui-disclosure__body').inert = !open;
+    const animation = item.animate([{ height: `${fromHeight}px` }, { height: `${height}px` }], {
+        duration: 300, easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    });
+    const current = { animation, open, width: item.getBoundingClientRect().width };
+    state.disclosures.set(item, current);
+    animation.finished.then(() => {
+        if (state.disclosures.get(item) === current) finishFaqDisclosure(state, item);
+    }, () => {});
+}
+
+function updateFaqLanguage(region) {
+    const state = initFaqResources();
+    if (!state) return;
+    const requested = region === 'ae' ? 'en' : region;
+    const language = state.translations.has(requested) ? requested : 'ko';
+    if (state.language === language) return;
+    state.disclosures.forEach((_, item) => finishFaqDisclosure(state, item));
+    finishFaqTransition(state);
+    const translation = state.translations.get(language);
+    translation.panels.forEach(source => {
+        const panel = state.panels.find(item => item.dataset.resourcePanel === source.name);
+        panel.querySelectorAll('details').forEach((item, index) => {
+            const content = source.items[index];
+            // open·초점 대상 summary·본문 컨테이너를 보존하고 번역된 인라인 내용만 교체한다.
+            item.querySelector('summary > span').replaceChildren(...Array.from(content.title.childNodes, node => node.cloneNode(true)));
+            item.querySelector('.ui-disclosure__body').replaceChildren(...Array.from(content.body.childNodes, node => node.cloneNode(true)));
+        });
+    });
+    state.container.lang = translation.lang;
+    state.container.dataset.lang = language;
+    state.language = language;
+}
+
+window.switchFaqTab = function(tabName) {
+    if (tabName !== 'faq' && tabName !== 'tips') return;
+    const state = initFaqResources();
+    if (!state) return;
+    ['faq', 'tips'].forEach(name => {
+        const radio = document.getElementById(`faq-radio-${name}`);
+        if (radio) radio.checked = name === tabName;
+    });
+    if (state.selected === tabName) return;
+    state.disclosures.forEach((_, item) => finishFaqDisclosure(state, item));
+    const fromHeight = state.container.getBoundingClientRect().height;
+    finishFaqTransition(state);
+    const outgoing = state.panels.find(panel => panel.dataset.resourcePanel === state.selected);
+    const incoming = state.panels.find(panel => panel.dataset.resourcePanel === tabName);
+    if (outgoing.contains(document.activeElement)) {
+        document.getElementById(`faq-radio-${tabName}`)?.focus({ preventScroll: true });
+    }
+    state.selected = tabName;
+    incoming.hidden = false;
+    incoming.inert = false;
+    outgoing.inert = true;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion || !state.container.animate || fromHeight === 0) {
+        finishFaqTransition(state);
+        return;
+    }
+    state.container.classList.add('home-resources__language--switching');
+    outgoing.classList.add('home-resources__panel--leaving');
+    const height = incoming.getBoundingClientRect().height;
+    const width = state.container.getBoundingClientRect().width;
+    const direction = tabName === 'tips' ? 1 : -1;
+    const timing = { duration: 300, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' };
+    const animations = [
+        outgoing.animate([{ transform: 'translateX(0)' }, { transform: `translateX(calc(${-direction * 100}% - ${direction} * var(--resource-panel-gap)))` }], timing),
+        incoming.animate([{ transform: `translateX(calc(${direction * 100}% + ${direction} * var(--resource-panel-gap)))` }, { transform: 'translateX(0)' }], timing),
+        state.container.animate([{ height: `${fromHeight}px` }, { height: `${height}px` }], timing),
+    ];
+    const running = { animations, height, width };
+    state.transition = running;
+    Promise.allSettled(animations.map(animation => animation.finished)).then(() => {
+        if (state.transition === running) finishFaqTransition(state);
+    });
 };

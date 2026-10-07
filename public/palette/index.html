@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>YGO Synapse · 디자인 팔레트</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+  <link rel="stylesheet" href="/styles/tokens.css">
+  <link rel="stylesheet" href="/palette/palette.css">
+  <script type="module" src="/palette/palette.js"></script>
+</head>
+<body data-palette-viewer>
+  <header data-palette-header>
+    <div><p data-palette-eyebrow>YGO SYNAPSE / DESIGN REFERENCE</p>
+      <h1>디자인 팔레트</h1>
+      <p>현행 CSS로 확인하는 색상·형태·조합. 조사값은 새 공통 규격으로 확정하지 않습니다.</p></div>
+  </header>
+  <main>
+    <form data-palette-controls aria-label="팔레트 보기 설정">
+      <label>테마 비교<select id="theme"><option value="both">라이트 + 다크</option><option value="light">라이트</option><option value="dark">다크</option></select></label>
+      <label>예제 화면 너비<select id="width"><option value="auto">가용 너비</option><option value="1200">1200px</option><option value="600">600px</option><option value="390">390px</option></select></label>
+      <label>기기 판정<select id="device"><option value="desktop">데스크톱</option><option value="mobile">모바일</option></select></label>
+      <button type="button" id="reload">현재 CSS 다시 읽기</button>
+    </form>
+    <nav data-palette-tabs aria-label="팔레트 분류">
+      <button type="button" data-category="tokens" aria-current="page">색상 토큰</button>
+      <button type="button" data-category="combinations">색상 조합</button>
+      <button type="button" data-category="geometry">형태·선·그림자</button>
+      <button type="button" data-category="examples">실제 사용 조합</button>
+      <button type="button" data-category="measurements">글자·간격 현황</button>
+    </nav>
+    <p data-palette-instructions id="instructions">예제 위에 마우스를 올리거나 Tab 키로 이동하면 실제 호버·키보드 포커스를 확인할 수 있습니다. 고정 너비가 화면보다 크면 예제 안쪽을 가로로 스크롤합니다.</p>
+    <div data-palette-frames>
+      <section data-palette-pane="light" aria-labelledby="light-title"><div data-palette-pane-title><h2 id="light-title">라이트</h2><output id="light-status">불러오는 중</output></div><div data-palette-viewport><iframe title="라이트 테마 실제 CSS 팔레트" id="light-frame"></iframe></div></section>
+      <section data-palette-pane="dark" aria-labelledby="dark-title"><div data-palette-pane-title><h2 id="dark-title">다크</h2><output id="dark-status">불러오는 중</output></div><div data-palette-viewport><iframe title="다크 테마 실제 CSS 팔레트" id="dark-frame"></iframe></div></section>
+    </div>
+    <p data-palette-status role="status" id="status">합성 예제만 사용합니다. 앱 로그인·저장·검색 API는 실행하지 않습니다.</p>
+  </main>
+  <footer>스타일 원본: styles/ + style.css · 보유 상세: 실제 OwnedCards 렌더러</footer>
+</body>
+</html>

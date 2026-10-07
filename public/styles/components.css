@@ -1,0 +1,1043 @@
+/* 정비된 공통 스타일: 색상 → 형태 → 테두리 → UI → 기능별 공통 요소.
+ * 번호 시리즈는 연속 배치하고 각 UI의 기본·변형·상태를 함께 관리한다.
+ * 이 파일 뒤의 기능별 CSS는 기존 크기·배치를 유지한다. */
+
+/* ===== 색상 조합: color-* ===== */
+
+/* 해당 요소에 직접 적용하는 표면·글자 색상. 구조와 형태는 별도로 조합한다. */
+.color-surface-000 {
+  --color-bg: var(--surface-000);
+  background-color: var(--color-bg);
+}
+
+.color-surface-001 {
+  --color-bg: var(--surface-001);
+  background-color: var(--color-bg);
+}
+
+.color-surface-002 {
+  --color-bg: var(--surface-002);
+  background-color: var(--color-bg);
+}
+
+/* 화면을 덮는 배경막: 패널의 표면색과 독립적으로 조합한다. */
+.color-surface-black {
+  --color-bg: var(--surface-black);
+  background-color: var(--color-bg);
+}
+
+.color-text-000 {
+  --color-text: var(--text-000);
+  --color-highlight-text: var(--text-000);
+  color: var(--color-text);
+}
+
+.color-text-001 {
+  --color-text: var(--text-001);
+  --color-highlight-text: var(--text-000);
+  color: var(--color-text);
+}
+
+.color-text-002 {
+  --color-text: var(--text-002);
+  --color-highlight-text: var(--text-001);
+  color: var(--color-text);
+}
+
+.color-text-003 {
+  --color-text: var(--text-003);
+  --color-highlight-text: var(--text-002);
+  color: var(--color-text);
+}
+
+.color-text-table {
+  --color-text: var(--text-table);
+  --color-highlight-text: var(--color-text);
+  color: var(--color-text);
+}
+
+.color-text-theme {
+  --color-text: var(--theme-000);
+  --color-highlight-text: var(--color-text);
+  color: var(--color-text);
+}
+
+/* 데이터 검증 오류. 주의 안내와 성공 안내는 기존 글자 조합을 사용한다. */
+.color-text-red {
+  --color-text: var(--red);
+  --color-highlight-text: var(--color-text);
+  color: var(--color-text);
+}
+
+/* 선택 가능한 글자의 기본·강조·선택 색상은 요소 자신의 조합에서 제공한다. */
+.color-text-selectable {
+  --color-text: var(--text-001);
+  --color-highlight-text: var(--text-000);
+  --color-selected-text: var(--theme-000);
+  --color-selected-highlight-text: var(--theme-002);
+  color: var(--color-text);
+}
+
+/* 기본 글자색과 독립적으로 조합하는 강조색. */
+.color-highlight-theme {
+  --color-highlight-text: var(--theme-002);
+}
+
+.color-highlight-red {
+  --color-highlight-text: var(--red);
+}
+
+/* 채널 링크 강조: 위험 색상과 브랜드 색상을 분리한다. */
+.color-highlight-youtube {
+  --color-highlight-text: var(--brand-youtube);
+}
+
+/* 인증 수단의 브랜드 채움. 형태·배치는 일반 버튼과 별도로 조합한다. */
+.color-brand-youtube {
+  --color-bg: var(--brand-youtube);
+  --color-text: var(--text-white);
+  --color-highlight-bg: var(--surface-003);
+  --color-highlight-text: var(--brand-youtube);
+}
+
+.color-brand-discord {
+  --color-bg: var(--brand-discord);
+  --color-text: var(--text-white);
+  --color-highlight-bg: var(--surface-003);
+  --color-highlight-text: var(--brand-discord);
+}
+
+/* 스위치와 내비게이션의 선택 배경도 공통 상태 변수로 제공한다. */
+.color-switch-theme {
+  --color-bg: var(--surface-navi);
+  --color-highlight-bg: var(--theme-001);
+  --color-selected-bg: var(--theme-000);
+  --color-selected-highlight-bg: var(--theme-002);
+}
+
+.color-switch-theme::before {
+  --color-bg: var(--surface-white);
+}
+
+.color-navi {
+  --color-bg: transparent;
+  --color-text: var(--text-navi);
+  --color-highlight-bg: var(--surface-001);
+  --color-highlight-text: var(--color-text);
+  --color-selected-bg: var(--surface-001);
+  --color-selected-text: var(--theme-000);
+  --color-selected-highlight-bg: var(--color-selected-bg);
+  --color-selected-highlight-text: var(--color-selected-text);
+}
+
+/* 단일 카드 보유 상세의 일러스트별 교차 배경. */
+.color-searchDetailArea-odd {
+  --color-bg: var(--surface-search-detail);
+  background-color: var(--color-bg);
+}
+
+.color-searchDetailArea-even {
+  --color-bg: transparent;
+  background-color: var(--color-bg);
+}
+
+.color-card-odd {
+  --color-bg: var(--theme-card-odd);
+  --color-text: var(--text-table);
+  --color-highlight-bg: var(--color-bg);
+  --color-highlight-text: var(--color-text);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+.color-card-even {
+  --color-bg: var(--theme-card-even);
+  --color-text: var(--text-table);
+  --color-highlight-bg: var(--color-bg);
+  --color-highlight-text: var(--color-text);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* 버튼·입력·카드·칩·태그가 공유하는 색상 조합. */
+.color-theme {
+  --color-bg: var(--theme-000);
+  --color-text: var(--surface-000);
+  --color-highlight-bg: var(--theme-002);
+  --color-highlight-text: var(--color-text);
+}
+
+.color-theme-001 {
+  --color-bg: var(--surface-001);
+  --color-text: var(--theme-000);
+  --color-highlight-bg: var(--surface-002);
+  --color-highlight-text: var(--color-text);
+}
+
+.color-theme-002 {
+  --color-bg: var(--surface-003);
+  --color-text: var(--theme-000);
+  --color-highlight-bg: var(--color-bg);
+  --color-highlight-text: var(--color-text);
+}
+
+/* 위험 실행의 기본·강조 색상. 비활성은 color-disabled를 별도 조합한다. */
+.color-danger {
+  --color-bg: var(--red);
+  --color-text: var(--text-white);
+  --color-highlight-bg: var(--red-highlighted);
+  --color-highlight-text: var(--color-text);
+}
+
+.color-type000 {
+  --color-bg: var(--surface-001);
+  --color-text: var(--text-000);
+  --color-highlight-bg: var(--surface-002);
+  --color-highlight-text: var(--color-text);
+}
+
+.color-type001 {
+  --color-bg: var(--surface-002);
+  --color-text: var(--text-001);
+  --color-highlight-bg: var(--surface-003);
+  --color-highlight-text: var(--color-text);
+}
+
+.color-type002 {
+  --color-bg: var(--surface-001);
+  --color-text: var(--text-000);
+  --color-highlight-bg: var(--theme-001);
+  --color-highlight-text: var(--color-text);
+}
+
+.color-type003 {
+  --color-bg: var(--surface-003);
+  --color-text: var(--text-000);
+  --color-highlight-bg: var(--color-bg);
+  --color-highlight-text: var(--color-text);
+}
+
+.color-type004 {
+  --color-bg: transparent;
+  --color-text: var(--text-000);
+  --color-highlight-bg: var(--surface-002);
+  --color-highlight-text: var(--color-text);
+}
+
+.color-type005 {
+  --color-bg: var(--surface-002);
+  --color-text: var(--text-001);
+  --color-highlight-bg: var(--theme-003);
+  --color-highlight-text: var(--color-text);
+}
+
+.color-tint-theme {
+  --color-bg: var(--theme-003);
+  --color-text: var(--theme-000);
+  --color-highlight-bg: var(--surface-002);
+  --color-highlight-text: var(--color-text);
+}
+
+.color-tint-neutral {
+  --color-bg: var(--surface-003);
+  --color-text: var(--text-002);
+  --color-highlight-bg: var(--surface-002);
+  --color-highlight-text: var(--color-text);
+}
+
+/* 비활성 색상도 UI 상태와 별도로 조합한다. */
+.color-disabled {
+  --color-disabled-bg: var(--surface-002);
+  --color-disabled-text: var(--text-002);
+}
+
+/* ===== 형태: shape-* ===== */
+
+/* 캡슐형 요소의 공통 곡률 문법 */
+.shape-capsule,
+input.ui-input--filled.shape-capsule {
+  border-radius: 999px;
+}
+
+.shape-rounded001 {
+  border-radius: 4px;
+}
+
+.shape-rounded002,
+input.ui-input--filled.shape-rounded002 {
+  border-radius: 8px;
+}
+
+.shape-rounded003 {
+  border-radius: 12px;
+}
+
+.shape-rounded-lg {
+  border-radius: var(--radius-lg);
+}
+
+/* ===== 테두리: border-* ===== */
+
+/* 테두리 팔레트: 선의 색상·굵기·종류를 함께 조합한다. */
+.border-basic,
+input[type="text"].ui-input--filled.border-basic,
+input[type="number"].ui-input--filled.border-basic,
+input[type="text"].ui-input--filled.border-basic:focus:not([readonly]),
+input[type="number"].ui-input--filled.border-basic:focus:not([readonly]) {
+  --border-highlight: var(--theme-000);
+  border: 1px solid var(--border-000);
+}
+
+/* 강조는 별도로 요청한 대상에서만 활성화한다. */
+.border-basic.border-highlight:is(:hover, :focus-visible, :focus-within) {
+  border-color: var(--border-highlight);
+}
+
+.border-theme,
+input[type="text"].ui-input--filled.border-theme,
+input[type="text"].ui-input--filled.border-theme:focus:not([readonly]) {
+  border: 1px solid var(--theme-000);
+}
+
+.border-dashed,
+.ui-button.border-dashed {
+  border: 2px dashed var(--border-000);
+}
+
+.border-cardinput {
+  border: 1px solid transparent;
+}
+
+.border-cardinput:is(:hover, :focus, :focus-within) {
+  border-color: var(--theme-000);
+}
+
+.border-section-000,
+.border-section-001,
+.border-section-danger {
+  border: 0;
+  border-bottom: 1px solid var(--border-000);
+}
+
+.border-section-001 {
+  border-bottom-style: dashed;
+}
+
+.border-section-danger {
+  border-bottom-color: var(--red);
+}
+
+/* ===== 공통 UI: ui-* ===== */
+
+/* UI: button */
+
+/* 버튼의 공통 구조와 상태 */
+:where(.ui-button) {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* 일반 버튼. 크기·곡률·그림자는 사용처에서 조합한다. */
+.ui-button {
+  background-color: var(--color-bg, transparent);
+  color: var(--color-text, inherit);
+  box-shadow: none;
+}
+
+.ui-button:focus {
+  background-color: var(--color-bg, transparent);
+  outline: none;
+}
+
+.ui-button:where(:not(.ui-button--text):not(:disabled):not([aria-disabled="true"])):is(:hover, :focus-visible) {
+  background-color: var(--color-highlight-bg, var(--color-bg, transparent));
+  color: var(--color-highlight-text, var(--color-text, inherit));
+}
+
+/* 글자색은 color-* 조합이 제공하며 기본적으로 호버·키보드 포커스를 강조한다. */
+.ui-button--text,
+.ui-button--text:hover,
+.ui-button--text:focus,
+.ui-button--text:active {
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-text, inherit);
+}
+
+.ui-button--text {
+  line-height: 1.2;
+  padding: 0.2rem;
+  outline: none;
+  transition: var(--transition-colors);
+}
+
+.ui-button--text:not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible) {
+  color: var(--color-highlight-text, var(--color-text, inherit));
+}
+
+/* UI: input */
+
+/* 입력도 같은 공통 색상 조합을 소비한다. Materialize 입력 기본값보다 우선한다. */
+input[type="text"].ui-input--filled,
+input[type="number"].ui-input--filled,
+input[type="text"].ui-input--filled:focus:not([readonly]),
+input[type="number"].ui-input--filled:focus:not([readonly]) {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  box-shadow: none;
+  outline: none;
+  transition: var(--transition-colors);
+}
+
+input[type="text"].ui-input--filled:is(:hover, :focus):not([readonly]),
+input[type="number"].ui-input--filled:is(:hover, :focus):not([readonly]) {
+  background-color: var(--color-highlight-bg, var(--color-bg));
+}
+
+input[type="text"].ui-input--filled::placeholder,
+input[type="number"].ui-input--filled::placeholder {
+  color: var(--color-text);
+  opacity: 1;
+}
+
+/* UI: card */
+
+/* 곡률은 형태 조합에서 받고, 서로 붙은 면만 직각으로 연결한다. */
+.ui-stack-card.is-joined-before {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.ui-stack-card.is-joined-after {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* 이동 카드와 편집 칩도 공통 색상 조합을 소비한다.
+ * 버튼의 크기·패딩·역할은 가져오지 않는다. */
+.ui-card--interactive {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  transition: var(--transition-colors);
+}
+
+.ui-card--interactive:is(:hover, :focus-visible) {
+  background-color: var(--color-highlight-bg, var(--color-bg));
+  color: var(--color-text);
+  outline: none;
+}
+
+/* UI: chip */
+
+/* 칩·태그의 공통 구조와 상태 */
+:where(.ui-chip, .ui-tag) {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+.ui-chip {
+  padding: 4px 10px;
+}
+
+.ui-chip--compact {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.ui-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 600px) {
+  .ui-chip--compact {
+    line-height: 1.2;
+  }
+
+  .ui-chip-list {
+    gap: 4px;
+  }
+}
+
+.ui-chip:focus {
+  background-color: var(--color-bg);
+}
+
+.ui-chip:focus-visible {
+  background-color: var(--color-highlight-bg, var(--color-bg));
+}
+
+.ui-tag {
+  padding: 2px 6px;
+}
+
+.ui-chip--interactive {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  transition: var(--transition-colors);
+}
+
+.ui-chip--interactive:not(.is-unavailable):is(:hover, :focus-within) {
+  background-color: var(--color-highlight-bg, var(--color-bg));
+}
+
+.ui-chip--interactive > button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: inherit;
+  background-color: transparent;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ui-chip--interactive > button:focus {
+  background-color: transparent;
+  outline: none;
+}
+
+/* UI: link */
+
+/* 공통 링크는 무배경 외형과 조합이 제공하는 글자 강조색을 소비한다. */
+.ui-link {
+  background-color: transparent;
+  color: var(--color-text, inherit);
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: var(--transition-colors);
+}
+
+.ui-link:is(:hover, :focus-visible) {
+  color: var(--color-highlight-text, var(--color-text, inherit));
+  outline: none;
+}
+
+/* UI: disclosure */
+
+/* 네이티브 details/summary 펼침 요소. 색상·곡률은 별도 클래스로 조합한다. */
+.ui-disclosure {
+  border: 0;
+  overflow: hidden;
+  box-shadow: none;
+  transition: var(--transition-colors);
+}
+
+.ui-disclosure__summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 24px;
+  font-size: 1rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  transition: var(--transition-colors);
+}
+
+.ui-disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+
+.ui-disclosure__summary::marker {
+  content: "";
+}
+
+.ui-disclosure__summary:focus-visible {
+  outline: none;
+}
+
+.ui-disclosure__icon {
+  flex-shrink: 0;
+  transition: transform 0.2s ease, var(--transition-colors);
+}
+
+/* 질문은 상태만 전달하며, 화살표가 자신의 색상 조합을 소비한다. */
+.ui-disclosure__summary:is(:hover, :focus-visible) .ui-disclosure__icon {
+  color: var(--color-highlight-text, var(--color-text));
+}
+
+.ui-disclosure[open] > .ui-disclosure__summary .ui-disclosure__icon {
+  transform: rotate(180deg);
+}
+
+.ui-disclosure.ui-disclosure--closing > .ui-disclosure__summary .ui-disclosure__icon {
+  transform: rotate(0);
+}
+
+.ui-disclosure__body {
+  margin: 0;
+  padding: 0 24px 20px;
+  font-size: 0.95rem;
+  line-height: 1.75;
+  transition: var(--transition-colors);
+}
+
+/* UI: segment */
+
+/* 공통 라디오 세그먼트. 크기 변형과 표면·글자·곡률을 따로 조합한다. */
+.ui-segment {
+  --segment-inset: 4px;
+  --segment-option-width: 84px;
+  position: relative;
+  display: inline-flex;
+  box-sizing: border-box;
+  min-width: 0;
+  margin: 0;
+  padding: var(--segment-inset);
+  border: 0;
+  box-shadow: none;
+  user-select: none;
+  transition: var(--transition-colors);
+}
+
+.ui-segment__option {
+  position: relative;
+  z-index: 2;
+  box-sizing: border-box;
+  border: 0;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--color-text);
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: var(--transition-colors);
+}
+
+.ui-segment__option:hover,
+.ui-segment__input:focus-visible + .ui-segment__option {
+  color: var(--color-highlight-text);
+}
+
+.ui-segment__input:checked + .ui-segment__option {
+  color: var(--color-selected-text);
+}
+
+.ui-segment__input:checked + .ui-segment__option:hover,
+.ui-segment__input:checked:focus-visible + .ui-segment__option {
+  color: var(--color-selected-highlight-text);
+}
+
+.ui-segment__input:disabled + .ui-segment__option,
+.ui-segment__input:disabled + .ui-segment__option:hover {
+  color: var(--color-text);
+  cursor: default;
+  opacity: 1;
+}
+
+.ui-segment__indicator {
+  position: absolute;
+  z-index: 1;
+  top: var(--segment-inset);
+  bottom: var(--segment-inset);
+  left: var(--segment-inset);
+  width: var(--segment-option-width);
+  border: 0;
+  box-shadow: none;
+  pointer-events: none;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), var(--transition-colors);
+}
+
+.ui-segment__input:nth-of-type(1):checked ~ .ui-segment__indicator {
+  transform: translateX(0);
+}
+
+.ui-segment__input:nth-of-type(2):checked ~ .ui-segment__indicator {
+  transform: translateX(100%);
+}
+
+.ui-segment__input:nth-of-type(3):checked ~ .ui-segment__indicator {
+  transform: translateX(200%);
+}
+
+.ui-segment--compact > .ui-segment__option {
+  flex: none;
+  width: var(--segment-option-width);
+  padding: 8px 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+html.is-mobile-device .ui-segment--compact {
+  --segment-option-width: 64px;
+}
+
+/* UI: table — 작업 결과 요약·상세의 독립 표. 색은 각 면·셀의 조합에서 제공한다. */
+.ui-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: auto;
+  margin: 0;
+  font-size: 0.9rem;
+  background-color: var(--color-bg, transparent);
+  color: var(--color-text, inherit);
+}
+.ui-table tr { border: 0; }
+.ui-table th,
+.ui-table td {
+  padding: 8px 12px;
+  border: 0;
+  vertical-align: middle;
+  text-align: left;
+  font-size: inherit;
+  line-height: 1.5;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  background-color: var(--color-bg, transparent);
+  color: var(--color-text, inherit);
+}
+.ui-table th { font-weight: 700; white-space: nowrap; }
+.ui-table [data-column="quantity"] {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.ui-table--detail { min-width: 700px; }
+.ui-table--detail [data-column="sequence"] { width: 40px; text-align: center; }
+.ui-table--detail [data-column="name"] { min-width: 116px; }
+.ui-table--detail [data-column="number"] { min-width: 110px; font-family: monospace; white-space: nowrap; }
+.ui-table--detail [data-column="rarity"] { min-width: 96px; }
+.ui-table--detail [data-column="location"] { min-width: 110px; }
+.ui-table--detail [data-column="quantity"] { width: 1%; }
+.ui-table--detail[data-has-failures="true"] [data-column="quantity"] {
+    width: 160px;
+    min-width: 160px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* UI: result list. 색상·곡률은 각 항목에 직접 조합한다. */
+.ui-result-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: .9rem;
+    line-height: 1.5;
+}
+.ui-result-list > li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+    padding: 8px 12px;
+}
+.ui-result-list > li > :first-child { min-width: 0; overflow-wrap: anywhere; }
+.ui-result-list > li > :last-child { flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 700; }
+
+/* UI: stat */
+
+/* 홈·보유 현황에서 공유하는 항목명/값 요약. */
+.ui-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin: 0;
+}
+
+.ui-stat {
+  /* 기존 20px 패딩 + 1px 테두리의 전체 크기와 내용 위치를 유지한다. */
+  padding: 21px;
+  border: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ui-stat__label {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.ui-stat__value {
+  margin: 0;
+  font-size: 2.2rem;
+  font-weight: 800;
+  font-family: 'Outfit', sans-serif;
+}
+
+.ui-stat-empty {
+  width: 100%;
+  padding: 20px;
+  text-align: center;
+}
+
+/* UI: search */
+
+/* 미정비 관리 메뉴의 배경만 유지한다. 정비된 면은 color 조합을 직접 사용한다. */
+.dropdown-capsule > .dropdown-capsule__surface:not(.color-surface-001) {
+  background-color: var(--surface-001);
+}
+
+.ui-search-surface {
+  box-sizing: border-box;
+}
+
+/* 공통 로딩 링. 미이관 모달은 기존 색상 fallback을 유지한다. */
+:where(.loading-spinner-small) {
+  --color-bg: initial;
+  --color-text: initial;
+}
+
+.loading-spinner-small {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-bg, var(--spinner-track));
+  border-top: 2px solid var(--color-text, var(--theme-000));
+  border-radius: 50%;
+  animation: spinDash 1s linear infinite;
+  margin: 20px auto;
+}
+
+@keyframes spinDash {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* UI: disabled */
+
+/* 페이지 이동·일러스트 이동·편집 불가 칩이 공유하는 불투명 비활성 상태. */
+.ui-control--disabled:disabled,
+.ui-control--disabled[aria-disabled="true"],
+.ui-button.ui-control--disabled:disabled,
+.ui-button.ui-control--disabled[aria-disabled="true"],
+.ui-chip--interactive > .ui-control--disabled:disabled {
+  background-color: var(--color-disabled-bg);
+  color: var(--color-disabled-text);
+  opacity: 1;
+  box-shadow: none;
+  cursor: default;
+}
+
+/* 텍스트 버튼은 비활성 상태에서도 배경 없이 글자색만 바꾼다. */
+.ui-button.ui-button--text.ui-control--disabled:is(:disabled, [aria-disabled="true"]) {
+  background: transparent;
+  color: var(--color-disabled-text);
+}
+
+/* ===== 그림자: shadow-* ===== */
+
+/* 적용 대상에만 직접 조합한다. 색상·표면 클래스는 그림자를 제공하지 않는다. */
+.shadow-small {
+  box-shadow: 1px 1px 5px -3px var(--shadow);
+}
+
+.shadow-medium {
+  box-shadow: 1px 1px 15px -3px var(--shadow);
+}
+
+.shadow-modal {
+  box-shadow: 3px 3px 15px -5px var(--shadow-over);
+}
+
+.shadow-mobile-sheet {
+  box-shadow: 0px 25px 35px 20px var(--shadow-over);
+}
+
+.shadow-mobile-nav {
+  box-shadow: 0 25px 15px 20px var(--shadow);
+}
+
+.shadow-none {
+  box-shadow: none;
+}
+
+/* 투명한 관리 목록에 담긴 카드들의 윤곽을 보존한다. */
+.shadow-drop-small {
+  filter: drop-shadow(1px 1px 3px var(--shadow));
+  transition: filter var(--transition-color-duration) ease, var(--transition-colors);
+}
+
+/* UI: motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-button--text,
+  .ui-card--interactive,
+  .ui-chip--interactive,
+  .ui-link,
+  .ui-disclosure,
+  .ui-disclosure__summary,
+  .ui-disclosure__body,
+  .ui-disclosure__icon,
+  .ui-segment,
+  .ui-segment__option,
+  .ui-segment__indicator {
+    transition: none;
+  }
+}
+
+/* ===== 기능별 공통 요소: 헤더·드롭다운·검색 확장 ===== */
+
+/* 아래로 확장되는 캡슐형 드롭다운의 공통 시각 기반 */
+.dropdown-capsule {
+  --capsule-height: 30px;
+  --dropdown-height-duration: 0.15s;
+  --capsule-radius-duration: 0.2s;
+}
+
+.dropdown-capsule > .dropdown-capsule__surface {
+  /* 확장 배경은 전체 높이가 아닌 닫힌 컨트롤 높이를 기준으로 한다. */
+  border-radius: calc(var(--measured-capsule-height, var(--capsule-height)) / 2);
+  transition: height var(--dropdown-height-duration) cubic-bezier(0.4, 0, 1, 1),
+    border-radius var(--capsule-radius-duration) ease,
+    var(--transition-colors);
+}
+
+.dropdown-capsule.active > .dropdown-capsule__surface.shape-capsule {
+  border-radius: calc(var(--measured-capsule-height, var(--capsule-height)) * 0.4);
+}
+
+/* 지역 선택 컨테이너 (확장 애니메이션 적용) */
+.region-container {
+  display: flex;
+  align-items: stretch;
+  position: relative;
+  /* 드롭다운이 다른 요소(예: 검색바)보다 위에 오지 않도록 조정 */
+  z-index: 1002;
+  --region-dropdown-height: 0px;
+  --capsule-height: 30px;
+  min-width: 88px;
+  flex-shrink: 0;
+  /* 기존 너비 유지 */
+}
+
+/* 지역 선택 배경 (물리적 확장) */
+.region-expansion-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  z-index: -1;
+
+  pointer-events: none;
+  overflow: hidden;
+  /* 클리핑 */
+  contain: paint;
+  will-change: height;
+}
+
+/* 활성화 시 배경 확장 및 스타일 */
+.region-container.active .region-expansion-bg {
+  height: calc(100% + var(--region-dropdown-height));
+  /* 확장되어도 둥근 모서리 유지 */
+  z-index: 1005;
+}
+
+/* 캡슐 스타일 (배경/테두리 제거) */
+.region-capsule {
+  gap: 0;
+  padding: 4px 6px;
+  /* 배경과 테두리는 expansion-bg가 담당 */
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: inherit;
+  user-select: none;
+  position: relative;
+  width: 100%;
+  min-height: 30px;
+  z-index: 1010;
+}
+
+.region-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.region-text {
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  user-select: none;
+  flex: 1;
+  text-align: center;
+  margin-right: 3px;
+}
+
+/* 드롭다운 리스트 (배경 내부) */
+.region-dropdown-list {
+  /* position: absolute; 제거 -> 배경 내부 흐름 따름 */
+  margin-top: var(--measured-capsule-height, var(--capsule-height));
+  list-style: none;
+  padding: 5px 0 10px 0;
+  /* 상단 여백 조금, 하단 여백 */
+  margin-bottom: 0;
+  width: 100%;
+  /* 부모(배경) 너비에 맞춤 */
+
+  /* 애니메이션 (페이드 인/아웃) */
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.1s ease, visibility 0.15s, var(--transition-colors);
+}
+
+/* 활성화 시 내용물 표시 */
+.region-container.active .region-dropdown-list {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.2s ease, visibility 0.25s, var(--transition-colors);
+}
+
+.region-dropdown-list li {
+  padding: 8px 10px;
+  /* 좌우 패딩 줄임 (좁은 폭 고려) */
+  cursor: pointer;
+  transition: var(--transition-colors);
+  font-size: 0.85rem;
+  /* 폰트 사이즈 살짝 줄임 */
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  text-align: center;
+  position: relative;
+  /* z-index 적용을 위해 */
+  z-index: 2;
+  /* 배경보다 위에 */
+}
+
+.region-dropdown-list > li:hover,
+.region-dropdown-list > li:focus-visible {
+  background-color: var(--color-highlight-bg);
+  color: var(--color-highlight-text);
+  outline: none;
+}
+
+/* 실제 물리적 확장을 담당하는 배경 오브젝트 */
+.search-expansion-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  /* 기본은 검색바 높이와 동일 */
+  z-index: -1;
+  /* 입력창 뒤로 배치 */
+  pointer-events: none;
+}

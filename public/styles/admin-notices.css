@@ -1,0 +1,22 @@
+/* 공지 편집의 배치와 입력 크기만 담당한다. 색상은 기존 조합을 소비한다. */
+.admin-notices-layout { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr); gap: 24px; margin-top: 24px; }
+.admin-notices-layout > section { min-width: 0; margin-bottom: 0; }
+.admin-notices-layout > section:first-child { grid-row: 1 / span 2; }
+.admin-notices-layout > section:last-child { grid-column: 2; }
+.admin-notices fieldset { border: 0; min-width: 0; margin: 0; padding: 0; }
+.admin-notices fieldset p { margin: 0 0 20px; }
+.admin-notices label { display: block; margin-bottom: 8px; }
+.admin-notices input { display: block; width: 100%; height: auto; min-height: 44px; margin: 0 0 8px; padding: 12px 16px; border: 0; box-sizing: border-box; font: inherit; background: var(--color-bg); color: var(--color-text); }
+.admin-notices :is(input, textarea):focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }
+.admin-notices textarea { width: 100%; min-height: 220px; padding: 14px; border: 0; border-radius: 20px; box-sizing: border-box; resize: vertical; font: inherit; background: var(--color-bg); color: var(--color-text); }
+.admin-notices .admin-home-periods { flex-wrap: wrap; }
+.admin-notices .admin-home-errors li { display: block; padding: 0; }
+.admin-notices .admin-home-errors button { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 16px; width: 100%; padding: 16px; text-align: left; overflow-wrap: anywhere; white-space: normal; }
+.admin-notices .admin-home-errors button > span:last-child > span { display: block; }
+.admin-notices .admin-home-errors button > span:last-child > span + span { margin-top: 4px; font-size: 0.8rem; line-height: 1.5; }
+.admin-notices .notice-content-body { overflow-wrap: anywhere; }
+@media (max-width: 800px) {
+    .admin-notices-layout { grid-template-columns: minmax(0, 1fr); }
+    .admin-notices-layout > section:first-child { grid-row: auto; }
+    .admin-notices-layout > section:last-child { grid-column: auto; }
+}

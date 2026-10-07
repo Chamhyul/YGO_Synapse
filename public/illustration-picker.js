@@ -9,7 +9,8 @@
         const state = active;
         active = null;
         state.observer.disconnect();
-        state.root.remove();
+        if (state.mobile) window.closeManagedSheet(state.root, { backdrop: state.backdrop, onClose: () => state.root.remove() });
+        else window.AppOverlays.closePopup(state.panel, () => state.root.remove());
         state.anchor.setAttribute('aria-expanded', 'false');
         window.removeEventListener('resize', state.position);
         window.removeEventListener('scroll', state.position, true);
@@ -36,27 +37,40 @@
         if (active?.anchor === anchor) return;
         close(false, false);
         const root = document.createElement('div');
-        root.className = mobile ? 'illustration-picker-root is-sheet' : 'illustration-picker-root';
+        root.className = mobile ? 'illustration-picker-root is-sheet ui-overlay' : 'illustration-picker-root';
+        root.tabIndex = -1;
+        root.setAttribute('role', 'dialog');
+        root.setAttribute('aria-label', '일러스트 선택');
         const panel = document.createElement('section');
-        panel.className = 'illustration-picker-panel';
+        panel.className = 'illustration-picker-panel ui-overlay__panel color-surface-001 color-text-001 ' + (mobile ? 'ui-overlay--sheet shape-rounded-lg shadow-mobile-sheet' : 'ui-overlay--popup shape-rounded003 shadow-medium');
         panel.setAttribute('role', 'dialog');
         panel.setAttribute('aria-label', '일러스트 선택');
         if (mobile) panel.setAttribute('aria-modal', 'true');
         const header = document.createElement('div');
-        header.className = 'illustration-picker-header';
-        const title = document.createElement('strong');
+        header.className = 'ui-overlay__header';
+        const title = document.createElement('h2');
+        title.className = 'color-text-000';
         title.textContent = '일러스트 선택';
         const dismiss = document.createElement('button');
         dismiss.type = 'button';
-        dismiss.className = 'illustration-picker-close';
-        dismiss.textContent = '닫기';
+        dismiss.className = 'ui-button ui-button--text color-text-001';
+        dismiss.setAttribute('aria-label', '닫기');
+        dismiss.innerHTML = '<i class="material-icons" aria-hidden="true">close</i>';
         dismiss.onclick = () => close();
         header.append(title, dismiss);
         const grid = document.createElement('div');
-        grid.className = 'illustration-picker-grid';
+        grid.className = 'illustration-picker-grid ui-overlay__body';
         panel.append(header, grid);
+        let backdrop = null;
+        if (mobile) {
+            backdrop = document.createElement('div');
+            backdrop.className = 'ui-overlay__backdrop color-surface-black';
+            backdrop.setAttribute('aria-hidden', 'true');
+            backdrop.onclick = () => close();
+            root.append(backdrop);
+        }
         root.append(panel);
-        const state = { root, anchor, mobile };
+        const state = { root, panel, backdrop, anchor, mobile };
         active = state;
         const buttons = options.map(opt => {
             const button = document.createElement('button');
@@ -93,19 +107,7 @@
         });
         state.position = () => {
             if (!anchor.isConnected || !anchor.getClientRects().length) return close(false, false);
-            const viewport = window.visualViewport;
-            const width = viewport?.width || window.innerWidth;
-            const height = viewport?.height || window.innerHeight;
-            if (mobile) {
-                panel.style.maxHeight = `${height * 0.85}px`;
-            } else {
-                const rect = anchor.getBoundingClientRect();
-                const panelWidth = Math.min(560, width - 24, Math.min(options.length, 4) * 132 + 32);
-                panel.style.width = `${panelWidth}px`;
-                panel.style.left = `${Math.max(12, Math.min(rect.left, width - panelWidth - 12))}px`;
-                panel.style.top = `${rect.bottom + 6}px`;
-                panel.style.maxHeight = `${Math.max(60, height - rect.bottom - 18)}px`;
-            }
+            if (!mobile) window.AppOverlays.placePopup(panel, anchor);
             const columns = Math.max(1, Math.min(4, options.length, Math.floor((grid.clientWidth + 10) / 120)));
             grid.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
         };
@@ -142,7 +144,12 @@
                 else if (!event.shiftKey && current === controls.length - 1) { event.preventDefault(); dismiss.focus(); }
             }
         });
-        (buttons.find(button => button.getAttribute('aria-pressed') === 'true') || buttons[0]).focus({ preventScroll: true });
+        const initialFocus = buttons.find(button => button.getAttribute('aria-pressed') === 'true') || buttons[0];
+        if (mobile) window.openManagedSheet(root, { backdrop, trigger: anchor, initialFocus, onDismiss: close });
+        else {
+            window.AppOverlays.openPopup(panel, anchor);
+            initialFocus.focus({ preventScroll: true });
+        }
     }
     document.addEventListener('pointerdown', event => {
         if (active && !active.mobile && !active.root.contains(event.target) && !active.anchor.closest('.custom-select-wrapper')?.contains(event.target)) close(false, false);

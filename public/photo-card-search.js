@@ -656,9 +656,7 @@
     function closeManualNameSheet() {
         const sheet = document.getElementById('photo-manual-sheet');
         if (!sheet) return;
-        sheet.classList.remove('visible');
-        state.root?.closest('.photo-search-sheet-panel')?.removeAttribute('inert');
-        setTimeout(() => sheet.classList.remove('open'), 300);
+        window.closeManagedSheet(sheet, { backdrop: sheet.querySelector('.photo-manual-backdrop') });
     }
 
     function openManualNameSheet(region) {
@@ -666,11 +664,15 @@
         if (!sheet) {
             sheet = document.createElement('div');
             sheet.id = 'photo-manual-sheet';
-            sheet.className = 'photo-manual-sheet';
-            sheet.innerHTML = '<div class="photo-manual-backdrop"></div><div class="photo-manual-panel"><div class="photo-manual-illustration"><i class="material-icons">edit</i></div><input class="photo-manual-input" type="text" placeholder="카드 이름 직접 입력"><div class="photo-manual-actions"><button type="button" class="btn-flat" data-manual-cancel>취소</button><button type="button" class="btn cyan-theme" data-manual-confirm>확인</button></div></div>';
+            sheet.className = 'photo-manual-sheet ui-overlay';
+            sheet.setAttribute('role', 'dialog');
+            sheet.setAttribute('aria-label', '카드 이름 직접 입력');
+            sheet.tabIndex = -1;
+            sheet.innerHTML = '<div class="photo-manual-backdrop ui-overlay__backdrop color-surface-black" aria-hidden="true"></div><section class="photo-manual-panel ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet"><header class="ui-overlay__header"><h2 class="color-text-000">카드 이름 직접 입력</h2><button type="button" class="ui-button ui-button--text color-text-001" data-manual-close aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header><div class="ui-overlay__body"><div class="photo-manual-illustration"><i class="material-icons" aria-hidden="true">edit</i></div><input class="photo-manual-input" type="text" aria-label="카드 이름" placeholder="카드 이름 직접 입력"></div><footer class="ui-overlay__footer"><button type="button" class="ui-button ui-button--text color-text-001" data-manual-cancel>취소</button><button type="button" class="ui-button color-theme shape-capsule" data-manual-confirm>확인</button></footer></section>';
             document.body.append(sheet);
             sheet.querySelector('.photo-manual-backdrop').onclick = closeManualNameSheet;
             sheet.querySelector('[data-manual-cancel]').onclick = closeManualNameSheet;
+            sheet.querySelector('[data-manual-close]').onclick = closeManualNameSheet;
         }
         const input = sheet.querySelector('.photo-manual-input');
         input.value = region.manualName || '';
@@ -686,9 +688,7 @@
         };
         sheet.querySelector('[data-manual-confirm]').onclick = confirm;
         input.onkeydown = event => { if (event.key === 'Enter') confirm(); };
-        state.root?.closest('.photo-search-sheet-panel')?.setAttribute('inert', '');
-        sheet.classList.add('open');
-        requestAnimationFrame(() => { sheet.classList.add('visible'); input.focus(); });
+        window.openManagedSheet(sheet, { backdrop: sheet.querySelector('.photo-manual-backdrop'), initialFocus: input, onDismiss: closeManualNameSheet });
     }
 
     function returnToRegionSetup() {
@@ -1037,8 +1037,7 @@
         closeDesktopInline();
         closeManualNameSheet();
         const photoSheet = document.getElementById('photo-search-sheet');
-        photoSheet?.classList.remove('visible');
-        if (photoSheet) setTimeout(() => photoSheet.classList.remove('open'), 350);
+        if (photoSheet) window.closeManagedSheet(photoSheet, { backdrop: photoSheet.querySelector('.photo-search-sheet-backdrop') });
         const dropdown = document.getElementById('custom-dropdown');
         wrapper?.classList.remove('active', 'photo-search-open');
         wrapper?.style.setProperty('--dropdown-height', '0px');
@@ -1073,33 +1072,20 @@
         if (dropdown) { dropdown.classList.remove('active'); dropdown.style.display = 'none'; }
     }
 
-    function syncMobileSheetHeight(sheet) {
-        if (!sheet?.classList.contains('open')) return;
-        requestAnimationFrame(() => {
-            const panel = sheet.querySelector('.photo-search-sheet-panel');
-            const header = sheet.querySelector('.photo-search-sheet-header');
-            const content = sheet.querySelector('.photo-search-sheet-content');
-            if (!panel || !header || !content) return;
-            const style = getComputedStyle(panel);
-            const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-            panel.style.height = `${Math.min(window.innerHeight * .92, header.offsetHeight + content.scrollHeight + padding)}px`;
-        });
-    }
-
     function openSearchSheet() {
         let sheet = document.getElementById('photo-search-sheet');
         if (!sheet) {
-            sheet = document.createElement('div'); sheet.id = 'photo-search-sheet'; sheet.className = 'photo-search-sheet';
-            sheet.innerHTML = '<div class="photo-search-sheet-backdrop"></div><div class="photo-search-sheet-panel"><div class="photo-search-sheet-header"><span class="photo-search-sheet-title">사진 검색</span><button class="photo-sheet-close" aria-label="닫기"><i class="material-icons">close</i></button></div><div class="photo-search-sheet-content"></div></div>';
+            sheet = document.createElement('div'); sheet.id = 'photo-search-sheet'; sheet.className = 'photo-search-sheet ui-overlay';
+            sheet.setAttribute('role', 'dialog');
+            sheet.setAttribute('aria-label', '사진 검색');
+            sheet.tabIndex = -1;
+            sheet.innerHTML = '<div class="photo-search-sheet-backdrop ui-overlay__backdrop color-surface-black" aria-hidden="true"></div><div class="photo-search-sheet-panel ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet"><div class="ui-overlay__header"><h2 class="color-text-000">사진 검색</h2><button type="button" class="photo-sheet-close ui-button ui-button--text color-text-001" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></div><div class="photo-search-sheet-content ui-overlay__body"></div></div>';
             document.body.append(sheet);
             sheet.querySelector('.photo-search-sheet-backdrop').onclick = closePhotoSearch;
             sheet.querySelector('.photo-sheet-close').onclick = closePhotoSearch;
-            new ResizeObserver(() => syncMobileSheetHeight(sheet)).observe(sheet.querySelector('.photo-search-sheet-content'));
         }
-        sheet.classList.add('open');
         openPicker('search', sheet.querySelector('.photo-search-sheet-content'));
-        syncMobileSheetHeight(sheet);
-        requestAnimationFrame(() => sheet.classList.add('visible'));
+        window.openManagedSheet(sheet, { backdrop: sheet.querySelector('.photo-search-sheet-backdrop'), onDismiss: closePhotoSearch });
     }
 
     function closeRegistrationSheet() {
@@ -1107,8 +1093,7 @@
         resetPhoto();
         closeManualNameSheet();
         const sheet = document.getElementById('photo-registration-sheet');
-        sheet?.classList.remove('visible');
-        if (sheet) setTimeout(() => sheet.classList.remove('open'), 350);
+        if (sheet) window.closeManagedSheet(sheet, { backdrop: sheet.querySelector('.photo-search-sheet-backdrop') });
     }
 
     function openRegistrationSheet(targetSubMode = 'general') {
@@ -1117,17 +1102,17 @@
         if (!sheet) {
             sheet = document.createElement('div');
             sheet.id = 'photo-registration-sheet';
-            sheet.className = 'photo-search-sheet photo-registration-sheet';
-            sheet.innerHTML = '<div class="photo-search-sheet-backdrop"></div><div class="photo-search-sheet-panel"><div class="photo-search-sheet-header"><span class="photo-search-sheet-title">사진 등록</span><button class="photo-sheet-close" aria-label="닫기"><i class="material-icons">close</i></button></div><div class="photo-search-sheet-content"></div></div>';
+            sheet.className = 'photo-search-sheet photo-registration-sheet ui-overlay';
+            sheet.setAttribute('role', 'dialog');
+            sheet.setAttribute('aria-label', '사진 등록');
+            sheet.tabIndex = -1;
+            sheet.innerHTML = '<div class="photo-search-sheet-backdrop ui-overlay__backdrop color-surface-black" aria-hidden="true"></div><div class="photo-search-sheet-panel ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet"><div class="ui-overlay__header"><h2 class="color-text-000">사진 등록</h2><button type="button" class="photo-sheet-close ui-button ui-button--text color-text-001" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></div><div class="photo-search-sheet-content ui-overlay__body"></div></div>';
             document.body.append(sheet);
             sheet.querySelector('.photo-search-sheet-backdrop').onclick = () => closeRegistrationSheet();
             sheet.querySelector('.photo-sheet-close').onclick = () => closeRegistrationSheet();
-            new ResizeObserver(() => syncMobileSheetHeight(sheet)).observe(sheet.querySelector('.photo-search-sheet-content'));
         }
-        sheet.classList.add('open');
         openPicker('register', sheet.querySelector('.photo-search-sheet-content'));
-        syncMobileSheetHeight(sheet);
-        requestAnimationFrame(() => sheet.classList.add('visible'));
+        window.openManagedSheet(sheet, { backdrop: sheet.querySelector('.photo-search-sheet-backdrop'), onDismiss: closeRegistrationSheet });
     }
 
     function openDesktopInline() {

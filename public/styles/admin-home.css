@@ -1,0 +1,51 @@
+/* 관리자 홈의 배치만 담당한다. 표면·글자·버튼은 공통 조합을 사용한다. */
+.admin-main.admin-home { max-width: 1120px; padding-top: 28px; }
+.admin-home-heading, .admin-home-section-heading, .admin-home-chart-heading {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+}
+.admin-home-heading h1 { margin: 0; font-size: 1.75rem; }
+.admin-home-eyebrow { margin: 0 0 4px; font-size: 0.8rem; }
+.admin-home-intro { margin: 16px 0 32px; max-width: 70ch; line-height: 1.7; }
+.admin-home-section, .admin-home-panel { margin: 0 0 28px; }
+.admin-home-section-heading { margin-bottom: 16px; }
+.admin-home-section-heading h2 { margin: 0; font-size: 1.05rem; line-height: 1.5; }
+.admin-home-section-heading > span { font-size: 0.8rem; }
+.admin-home-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 0; }
+.admin-home-metrics--errors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.admin-home-metric { align-items: flex-start; min-width: 0; }
+.admin-home-metric .ui-stat__value { font-family: inherit; font-size: clamp(1.65rem, 3vw, 2.2rem); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.admin-home-unit { font-size: 0.85rem; font-weight: 500; margin-left: 6px; }
+.admin-home-comparison { margin: 10px 0 0; font-size: 0.8rem; }
+.admin-home-note { font-size: 0.8rem; line-height: 1.6; margin: 12px 0 0; }
+.admin-home-panel { padding: 24px; }
+.admin-home-section-heading .admin-home-note { margin-top: 4px; }
+.admin-home-periods { display: flex; gap: 8px; }
+.admin-home-periods button, .admin-home-record-link { min-height: 44px; padding: 10px 16px; font: inherit; font-size: 0.85rem; border: 0; cursor: pointer; }
+.admin-home-record-link { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; box-sizing: border-box; }
+.admin-home-record-link .material-icons { font-size: 18px; }
+.admin-home-chart-heading { font-size: 0.75rem; }
+.admin-home-chart { display: block; width: 100%; height: auto; margin: 16px 0; overflow: visible; }
+.admin-home-chart-grid { stroke: var(--border-000); stroke-width: 1; }
+.admin-home-chart-line { stroke: var(--theme-000); stroke-width: 3; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.admin-home-chart-point { fill: var(--theme-000); }
+.admin-home-chart-label { fill: var(--text-001); font-family: inherit; font-size: 12px; }
+.admin-home-table-details summary { width: fit-content; min-height: 44px; display: list-item; align-content: center; cursor: pointer; font-size: 0.85rem; padding: 0 8px; border-radius: 8px; }
+.admin-home-table-details summary:is(:hover, :focus-visible) { background: var(--surface-002); color: var(--theme-000); outline: none; }
+.admin-home-table-scroll { max-height: 300px; overflow: auto; }
+.admin-home-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+.admin-home-table caption { text-align: left; padding: 12px 0; font-size: 0.8rem; }
+.admin-home-table :is(th, td) { padding: 12px; border-bottom: 1px solid var(--border-000); }
+.admin-home-table :is(th, td):last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.admin-home-errors { list-style: none; margin: 0; padding: 0; }
+.admin-home-errors li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 16px 0; }
+.admin-home-errors li + li { border-top: 1px solid var(--border-000); }
+.admin-home-error-rank { font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.admin-home-errors h3 { margin: 0 0 4px; font-size: 0.9rem; line-height: 1.5; overflow-wrap: anywhere; }
+.admin-home-errors p { margin: 0; font-size: 0.8rem; line-height: 1.5; overflow-wrap: anywhere; }
+.admin-home-footer { font-size: 0.8rem; margin: 32px 0 0; }
+@media (max-width: 600px) {
+    .admin-home-metrics { grid-template-columns: 1fr; gap: 12px; }
+    .admin-home-panel { padding: 20px 16px; }
+    .admin-home-errors li { gap: 10px; }
+    .admin-home-heading h1 { font-size: 1.5rem; }
+}

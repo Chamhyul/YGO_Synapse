@@ -1,0 +1,314 @@
+/* 공통 오버레이의 배치·스크롤·조작부. 색상·곡률·그림자는 직접 조합한다.
+ * Materialize의 모달 요소 자체를 panel로 사용하여 외곽 래퍼를 중복하지 않는다. */
+.ui-overlay__panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+  padding: 24px;
+  border: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  outline: none;
+}
+
+.modal.ui-overlay__panel { display: none; }
+
+.ui-overlay--modal.ui-overlay__panel {
+  position: fixed;
+  inset-inline: 0;
+  top: calc(var(--overlay-viewport-top, 0px) + var(--overlay-viewport-height, 100dvh) / 2);
+  translate: 0 -50%;
+  margin: 0 auto;
+  width: min(600px, calc(100% - 48px));
+  max-width: none;
+  max-height: calc(var(--overlay-viewport-height, 100dvh) - 48px);
+}
+
+.ui-overlay--modal[data-overlay-size="small"] { width: min(400px, calc(100% - 48px)); }
+.ui-overlay--modal[data-overlay-size="large"] { width: min(960px, calc(100% - 48px)); }
+
+.ui-overlay--sheet.ui-overlay__panel {
+  position: fixed;
+  inset-inline: 0;
+  top: auto;
+  bottom: max(0px, calc(100dvh - var(--overlay-viewport-top, 0px) - var(--overlay-viewport-height, 100dvh)));
+  translate: none;
+  margin: 0;
+  width: 100%;
+  max-width: none;
+  max-height: calc(var(--overlay-viewport-height, 100dvh) - 24px);
+  padding: 20px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.ui-overlay--popup.ui-overlay__panel {
+  position: fixed;
+  width: min(400px, calc(100% - 32px));
+  max-height: calc(var(--overlay-viewport-height, 100dvh) - 32px);
+  padding: 16px;
+}
+
+/* CSS를 사용하는 시트는 기존 active 상태와 동일한 200ms 전환을 공유한다. */
+.ui-overlay--sheet.ui-overlay__panel:not(.modal) {
+  transform: translateY(100%);
+  transition: transform 0.2s ease, var(--transition-colors);
+}
+.ui-overlay--sheet.ui-overlay__panel.active,
+.active > .ui-overlay--sheet.ui-overlay__panel { transform: translateY(0); }
+
+.ui-overlay__backdrop {
+  position: fixed;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, var(--transition-colors);
+}
+.ui-overlay__backdrop.active { opacity: 0.4; pointer-events: auto; }
+
+.ui-overlay__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 16px;
+  padding: 0;
+  border: 0;
+}
+.ui-overlay__header :is(h2, h3) {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.ui-overlay__header .material-icons { font-size: 24px; }
+
+.ui-overlay__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.ui-overlay__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  margin-top: auto;
+  gap: 8px;
+  height: auto;
+  padding: 0;
+  border: 0;
+}
+.ui-overlay--sheet > .ui-overlay__footer > .ui-button--text { margin-inline-end: auto; }
+.ui-overlay__footer > [data-overlay-action="auxiliary"] { margin-inline-end: auto; }
+.ui-overlay__footer .ui-button:not(.ui-button--text),
+.ui-item-navigation .ui-button:not(.ui-button--text) { padding: 8px 20px; }
+
+/* 동일 너비의 양쪽 슬롯으로 문구 길이와 무관하게 중앙 이동부를 유지한다. */
+.ui-item-navigation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  padding: 0;
+  height: auto;
+  line-height: normal;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+}
+.ui-item-navigation > [data-navigation-slot="start"] { justify-self: start; }
+.ui-item-navigation > [data-navigation-slot="end"] { justify-self: end; }
+.ui-item-navigation__position {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.ui-item-navigation__position output { font-variant-numeric: tabular-nums; text-align: center; }
+.ui-item-navigation__position .material-icons { font-size: 24px; height: auto; line-height: 1; }
+.ui-item-navigation > [data-navigation-slot="end"] { grid-column: 3; grid-row: 1; }
+
+.mobile-sheet-qty-overlay.ui-overlay { transition: opacity 0.2s ease, var(--transition-colors); }
+
+.ui-overlay__panel[hidden], .ui-overlay__backdrop[hidden],
+.ui-overlay__footer[hidden], .ui-item-navigation[hidden] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-overlay__panel, .ui-overlay__backdrop, .mobile-sheet-qty-overlay.ui-overlay { transition: none; }
+}
+
+
+/* 정비된 본문의 흐름 배치. 중앙 정렬은 지정된 인증창에만 적용한다. */
+:is(#auth-modal, #signup-modal, #membership-auth-modal,
+    #migration-modal, #migration-result-modal, #export-modal,
+    #data-clear-confirm-modal, #data-clear-success-modal, #legacy-migration-modal) > .ui-overlay__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+:is(#auth-modal, #signup-modal, #membership-auth-modal) > .ui-overlay__body { text-align: center; }
+:is(#auth-modal, #signup-modal, #membership-auth-modal,
+    #migration-modal, #migration-result-modal, #export-modal,
+    #data-clear-confirm-modal, #data-clear-success-modal, #legacy-migration-modal) > .ui-overlay__body > p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  word-break: keep-all;
+}
+/* 인증 버튼 묶음의 배치·간격은 모달과 시트에서 공유한다. */
+:is(#auth-modal, #membership-auth-modal) > .ui-overlay__body > div:has(> .social-login-btn) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+:is(#auth-modal, #membership-auth-modal) > .ui-overlay__body > .material-icons {
+  display: block;
+  flex-shrink: 0;
+  align-self: center;
+  line-height: 1;
+}
+
+/* 사용자가 확정한 데스크톱 인증 모달 규격. 다른 모달·시트로 확대하지 않는다. */
+.ui-overlay--modal:is(#auth-modal, #membership-auth-modal) { padding: 32px; }
+.ui-overlay--modal:is(#auth-modal, #membership-auth-modal) > .ui-overlay__body > div:has(> .social-login-btn) {
+  max-width: 400px;
+  align-self: center;
+}
+#auth-modal > .ui-overlay__body > .material-icons { font-size: 4rem; }
+#membership-auth-modal > .ui-overlay__body > .material-icons { font-size: 3.5rem; }
+#membership-auth-modal > .ui-overlay__footer { flex-wrap: nowrap; gap: 16px; }
+#membership-hide-guide { flex: 1; min-width: 0; margin: 0; text-align: left; font-size: 0.85rem; line-height: 1.5; }
+#never-show-membership-verify { flex-shrink: 0; margin-inline-end: 0; }
+
+.social-login-btn {
+  width: 100%;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 20px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.social-login-btn > i { font-size: 1.2rem; }
+
+.agree-container {
+  width: fit-content;
+  max-width: 100%;
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.agree-row {
+  background-color: transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  transition: var(--transition-colors);
+}
+.agree-row:is(:hover, :focus-within) .ui-link {
+  color: var(--color-highlight-text, var(--color-text, inherit));
+}
+.agree-row input[type="checkbox"] {
+  appearance: auto;
+  position: static;
+  display: inline-block;
+  opacity: 1;
+  pointer-events: auto;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-bg);
+  outline: none;
+}
+.agree-row label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+.agree-row > a { flex-shrink: 0; }
+/* flex 배치를 사용해도 비활성 안내와 배지는 공간을 차지하지 않는다. */
+:is(#auth-modal, #signup-modal, #membership-auth-modal,
+    #migration-modal, #migration-result-modal, #export-modal,
+    #data-clear-confirm-modal, #data-clear-success-modal, #legacy-migration-modal) [hidden] { display: none; }
+
+/* 데이터 작업창의 기능 배치. 색상·형태·표는 직접 조합한다. */
+:is(#migration-modal, #migration-result-modal) .ui-segment { align-self: center; }
+:is(#mig-content-file, #mig-content-sheet) { display: flex; flex-direction: column; gap: 16px; }
+:is(#mig-content-file, #mig-content-sheet) > p { margin: 0; font-size: 0.85rem; line-height: 1.6; }
+#mig-content-sheet > label { text-align: left; font-size: 0.9rem; }
+.file-upload-container {
+  width: 100%;
+  min-width: 0;
+  padding: 20px;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.file-upload-container > .material-icons { font-size: 32px; }
+#migration-sheet-url {
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  padding: 10px 40px 10px 12px;
+  margin: 0;
+  font: inherit;
+  line-height: 1.5;
+}
+#mig-content-sheet > div { position: relative; width: 100%; box-sizing: border-box; }
+#migration-valid-mark {
+  position: absolute;
+  inset-inline-end: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+:is(#migration-spinner, #data-clear-spinner) { margin: 0; flex-shrink: 0; }
+#data-clear-success-modal > .ui-overlay__body > .material-icons { font-size: 4rem; align-self: center; }
+#data-clear-success-modal > .ui-overlay__body > p {
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+#export-modal .ui-stat { align-self: stretch; margin: 0; padding: 16px; }
+#export-modal .ui-stat__label { margin: 0; font: inherit; }
+#export-modal .ui-stat__value { font-family: inherit; font-size: 1.6rem; font-weight: 700; }
+html.is-mobile-device #migration-sheet-url { font-size: 16px; }
+
+/* 가져오기·등록·이동·제거 결과창의 공통 기능 배치. */
+[data-result-operation] > .ui-overlay__body { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
+[data-result-operation] > .ui-overlay__body > p { margin: 0; font-size: .9rem; line-height: 1.6; }
+[data-result-operation] > .ui-overlay__body > [data-result-status] { text-align: center; font-size: 1.25rem; font-weight: 700; }
+[data-result-operation] [data-result-icon] { align-self: center; font-size: 4rem; line-height: 1; }
+[data-result-operation] .ui-segment { align-self: center; }
+[data-result-operation] [data-result-summary] { width: 100%; max-width: 520px; align-self: center; }
+[data-result-operation] [data-result-rest] { margin: 8px 12px 0; text-align: right; font-size: .9rem; }
+[data-result-operation] [data-result-detail] { width: 100%; min-width: 0; overflow-x: auto; }
+[data-result-operation] [hidden] { display: none; }

@@ -1,0 +1,30 @@
+/* 팔레트 뷰어의 배치만 담당한다. 서비스에서 불러오지 않는 문서용 스타일. */
+* { box-sizing: border-box; }
+body[data-palette-viewer] { margin: 0; background: var(--surface-000); color: var(--text-000); font: 14px/1.6 Pretendard, sans-serif; }
+[data-palette-header] { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 32px 36px 24px; }
+[data-palette-header] h1 { margin: 3px 0 4px; font-size: 30px; letter-spacing: -1px; }
+[data-palette-header] p { margin: 0; color: var(--text-001); }
+[data-palette-header] [data-palette-eyebrow] { color: var(--theme-000); font-size: 11px; font-weight: 700; letter-spacing: 1.3px; }
+[data-palette-docs] { display: flex; gap: 18px; flex-wrap: wrap; }
+a { color: var(--theme-000); text-underline-offset: 3px; }
+main { padding: 0 36px; }
+[data-palette-controls] { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; padding: 18px; background: var(--surface-001); border-radius: 12px; }
+[data-palette-controls] label { display: grid; gap: 5px; color: var(--text-001); font-size: 12px; }
+select, button { font: inherit; color: var(--text-000); background: var(--surface-002); border: 0; border-radius: 8px; padding: 9px 13px; cursor: pointer; }
+select:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--theme-000); outline-offset: 3px; }
+[data-palette-controls] button { margin-left: auto; }
+[data-palette-tabs] { display: flex; gap: 6px; margin: 20px 0 12px; overflow-x: auto; padding: 3px; }
+[data-palette-tabs] button { white-space: nowrap; background: transparent; color: var(--text-001); }
+[data-palette-tabs] button[aria-current] { background: var(--theme-003); color: var(--theme-000); font-weight: 700; }
+[data-palette-instructions], [data-palette-status] { color: var(--text-001); font-size: 12px; }
+[data-palette-frames] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+[data-palette-frames][data-single] { grid-template-columns: minmax(0, 1fr); }
+[data-palette-pane] { min-width: 0; }
+[data-palette-pane][hidden] { display: none; }
+[data-palette-pane-title] { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+[data-palette-pane-title] h2 { font-size: 14px; margin: 0; }
+[data-palette-pane-title] output { font-size: 11px; color: var(--text-001); }
+[data-palette-viewport] { overflow-x: auto; border-radius: 12px; background: var(--surface-001); border: 1px solid var(--border-000); }
+iframe { display: block; width: 100%; height: 600px; border: 0; }
+footer { padding: 22px 36px; font-size: 11px; color: var(--text-001); }
+@media (max-width: 760px) { [data-palette-header] { display: block; padding: 24px 16px; } [data-palette-docs] { margin-top: 12px; } main { padding: 0 16px; } [data-palette-frames] { grid-template-columns: minmax(0, 1fr); } [data-palette-controls] button { margin-left: 0; } footer { padding: 20px 16px; } }

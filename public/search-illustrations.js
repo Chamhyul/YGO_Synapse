@@ -24,7 +24,8 @@
     }
     function mount(box, cid, info) {
         if (!cid || !root.IllustrationImages) return;
-        const header = box.querySelector('.target-sec-name');
+        const header = box.querySelector('.search-card__name');
+        if (!header) return;
         const content = document.createElement('div');
         content.className = 'search-card-details';
         [...box.children].filter(el => el !== header).forEach(el => content.append(el));
@@ -33,7 +34,7 @@
         const imageIcon = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/></svg>';
         const detailsIcon = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h3M9 11h6M9 15h6M9 19h4"/></svg>';
         button.type = 'button';
-        button.className = 'search-art-toggle';
+        button.className = 'search-art-toggle ui-button ui-button--text color-text-001';
         button.innerHTML = imageIcon;
         button.setAttribute('aria-label', '카드 일러스트 보기');
         button.setAttribute('aria-pressed', 'false');
@@ -50,14 +51,23 @@
             const items = entries(info, index, cid);
             gallery.replaceChildren();
             if (!items.length) { gallery.textContent = '등록된 일러스트가 없습니다.'; return; }
-            gallery.innerHTML = '<div class="search-art-stage"><div class="search-art-picture"></div></div><div class="search-art-caption"><button type="button" class="search-art-prev" aria-label="이전 일러스트">❮</button><div class="search-art-caption-meta"><span class="search-art-caption-label"></span><div class="search-art-region"><button type="button" aria-label="발매 지역" aria-expanded="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></button><div class="search-art-popup" hidden></div></div></div><button type="button" class="search-art-next" aria-label="다음 일러스트">❯</button></div><div class="search-art-strip-row"><button type="button" class="search-art-strip-prev" aria-label="이전 일러스트 선택">❮</button><div class="search-art-thumbs" aria-label="일러스트 목록"></div><button type="button" class="search-art-strip-next" aria-label="다음 일러스트 선택">❯</button></div>';
+            gallery.innerHTML = '<div class="search-art-picture"></div><div class="search-art-caption"><button type="button" class="search-art-prev" aria-label="이전 일러스트">❮</button><div class="search-art-caption-meta"><span class="search-art-caption-label"></span><div class="search-art-region"><button type="button" aria-label="발매 지역" aria-expanded="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></button><div class="search-art-popup ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium" hidden></div></div></div><button type="button" class="search-art-next" aria-label="다음 일러스트">❯</button></div><div class="search-art-strip-row"><button type="button" class="search-art-strip-prev" aria-label="이전 일러스트 선택">❮</button><div class="search-art-thumbs" role="group" aria-label="일러스트 목록"></div><button type="button" class="search-art-strip-next" aria-label="다음 일러스트 선택">❯</button></div>';
+            for (const selector of ['.search-art-prev', '.search-art-next', '.search-art-strip-prev', '.search-art-strip-next']) {
+                gallery.querySelector(selector).className += ' ui-button color-type001 color-disabled ui-control--disabled shape-capsule';
+            }
             const picture = gallery.querySelector('.search-art-picture');
             const strip = gallery.querySelector('.search-art-thumbs');
             const region = gallery.querySelector('.search-art-region');
             const globe = region.querySelector('button');
             const popup = region.querySelector('.search-art-popup');
-            const showPopup = value => { popup.hidden = !value; globe.setAttribute('aria-expanded', String(value)); };
-            globe.onclick = () => showPopup(popup.hidden);
+            const showPopup = value => {
+                globe.setAttribute('aria-expanded', String(value));
+                if (window.AppOverlays) {
+                    if (value) window.AppOverlays.openPopup(popup, globe);
+                    else window.AppOverlays.closePopup(popup);
+                } else popup.hidden = !value;
+            };
+            globe.onclick = () => showPopup(globe.getAttribute('aria-expanded') !== 'true');
             region.onpointerenter = event => { if (event.pointerType === 'mouse') showPopup(true); };
             region.onpointerleave = event => { if (event.pointerType === 'mouse') showPopup(false); };
             region.onfocusout = event => { if (!region.contains(event.relatedTarget)) showPopup(false); };
@@ -66,6 +76,8 @@
             const thumbs = items.map(([id], i) => {
                 const thumb = document.createElement('button');
                 thumb.type = 'button';
+                thumb.className = 'search-art-thumb shape-rounded002 color-text-001';
+                thumb.dataset.artworkId = String(id);
                 thumb.setAttribute('aria-label', root.IllustrationImages.label(id));
                 thumb.textContent = root.IllustrationImages.label(id);
                 thumb.onclick = () => select(i);
@@ -92,6 +104,7 @@
                 if (token !== request) return;
                 if (!result.url) { picture.textContent = '이미지를 불러올 수 없습니다.'; return; }
                 const img = document.createElement('img'); img.src = result.url; img.alt = `${root.IllustrationImages.label(id)} 일러스트`;
+                img.className = 'shape-rounded002';
                 picture.replaceChildren(img);
             }
             gallery.querySelector('.search-art-prev').onclick = () => select(selected - 1);
@@ -108,7 +121,7 @@
         }
         // Start resolving and loading every artwork as soon as the individual
         // card result mounts. Opening the gallery only changes the visible pane.
-        initialize();
+        const ready = initialize();
         button.onclick = async () => {
             const startHeight = box.getBoundingClientRect().height;
             if (heightAnimation) {
@@ -152,7 +165,17 @@
             }
             if (incoming.animate && !reduced) incoming.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180 });
         };
-        if (box.dataset.artworkOpen === 'true') button.click();
+        if (box.dataset.artworkOpen === 'true') {
+            // 메타데이터 보충 시 이미 열린 화면은 다시 전환하지 않습니다.
+            opened = true;
+            content.hidden = true;
+            gallery.hidden = false;
+            button.setAttribute('aria-pressed', 'true');
+            button.setAttribute('aria-label', '카드 정보 보기');
+            button.innerHTML = detailsIcon;
+        }
+        // 비동기 일러스트 선택지를 만든 뒤 같은 컨트롤로 초점을 복원할 수 있습니다.
+        return ready;
     }
     root.SearchIllustrations = { mount, entries };
     if (typeof module !== 'undefined') module.exports = { entries };

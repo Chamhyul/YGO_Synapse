@@ -1,0 +1,152 @@
+/* 환경설정 계정 카드: 색상·테두리·곡률은 공통 조합을 사용한다. */
+:where(.account-card) {
+  border: 0;
+}
+
+.account-card {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 30px 35px;
+  margin-bottom: 35px;
+  box-shadow: none;
+}
+
+.account-card[hidden],
+.account-card [hidden] {
+  display: none;
+}
+
+.user-avatar-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  flex-shrink: 0;
+}
+
+.user-avatar-area i {
+  font-size: 54px;
+}
+
+.account-card__details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.account-card__nickname-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 100%;
+  margin: 0;
+}
+
+.account-card__nickname {
+  font-size: 1.5rem;
+  font-weight: 900;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+input.account-card__nickname-input.ui-input--filled {
+  box-sizing: border-box;
+  padding: 0 12px;
+  height: 38px;
+  width: 180px;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.account-card__icon-button {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+}
+
+.account-card__icon-button .material-icons {
+  font-size: 20px;
+}
+
+.account-card__icon-button--edit {
+  width: 24px;
+  height: 24px;
+}
+
+.account-card__icon-button--edit .material-icons {
+  font-size: 16px;
+}
+
+.account-card__joined,
+.account-card__membership {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.account-card__joined {
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+.account-card__membership {
+  font-weight: 700;
+}
+
+.account-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.account-card__action-button {
+  padding: 8px 20px;
+  font-size: 0.9rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+@media only screen and (max-width: 600px) {
+  .account-card {
+    gap: 12px;
+    padding: 20px 15px;
+    margin-bottom: 25px;
+  }
+
+  .user-avatar-area {
+    width: 64px;
+    height: 64px;
+  }
+
+  .user-avatar-area i {
+    font-size: 40px;
+  }
+
+  .account-card__nickname {
+    font-size: 1.2rem;
+    max-width: 180px;
+  }
+
+  input.account-card__nickname-input.ui-input--filled {
+    width: 140px;
+    font-size: 1rem;
+  }
+
+  .account-card__joined,
+  .account-card__membership {
+    font-size: 0.85rem;
+  }
+}

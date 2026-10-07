@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>실제 CSS 팔레트 예제</title>
+  <script>document.documentElement.classList.toggle('dark-mode', new URLSearchParams(location.search).get('theme') === 'dark'); document.documentElement.classList.toggle('is-mobile-device', new URLSearchParams(location.search).get('device') === 'mobile');</script>
+  <!-- 실제 앱과 같은 외부 기반·CSS 순서. 앱 초기화/인증/광고 스크립트는 실행하지 않는다. -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.2.0/css/all.min.css">
+  <link rel="stylesheet" href="/styles/tokens.css">
+  <link rel="stylesheet" href="/styles/base.css">
+  <link rel="stylesheet" href="/styles/components.css">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/styles/settings.css">
+  <link rel="stylesheet" href="/styles/dashboard.css">
+  <link rel="stylesheet" href="/styles/search.css">
+  <link rel="stylesheet" href="/styles/search-results.css">
+  <link rel="stylesheet" href="/styles/home.css">
+  <link rel="stylesheet" href="/styles/layout.css">
+  <link rel="stylesheet" href="/palette/specimen.css">
+  <script src="/owned-cards.js"></script>
+  <script type="module" src="/palette/specimen.js"></script>
+</head>
+<body data-palette-specimen><main id="specimens"></main></body>
+</html>

@@ -1,0 +1,191 @@
+/* 홈 본문·안내·로그인 안내 배치·FAQ·팁.
+ * 공유 통계 요약·펼침 요소·세그먼트는 components.css, 현황 상세는 dashboard.css에 둔다.
+ * 혼합 미디어에서 가져온 홈 규칙은 같은 조건을 유지한다. */
+
+.home-page {
+  text-align: center;
+  margin: 0;
+  line-height: 1.8;
+  font-size: 0.95rem;
+}
+
+/* 좁은 데스크톱에서는 홈 본문만 가로 스크롤하고 모바일 너비는 유지한다. */
+html:not(.is-mobile-device) .home-page.active {
+  overflow-x: auto;
+}
+
+html:not(.is-mobile-device) .home-page > .page-transition-inner {
+  min-width: 420px;
+}
+
+.home-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-sizing: border-box;
+  max-width: 800px;
+  margin-block: 0;
+  margin-inline: auto;
+  /* 기존 상단 10px과 문단 바깥 1em 여백을 부모가 관리한다. */
+  padding-block: calc(10px + 1em) 1em;
+}
+
+.home-intro > p {
+  margin: 0;
+}
+
+.home-resources {
+  width: 100%;
+  margin: 40px auto;
+  max-width: 850px;
+  text-align: left;
+}
+
+.home-signin {
+  padding: 15px 20px 30px;
+  max-width: 850px;
+  margin: 0 auto;
+}
+
+/* 홈 로그인하기의 고유 크기. 재사용 전에는 공통 규격으로 승격하지 않는다. */
+.home-signin__action {
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 10px 20px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.home-signin__description {
+  text-align: center;
+  max-width: 800px;
+  margin: 0 auto 36px;
+  line-height: 1.4;
+}
+
+.home-signin__title {
+  margin: 1em 0 20px;
+  font-size: inherit;
+  font-weight: 500;
+  line-height: inherit;
+}
+
+.home-signin__features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: inline-block;
+  text-align: left;
+}
+
+.home-signin__features > li {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* 기존 inline-block 기준선을 유지하며 항목 사이의 간격을 한 곳에서 정한다. */
+.home-signin__features > li + li {
+  margin-top: 10px;
+}
+
+.home-signin__marker {
+  flex-shrink: 0;
+}
+
+.home-auth {
+  margin-top: 60px;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  /* 부모 컨테이너 너비 제한 해제 */
+  .home-auth > section,
+  .home-resources {
+    max-width: 100%;
+  }
+}
+
+/* FAQ·팁의 배치와 언어 표시. 펼침 요소와 선택 상태는 공통 UI가 담당한다. */
+.home-resources__panel:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.home-resources__language {
+  display: none;
+}
+
+.home-resources__language--live {
+  --resource-panel-gap: 24px;
+  display: block;
+  position: relative;
+  min-width: 0;
+}
+
+.home-resources__language--switching {
+  overflow: hidden;
+  overflow-anchor: none;
+}
+
+.home-resources__panel--leaving {
+  position: absolute;
+  inset: 0 0 auto;
+  pointer-events: none;
+}
+
+html:not([data-region]) .home-resources__language[data-lang="ko"],
+html[data-region="ko"] .home-resources__language[data-lang="ko"],
+html[data-region="en"] .home-resources__language[data-lang="en"],
+html[data-region="ae"] .home-resources__language[data-lang="en"],
+html[data-region="ja"] .home-resources__language[data-lang="ja"],
+html[data-region="cn"] .home-resources__language[data-lang="cn"],
+html[data-region="de"] .home-resources__language[data-lang="de"],
+html[data-region="fr"] .home-resources__language[data-lang="fr"],
+html[data-region="it"] .home-resources__language[data-lang="it"],
+html[data-region="es"] .home-resources__language[data-lang="es"],
+html[data-region="pt"] .home-resources__language[data-lang="pt"] {
+  display: block;
+}
+
+.home-resources__segment {
+  --segment-inset: 5px;
+  --segment-option-width: calc(50% - 5px);
+  display: flex;
+  width: fit-content;
+  min-width: 420px;
+  max-width: 100%;
+  margin: 0 auto 24px;
+}
+
+.home-resources__segment > .ui-segment__option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  width: 84px;
+  padding: 12px 28px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  gap: 8px;
+}
+
+.home-resources__segment > .ui-segment__input:checked + .ui-segment__option {
+  font-weight: 700;
+}
+
+html.is-mobile-device .home-resources__segment {
+  width: 100%;
+  min-width: 0;
+}
+
+html.is-mobile-device .home-resources__segment > .ui-segment__option {
+  flex: 0 0 50%;
+  width: 50%;
+  min-width: 0;
+  padding: 10px 8px;
+}

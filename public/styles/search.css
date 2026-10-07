@@ -1,0 +1,508 @@
+/* 검색 입력·추천·최근 기록·모바일 검색·사진 검색 진입부.
+ * 공통 캡슐은 components.css, 검색 결과·사진 분석 시트는 style.css에 둔다.
+ * no-transition 검색 예외는 style.css의 전역 정책 뒤에서 적용한다. */
+
+.help-trigger-btn {
+  font-size: 0.75rem;
+  font-weight: 600;
+  gap: 4px;
+  padding: 0.04rem 0.2rem;
+}
+
+.search-input-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-height: 46px;
+  min-width: 0;
+  position: relative;
+  /* 컨테이너 자체는 투명하게 유지, 배경 박스가 스타일 담당 */
+  background: transparent;
+  border: none;
+  padding: 0;
+  box-shadow: none;
+  z-index: 1001;
+  --dropdown-height: 0px;
+  --capsule-height: 46px;
+  --dropdown-height-duration: 0.3s;
+  --capsule-radius-duration: 0.4s;
+  /* JS에서 업데이트될 변수 */
+}
+
+
+.search-input-wrapper.active .search-expansion-bg {
+  height: calc(100% + var(--dropdown-height));
+  /* 자식인 드롭다운이 부모 박스를 절대 벗어날 수 없도록 물리적 차단 */
+  overflow: hidden;
+  /* 렌더링 최적화 및 레이어 고립 (관통 원천 봉쇄) */
+  contain: paint;
+  isolation: isolate;
+  will-change: height;
+  z-index: 1;
+}
+
+#search-btn {
+  min-width: 80px;
+  width: calc(65px + 1rem);
+  min-height: 46px;
+  padding: 0.6rem 0.4rem;
+  flex-shrink: 0;
+}
+
+#search-btn .material-icons {
+  font-size: 1.3rem;
+}
+
+/* Materialize 입력 기본값은 검색 입력 공통 기반에서 재정의한다. */
+input.search-input[type]:not(.browser-default) {
+  appearance: none;
+  text-align: left;
+  font-size: var(--search-input-font-size);
+  padding: 0 var(--search-input-padding-end) 0 var(--search-input-padding-start);
+  box-sizing: border-box;
+  color: var(--color-text);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  height: auto;
+  line-height: 1.2;
+  margin: 0;
+  min-width: 0;
+  width: 100%;
+  display: block;
+  position: relative;
+  background: transparent;
+  cursor: text;
+}
+
+input.search-input[type]:not(.browser-default):focus:not([readonly]) {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.search-input::placeholder {
+  color: var(--search-input-placeholder, var(--text-003));
+  opacity: 1;
+}
+
+.search-input--desktop {
+  --search-input-font-size: 1.1rem;
+  --search-input-padding-start: 1.33rem;
+  --search-input-padding-end: 3rem;
+  /* 확장 배경 위에 입력란 배치 */
+  z-index: 3;
+}
+
+input.search-input--desktop[type]:not(.browser-default) {
+  min-height: 46px;
+  padding-block: 0.8rem;
+}
+
+.search-input--mobile {
+  --search-input-placeholder: var(--text-002);
+  /* 모바일 기본 루트 크기 14px에서 기존 16px·40px·35px에 대응한다. */
+  --search-input-font-size: 1.14rem;
+  --search-input-padding-start: 2.86rem;
+  --search-input-padding-end: 2.5rem;
+  /* 입력란 위의 검색·지우기 버튼에 클릭이 전달되도록 한다. */
+  z-index: 1;
+}
+
+input.search-input--mobile[type]:not(.browser-default) {
+  /* 패딩 합계를 유지하면서 공통 시각 보정값만큼 텍스트를 내린다. */
+  min-height: 40px;
+  padding-block: calc(0.74rem + var(--search-content-offset))
+    calc(0.74rem - var(--search-content-offset));
+}
+
+.search-input-action {
+  position: absolute;
+  right: 0.67rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+}
+
+.search-input-action .material-icons {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1em;
+}
+
+.clear-search-btn {
+  font-size: 1.6rem;
+  z-index: 5;
+}
+
+.custom-dropdown {
+  position: absolute;
+  top: var(--measured-capsule-height, 46px);
+  /* 입력창 아래 고정 */
+  left: 0;
+  right: 0;
+  background-color: transparent;
+  border: none;
+  z-index: 2;
+  max-height: 250px;
+  /* 고정값으로 하여 부모 박스 확장에 따라 서서히 드러나게 함 */
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  /* 애니메이션 설정 - 배경 확장에 맞춰 투명도만 부드럽게 조절 */
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.25s ease, visibility 0.25s, var(--transition-colors);
+}
+
+.custom-dropdown.active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  padding-top: 0;
+  padding-bottom: 15px;
+  transform: translateY(0);
+  /* 활성화 시 제자리로 */
+  /* 하단 여백 확보 */
+}
+
+.custom-dropdown > :where(li) {
+  padding: 8px 20px;
+  cursor: pointer;
+  border-bottom: none;
+  font-size: 0.95rem;
+  color: var(--color-text, inherit);
+  display: block;
+  white-space: normal;
+}
+
+/* 키보드 선택 시 호버와 동일하게 강조 + 비인터랙티브 항목 예외 처리 */
+.custom-dropdown > :is(.text-suggest, .recent-item-row) {
+  background-color: var(--color-bg);
+}
+
+.custom-dropdown > :is(.text-suggest, .recent-item-row):hover,
+.custom-dropdown > :is(.text-suggest, .recent-item-row).selected {
+  background-color: var(--color-highlight-bg);
+}
+
+.clear-all-btn {
+  font-size: 0.95rem;
+}
+
+.custom-dropdown li.text-suggest {
+  font-weight: 700;
+}
+
+.custom-dropdown li .text-match {
+  font-weight: 400;
+}
+
+.custom-dropdown :where(.ui-tag) {
+  font-size: 0.75rem;
+  margin-right: 8px;
+  font-weight: normal;
+  vertical-align: middle;
+}
+
+.custom-dropdown li.no-result-item {
+  font-style: italic;
+  cursor: default;
+  pointer-events: none;
+  font-weight: 400;
+  text-align: center;
+  padding: 15px;
+}
+
+/* 모바일 전용 가로형 검색 기록 컨테이너 */
+.mobile-recent-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background-color: transparent;
+  cursor: default;
+}
+
+.recent-search-actions {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  overflow-x: auto;
+  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.recent-search-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.recent-search-button {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.recent-search-button.ui-button--text {
+  padding-inline: 4px;
+}
+
+.clear-all-icon {
+  font-size: 1.2rem;
+  margin-left: 10px;
+  padding: 4px;
+}
+
+.recent-header-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  cursor: default;
+  margin-bottom: 5px;
+}
+
+.recent-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.item-delete-btn {
+  font-size: 1rem;
+  padding: 4px;
+}
+
+.item-delete-btn .material-icons,
+.clear-all-icon .material-icons {
+  font-size: inherit;
+}
+
+/* [추가] 즉시 전환 시에도 모바일 검색 오버레이 및 내부 요소의 트랜지션이 차단되지 않도록 예외 처리 (명시도 보강) */
+body.no-transition .mobile-search,
+html.is-mobile-device body.no-transition .mobile-search {
+  transition: opacity 0.2s ease !important;
+}
+
+body.no-transition .mobile-search__toolbar,
+html.is-mobile-device body.no-transition .mobile-search__toolbar {
+  transition: transform 0.2s ease !important;
+}
+
+body.no-transition .mobile-dropdown,
+html.is-mobile-device body.no-transition .mobile-dropdown {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease !important;
+}
+
+/* ============================================
+   모바일 검색 오버레이
+   ============================================ */
+
+.mobile-search {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--navi-mobile-height) + env(safe-area-inset-bottom));
+  /* 헤더(950) 위, 내비게이션(1100) 아래 */
+  z-index: 1050;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, var(--transition-colors);
+}
+
+.mobile-search.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 키보드가 올라와 하단 탭바가 숨겨졌을 때는 검색 오버레이가 화면 끝까지 채우도록 함 */
+html.nav-hidden .mobile-search {
+  bottom: 0;
+}
+
+/* 배경과 콘텐츠의 위치는 유지하고 상단 입력 영역만 내려온다. */
+.mobile-search__panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+.mobile-search__content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 모바일 드롭다운 리스트는 위에서 아래로 보여지도록 설정 */
+.mobile-dropdown {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: auto;
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* 애니메이션 설정 */
+  transform: translateY(-20px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, var(--transition-colors);
+}
+
+.mobile-dropdown.active {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mobile-search__toolbar {
+  /* 입력 텍스트와 검색·지우기·사진 아이콘이 공유하는 시각 보정값 */
+  --search-content-offset: 0.07rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(60px + env(safe-area-inset-top));
+  box-sizing: border-box;
+  padding-top: calc(0.54rem + env(safe-area-inset-top));
+  padding-bottom: 0.54rem;
+  padding-left: 16px;
+  padding-right: 16px;
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border-top: none;
+  gap: 12px;
+  flex-shrink: 0;
+  transform: translateY(-100%);
+  transition: transform 0.2s ease, var(--transition-colors);
+}
+
+.mobile-search.active .mobile-search__toolbar { transform: translateY(0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-search, .mobile-search__toolbar,
+  body.no-transition .mobile-search, body.no-transition .mobile-search__toolbar,
+  html.is-mobile-device body.no-transition .mobile-search,
+  html.is-mobile-device body.no-transition .mobile-search__toolbar {
+    transition: none !important;
+  }
+}
+
+.mobile-search__input-wrap {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: stretch;
+  position: relative;
+}
+
+/* 데스크톱과 같이 배경을 분리해 테두리·패딩이 입력란 크기를 줄이지 않도록 한다. */
+.mobile-search__surface {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.mobile-search__submit {
+  position: absolute;
+  left: 0.57rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0.29rem;
+  z-index: 2;
+}
+
+.mobile-search__submit i {
+  font-size: 1.43rem;
+  transform: translateY(var(--search-content-offset));
+}
+
+.mobile-search__clear {
+  position: absolute;
+  right: 0.42rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.71rem;
+  padding: 0.29rem;
+  z-index: 2;
+}
+
+.mobile-search__clear[hidden] {
+  display: none;
+}
+
+.mobile-search__clear .material-icons {
+  display: block;
+  font-size: 1em;
+  transform: translateY(var(--search-content-offset));
+}
+
+.mobile-search__back {
+  padding: 8px 4px;
+}
+
+.mobile-search__back i {
+  font-size: 28px;
+}
+
+.photo-search-icon-btn { font-size: 1.47rem; z-index: 4; }
+.search-input-action[hidden] { display: none; }
+input#card-search:disabled { cursor: default; opacity: 1; }
+
+.desktop-photo-search-panel { position: absolute; z-index: 4; left: 0; right: 0; top: var(--measured-capsule-height, 46px); height: 344px; overflow: hidden; padding: 16px 18px 18px; box-sizing: border-box; pointer-events: auto; }
+.desktop-photo-search-panel[hidden], .search-input-wrapper:not(.active) .desktop-photo-search-panel { display: none !important; }
+.desktop-photo-search-panel .photo-upload-panel { height: 100%; min-height: 0; padding: 18px; border-width: 1px; box-sizing: border-box; }
+.search-input-wrapper.photo-search-open .custom-dropdown { display: none !important; }
+.mobile-search__photo {
+  flex: 0 0 60px;
+  width: 60px;
+  min-width: 0;
+  height: 40px;
+  padding: 0;
+  margin-right: 0;
+  overflow: hidden;
+  opacity: 1;
+  visibility: visible;
+  transition: flex-basis 0.2s ease, width 0.2s ease, margin-right 0.2s ease, opacity 0.15s ease, visibility 0s, var(--transition-colors);
+}
+.mobile-search__toolbar:has(.search-input--mobile:not(:placeholder-shown)) .mobile-search__photo {
+  flex-basis: 0;
+  width: 0;
+  /* flex 항목이 남아 있으므로 기존 12px gap도 함께 접는다. */
+  margin-right: -12px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: flex-basis 0.2s ease, width 0.2s ease, margin-right 0.2s ease, opacity 0.15s ease, visibility 0s 0.2s, var(--transition-colors);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-search__photo,
+  .mobile-search__toolbar:has(.search-input--mobile:not(:placeholder-shown)) .mobile-search__photo {
+    transition: none;
+  }
+}
+.mobile-search__photo i { font-size: 21px; transform: translateY(var(--search-content-offset)); }

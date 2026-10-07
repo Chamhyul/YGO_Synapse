@@ -1,0 +1,81 @@
+/* 보유 현황 대시보드 상세 통계. 공통 요약 카드는 components.css에서 관리한다. */
+.dashboard-details {
+  display: flex;
+  flex-direction: row;
+  gap: 20px;
+  align-items: flex-start;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.dashboard-details .dash-section {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.dash-section {
+  text-align: left;
+}
+
+.dash-section h6 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  padding-left: 5px;
+  border-left: 0;
+}
+
+.stat-list {
+  border: 0;
+  box-shadow: none;
+  overflow: hidden;
+  width: 100%;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+}
+
+.stat-item.is-hidden {
+  display: none;
+}
+
+.stat-name {
+  font-weight: 500;
+}
+
+.stat-cnt {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.stat-more-btn {
+  display: flex;
+  width: 100%;
+  padding: 10px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  gap: 4px;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+.stat-more-btn i {
+  font-size: 1.2rem;
+  transition: transform 0.3s ease, var(--transition-colors);
+}
+
+.stat-more-btn.active i {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 600px) {
+  .dashboard-details {
+    flex-direction: column;
+    gap: 25px;
+  }
+}

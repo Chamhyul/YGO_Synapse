@@ -1,0 +1,996 @@
+/* 검색 결과의 배치와 크기. 색상·곡률·상태는 공통 조합에서 소비한다. */
+.target-inventory-section {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 24px;
+}
+
+.owned-card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.owned-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: 16px 16px 0;
+  overflow: clip;
+  cursor: pointer;
+  transition: margin-block-start 200ms ease, border-radius 200ms ease, var(--transition-colors);
+}
+
+/* 각 열린 카드의 양쪽 마진을 더하지 않고 이웃 경계에 한 번만 간격을 줍니다. */
+.owned-card + .owned-card:is(.is-expanded),
+.owned-card.is-expanded + .owned-card {
+  margin-block-start: 12px;
+}
+
+.owned-card__heading,
+.owned-card__content {
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.owned-card__heading {
+  display: flex;
+  align-items: baseline;
+  margin-bottom: 12px;
+  padding-inline: 4px;
+}
+
+.owned-card__content {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  align-content: start;
+  overflow: clip;
+  margin-inline: -16px;
+  padding-inline: 16px;
+}
+
+.owned-card__locations,
+.owned-card__detail {
+  grid-area: 1 / 1 / 2 / 2;
+}
+
+/* 퇴장하는 실제 내용은 같은 칸에서 접히며, 들어오는 내용만 높이를 결정한다. */
+.owned-card__content > .is-leaving {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  pointer-events: none;
+}
+
+.owned-card__content > .owned-card__locations.is-leaving {
+  inset-inline: 16px;
+}
+
+.owned-card__content > .owned-card__detail.is-leaving {
+  /* 절대 배치에서도 grid 칸이 아닌 content 전체 폭을 기준으로 유지한다. */
+  grid-area: auto;
+  margin-inline: 0;
+}
+
+.owned-card__number,
+.owned-card__quantity {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.owned-card__number {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.owned-card__quantity {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.owned-card__locations {
+  padding-bottom: 16px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.owned-card__locations > li {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.owned-card__locations .ui-chip {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.owned-card__toggle {
+  position: relative;
+  z-index: 1;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  margin-block-start: 4px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  gap: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.owned-card__toggle-label {
+  min-width: 3em;
+  text-align: center;
+}
+
+.owned-card__chevron {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 200ms ease, var(--transition-colors);
+}
+
+.owned-card.is-expanded .owned-card__chevron {
+  transform: rotate(180deg);
+}
+
+.owned-card__detail {
+  grid-column: 1 / -1;
+  margin-inline: -16px;
+  display: block;
+  align-self: start;
+  min-height: 0;
+  min-width: 0;
+  cursor: default;
+  overflow: hidden;
+}
+
+/* 묶음 간 간격은 각 행의 상하 패딩으로 나누어 배경 띠를 맞붙인다. */
+.owned-card__details {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 배경은 카드 전체 폭을 채우고 내용은 기존 왼쪽 정렬·버튼 여유 폭을 유지한다.
+ * 오른쪽: 카드 여백16 + 열 간격12 + 버튼 아이콘16 + 내부 간격4 + 문구3em(.8rem). */
+.owned-card__illustration-group {
+  padding-block: 8px;
+  padding-inline: 16px calc(48px + 2.4rem);
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.owned-card__artwork {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+}
+
+.owned-card__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.owned-card__image-status {
+  padding: 6px;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.owned-card__detail-locations {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.owned-card__location-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.owned-card__location-chip {
+  flex: 0 1 auto;
+  max-width: min(12rem, 100%);
+  overflow-wrap: anywhere;
+}
+
+.owned-card__rarities {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+.owned-card__rarities > li {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.owned-card__rarity-chip {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.owned-card__image[hidden],
+.owned-card__image-status[hidden],
+.owned-card__locations[hidden],
+.owned-card__detail[hidden],
+.owned-card-list[hidden],
+.owned-card-empty[hidden] {
+  display: none;
+}
+
+.owned-card-empty {
+  margin: 0;
+  padding: 20px 0;
+  text-align: center;
+}
+
+html.is-mobile-device .owned-card {
+  padding-inline: 12px;
+}
+
+html.is-mobile-device .owned-card__content {
+  margin-inline: -12px;
+  padding-inline: 12px;
+}
+
+html.is-mobile-device .owned-card__detail {
+  margin-inline: -12px;
+}
+
+html.is-mobile-device .owned-card__content > .owned-card__locations.is-leaving {
+  inset-inline: 12px;
+}
+
+html.is-mobile-device .owned-card__illustration-group {
+  padding-inline: 12px calc(44px + 2.4rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .owned-card,
+  .owned-card__chevron {
+    transition: none;
+  }
+}
+
+.search-results {
+  position: relative;
+  width: 100%;
+  margin: 30px auto;
+  min-width: 0;
+}
+
+.catalog-search-toolbar {
+  display: grid;
+  grid-template-columns: auto 1px minmax(0, 1fr) 132px;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.catalog-search-total {
+  margin: 0;
+  padding-inline-start: 8px;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+.catalog-search-divider {
+  width: 1px;
+  height: 20px;
+  background-color: var(--border-000);
+}
+
+.catalog-search-filter-area {
+  min-width: 0;
+}
+
+.catalog-search-loading {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.catalog-search-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.catalog-search-filters--mobile {
+  display: none;
+}
+
+.catalog-search-chip {
+  flex: 0 0 auto;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 0;
+  overflow: hidden;
+  font-size: 0.85rem;
+}
+
+.catalog-search-chip__edit {
+  min-width: 0;
+  min-height: 32px;
+  gap: 4px;
+  padding: 0 10px 0 14px;
+  text-align: left;
+}
+
+.catalog-search-chip__label {
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.catalog-search-chip__remove {
+  flex: 0 0 auto;
+  min-width: 28px;
+  min-height: 32px;
+  padding: 0 6px;
+}
+
+.catalog-search-chip__icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.catalog-search-chip.is-unavailable {
+  background-color: var(--color-disabled-bg);
+}
+
+.catalog-search-add {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+}
+
+.catalog-search-size {
+  width: 132px;
+  flex-shrink: 0;
+  z-index: 5;
+}
+
+/* 선택된 표시 수량 옵션은 강조 배경을 상시 표시한다. */
+.catalog-search-size .region-dropdown-list > li[aria-selected="true"] {
+  background-color: var(--color-highlight-bg);
+}
+
+.catalog-search-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 24px;
+  padding: 0;
+  list-style: none;
+}
+
+.catalog-search-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
+  border: 0;
+  padding: 12px 16px;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.catalog-search-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.catalog-search-number {
+  font-size: 0.88rem;
+  font-style: normal;
+  font-weight: 400;
+}
+
+.catalog-search-details {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.catalog-search-kind {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.catalog-search-quantity {
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.catalog-search-pager {
+  height: auto;
+  background-color: transparent;
+  color: inherit;
+  box-shadow: none;
+  line-height: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.catalog-search-pager > button {
+  padding: 7px 14px;
+}
+
+.catalog-search-page {
+  padding: 7px 6px;
+  font-size: 0.9rem;
+}
+
+.catalog-search-empty {
+  text-align: center;
+}
+
+.catalog-search-progress {
+  margin: 0;
+  padding: 12px 0;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.catalog-search-pager[hidden],
+.catalog-search-progress[hidden],
+.catalog-search-loading[hidden],
+.catalog-search-filter-area .catalog-search-filters[hidden],
+.catalog-search-chip[hidden] {
+  display: none;
+}
+
+/* 단일 카드: 외곽, 정보 표, 설명. */
+.search-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-sizing: border-box;
+  min-width: 0;
+  margin-bottom: 35px;
+  padding: 21px;
+  text-align: center;
+}
+
+.search-card__name {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, max-content) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  text-align: center;
+}
+
+.search-card__title {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: inherit;
+  letter-spacing: -0.3px;
+  overflow-wrap: anywhere;
+}
+
+.search-card__number {
+  grid-column: 2;
+  grid-row: 2;
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.search-card__info {
+  width: 100%;
+  overflow: hidden;
+}
+
+.search-card__table {
+  width: 100%;
+  border: 0;
+  border-collapse: collapse;
+  border-spacing: 0;
+  background-color: transparent;
+  font-size: 0.9rem;
+}
+
+.search-card__table--monster {
+  table-layout: fixed;
+}
+
+.search-card__table tr {
+  border: 0;
+}
+
+.search-card__table :is(th, td) {
+  padding: 10px 12px;
+  border-width: 0 1px 1px 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.search-card__table tr > :last-child {
+  border-right-width: 0;
+}
+
+.search-card__table tr:last-child > :is(th, td) {
+  border-bottom-width: 0;
+}
+
+.search-card__label,
+.search-card__value {
+  width: 16.66%;
+}
+
+.search-card__label {
+  font-weight: 600;
+  word-break: keep-all;
+}
+
+.search-card__value {
+  font-weight: 500;
+}
+
+.search-card__table .search-card__kind {
+  padding: 14px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.search-card__label-mobile {
+  display: none;
+}
+
+.search-card__classifications {
+  text-align: left;
+}
+
+.search-card__text {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 15px 17px;
+  border: 0;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  word-break: break-word;
+  text-align: justify;
+}
+
+.search-card__text-section + .search-card__text-section {
+  margin-top: 24px;
+}
+
+.search-card__text-heading {
+  margin: 0;
+  font-size: inherit;
+  font-weight: 700;
+  line-height: inherit;
+  text-align: left;
+}
+
+.search-card__text-body {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* 일러스트 본문. 발매 지역 버튼·팝업 규칙은 이번 이관에 포함하지 않는다. */
+.search-art-toggle {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
+  justify-self: end;
+  width: 36px;
+  height: 36px;
+  padding: 6px;
+}
+
+.search-art-toggle svg {
+  display: block;
+}
+
+.search-art-gallery {
+  padding: 20px 12px;
+  text-align: center;
+}
+
+.search-art-gallery [hidden],
+.search-art-gallery[hidden],
+.search-card-details[hidden] {
+  display: none;
+}
+
+.search-art-picture {
+  display: grid;
+  place-items: center;
+  width: min(100%, 360px);
+  min-width: 0;
+  margin-inline: auto;
+  aspect-ratio: 1;
+}
+
+.search-art-picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.search-art-caption {
+  display: grid;
+  grid-template-columns: 34px 78px 34px;
+  align-items: center;
+  justify-content: center;
+  column-gap: 15px;
+  margin: 12px 0;
+}
+
+.search-art-caption-meta {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: 44px 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 78px;
+}
+
+.search-art-caption-label {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.search-art-caption > :is(.search-art-prev, .search-art-next) {
+  width: 34px;
+  min-width: 34px;
+  min-height: 26px;
+  height: 26px;
+  padding: 0 9px;
+  line-height: 1;
+}
+
+.search-art-prev {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.search-art-next {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.search-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.search-art-strip-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.search-art-strip-row > button {
+  flex: 0 0 24px;
+  width: 24px;
+  min-width: 24px;
+  height: 64px;
+  min-height: 64px;
+  margin-top: 6px;
+  padding: 0;
+}
+
+.search-art-thumbs {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 6px 4px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-000) transparent;
+}
+
+.search-art-thumbs::-webkit-scrollbar { height: 4px; }
+.search-art-thumbs::-webkit-scrollbar-track { background: transparent; }
+.search-art-thumbs::-webkit-scrollbar-thumb { background: var(--border-000); border-radius: 999px; }
+
+.search-art-thumb,
+.search-art-thumb:focus {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
+  border: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: transparent;
+  box-shadow: none;
+  outline: none;
+  cursor: pointer;
+}
+
+.search-art-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.5;
+  transition: opacity 0.2s ease, var(--transition-colors);
+}
+
+.search-art-thumb:is(:hover, :focus-visible) img {
+  opacity: 0.7;
+}
+
+.search-art-thumb[aria-pressed="true"] img {
+  opacity: 1;
+}
+
+/* 필터 내용·선택지. 외곽·제목·하단 배치는 overlays.css를 공유한다. */
+.catalog-filter-editor {
+  z-index: 1000021;
+}
+
+.catalog-filter-editor:focus {
+  outline: none;
+}
+
+.catalog-filter-editor__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.catalog-filter-editor .ui-segment {
+  align-self: flex-start;
+}
+
+.catalog-filter-editor__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.catalog-filter-editor__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  color: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+/* 더미도 네이티브 체크박스를 조작할 수 있도록 Materialize의 숨김만 해제. */
+.catalog-filter-editor input[type="checkbox"] {
+  position: static;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  opacity: 1;
+  pointer-events: auto;
+  accent-color: var(--theme-000);
+}
+
+.catalog-filter-editor input[type="checkbox"] + span:not(.lever) {
+  height: auto;
+  padding: 0;
+  line-height: 1.5;
+  font-size: inherit;
+}
+
+.catalog-filter-editor input[type="checkbox"] + span:not(.lever)::before,
+.catalog-filter-editor input[type="checkbox"] + span:not(.lever)::after {
+  display: none;
+}
+
+.catalog-filter-editor__numbers {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.catalog-filter-editor__numbers > label {
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+}
+
+input[type="text"].catalog-filter-editor__number,
+input[type="number"].catalog-filter-editor__number {
+  box-sizing: border-box;
+  width: 100%;
+  height: 42px;
+  margin: 4px 0 0;
+  padding: 0 12px;
+  font: inherit;
+}
+
+
+.catalog-filter-editor__hint,
+.catalog-filter-editor__error {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.catalog-filter-editor__error {
+  color: var(--red);
+}
+
+.catalog-filter-editor__add-option {
+  justify-content: flex-start;
+  width: 100%;
+  padding: 10px 14px;
+  text-align: left;
+}
+
+html.is-mobile-device .catalog-search-toolbar {
+  grid-template-columns: minmax(0, 1fr) 132px;
+}
+
+html.is-mobile-device .catalog-search-divider,
+html.is-mobile-device .catalog-search-filters:not(.catalog-search-filters--mobile) {
+  display: none;
+}
+
+html.is-mobile-device .catalog-search-size {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+html.is-mobile-device .catalog-search-filter-area {
+  grid-column: 1 / -1;
+}
+
+html.is-mobile-device .catalog-search-filters--mobile {
+  display: flex;
+  flex-wrap: nowrap;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+html.is-mobile-device .catalog-search-filters--mobile::-webkit-scrollbar {
+  display: none;
+}
+
+html.is-mobile-device .catalog-search-chip {
+  max-width: none;
+  white-space: nowrap;
+}
+
+html.is-mobile-device .catalog-search-chip__edit {
+  padding-right: 12px;
+}
+
+@media (max-width: 600px) {
+  .search-card__table :is(th, td) { padding: 10px 6px; }
+  .search-card__table--monster .search-card__label { width: 15%; }
+  .search-card__table--monster .search-card__value { width: 18.333%; }
+  .search-card__table .search-card__classifications { padding: 6px 6px; }
+  .search-card__label-desktop { display: none; }
+  .search-card__label-mobile { display: inline; }
+}
+
+@media (max-width: 480px) {
+  .search-art-gallery { padding-inline: 6px; }
+}
+
+@media (max-width: 400px) {
+  .search-card__table :is(th, td) { padding-inline: 4px; }
+  .search-card__label { font-size: 0.78rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-art-thumb img { transition: none; }
+}
+
+/* Search navigation owns only the current and outgoing view during a transition. */
+.search-results.is-transitioning {
+  overflow: hidden;
+  overflow: clip;
+}
+
+.search-results__pane {
+  position: relative;
+  display: flow-root;
+  min-width: 0;
+}
+
+.search-results__pane--leaving {
+  position: absolute;
+  inset: 0 0 auto;
+  pointer-events: none;
+}
+
+.search-results__back {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  justify-self: start;
+  gap: 4px;
+  min-width: 36px;
+  min-height: 36px;
+  white-space: nowrap;
+  padding: 0;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.search-results__back-icon {
+  display: block;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+}
+
+html.is-mobile-device .search-results__back-label {
+  display: none;
+}
+
+.search-results__focus-target:focus {
+  outline: none;
+}

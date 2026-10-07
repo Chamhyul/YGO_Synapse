@@ -1,0 +1,107 @@
+/* 문서 기본값·공통 색 전환·글꼴·접근성 숨김. */
+
+:root {
+  --transition-color-duration: 0.2s;
+  --transition-colors:
+    background-color var(--transition-color-duration) ease,
+    color var(--transition-color-duration) ease,
+    border-color var(--transition-color-duration) ease,
+    outline-color var(--transition-color-duration) ease,
+    text-decoration-color var(--transition-color-duration) ease,
+    column-rule-color var(--transition-color-duration) ease,
+    caret-color var(--transition-color-duration) ease,
+    accent-color var(--transition-color-duration) ease,
+    fill var(--transition-color-duration) ease,
+    stroke var(--transition-color-duration) ease,
+    stop-color var(--transition-color-duration) ease,
+    flood-color var(--transition-color-duration) ease,
+    lighting-color var(--transition-color-duration) ease,
+    box-shadow var(--transition-color-duration) ease,
+    text-shadow var(--transition-color-duration) ease;
+}
+
+/* 요소별 이동·크기 전환은 이 목록을 합성하며, 이 기본값보다 우선한다. */
+:where(*, *::before, *::after) {
+  transition: var(--transition-colors);
+}
+
+/* Materialize의 기본 전환보다 색 전환을 우선하며 기존 치수 전환은 보존한다. */
+input:not([type]),
+input[type="text"]:not(.browser-default),
+input[type="password"]:not(.browser-default),
+input[type="email"]:not(.browser-default),
+input[type="url"]:not(.browser-default),
+input[type="time"]:not(.browser-default),
+input[type="date"]:not(.browser-default),
+input[type="datetime"]:not(.browser-default),
+input[type="datetime-local"]:not(.browser-default),
+input[type="tel"]:not(.browser-default),
+input[type="number"]:not(.browser-default),
+input[type="search"]:not(.browser-default),
+textarea.materialize-textarea {
+  transition: border 0.3s, var(--transition-colors);
+}
+
+.btn,
+.btn-large,
+.btn-small,
+.btn-flat,
+.btn-floating {
+  transition: all 0.3s ease-out, var(--transition-colors);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-color-duration: 0s;
+  }
+}
+
+/* 브라우저 기본 터치 덧칠은 끄고 각 요소의 명시적인 강조를 사용한다. */
+*,
+*::before,
+*::after {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  background-color: var(--surface-000);
+  color: var(--text-000);
+  -webkit-text-size-adjust: 100%;
+  transition: padding-left 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), var(--transition-colors);
+  overflow-x: hidden;
+  width: 100%;
+  min-height: 100dvh;
+  margin: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding-left: 0;
+  padding-top: env(safe-area-inset-top);
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+body,
+input,
+button,
+table,
+.btn,
+.modal-content,
+select {
+  font-family: 'Pretendard', sans-serif !important;
+}
+
+.visually-hidden,
+.ui-segment__input,
+.segment-control input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
