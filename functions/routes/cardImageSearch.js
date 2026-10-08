@@ -1,4 +1,5 @@
 const { onRequest } = require('firebase-functions/v2/https');
+const { isLocal, requestProduction } = require('../services/publicReadTransport');
 const { setCors, verifyAppCheck } = require('../utils/auth');
 
 exports.searchCardByImage = onRequest({
@@ -14,6 +15,7 @@ exports.searchCardByImage = onRequest({
 
   const maxResults = Math.min(10, Math.max(1, Number(req.body?.maxResults) || 5));
   try {
+    if (isLocal()) return res.json(await requestProduction('searchCardByImage', req.body, { headers: req.headers }));
     // 다른 함수가 공통 index.js를 로드할 때 ONNX Runtime과 Sharp까지
     // 초기화하지 않도록 실제 이미지 검색 요청에서만 분석 서비스를 불러옵니다.
     const { classifyImages } = require('../services/draw2CardClassifierService');
@@ -24,7 +26,7 @@ exports.searchCardByImage = onRequest({
   } catch (error) {
     const inputError = /이미지|base64|카드 영역/.test(error.message);
     console.error('[searchCardByImage]', error.message);
-    return res.status(inputError ? 400 : 500).json({
+    return res.status(error.status || (inputError ? 400 : 500)).json({
       success: false,
       message: inputError ? error.message : '이미지 검색을 완료하지 못했습니다.',
     });

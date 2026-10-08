@@ -1,6 +1,4 @@
 const admin = require("firebase-admin");
-const fs = require("node:fs");
-const path = require("node:path");
 const { FieldValue, FieldPath } = require("firebase-admin/firestore");
 const { defineSecret } = require("firebase-functions/params");
 
@@ -33,93 +31,14 @@ function getStorageEmulatorBaseUrl() {
   return `http://${host}`;
 }
 
-function getProductionBucket() {
-  const bucketName = process.env.STORAGE_BUCKET || "ygo-synapse.firebasestorage.app";
-  const isEmulator = process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_EMULATOR_HUB;
-  if (!isEmulator) return getBucket();
-
-  const appName = "production-storage-v2";
-  let productionApp = admin.apps.find(app => app.name === appName);
-  if (!productionApp) {
-    const keyPath = path.resolve(__dirname, "../serviceAccountKey.json");
-    if (!fs.existsSync(keyPath)) {
-      throw new Error("로컬 이미지 검색을 위한 운영 Storage 서비스 계정이 없습니다.");
-    }
-    const serviceAccount = JSON.parse(fs.readFileSync(keyPath, "utf8"));
-    productionApp = admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      storageBucket: bucketName,
-    }, appName);
-  }
-  // firebase-tools sets this globally for the default app. Temporarily remove it
-  // only while the secondary Storage client is created so this client targets GCS.
-  const emulatorHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST;
-  delete process.env.FIREBASE_STORAGE_EMULATOR_HOST;
-  try {
-    return admin.storage(productionApp).bucket(bucketName);
-  } finally {
-    if (emulatorHost) process.env.FIREBASE_STORAGE_EMULATOR_HOST = emulatorHost;
-  }
-}
-
-function getProductionCredential() {
-  const isEmulator = process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_EMULATOR_HUB;
-  if (!isEmulator) return admin.app().options.credential;
-  const appName = "production-storage-auth";
-  let productionApp = admin.apps.find(app => app.name === appName);
-  if (!productionApp) {
-    const keyPath = path.resolve(__dirname, "../serviceAccountKey.json");
-    if (!fs.existsSync(keyPath)) throw new Error("로컬 이미지 검색을 위한 운영 Storage 서비스 계정이 없습니다.");
-    productionApp = admin.initializeApp({ credential: admin.credential.cert(JSON.parse(fs.readFileSync(keyPath, "utf8"))) }, appName);
-  }
-  return productionApp.options.credential;
-}
-
-// 로컬 데이터 저장소와 분리하여 실제 Firebase 로그인만 검증한다.
-// 키 제거 전환 전까지 기존 자격증명을 사용하며, 검증 실패를 UID 주장으로 대체하지 않는다.
-function getProductionAuth() {
-  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('실제 Firebase Auth가 필요합니다.');
-  const local = process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_EMULATOR_HUB;
-  if (!local) return admin.auth();
-  const name = 'verified-user-auth';
-  const app = admin.apps.find(item => item.name === name) || admin.initializeApp({
-    credential: getProductionCredential(), projectId: 'ygo-synapse',
-  }, name);
-  return admin.auth(app);
-}
-
-function getProductionDb() {
-  const isEmulator = process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_EMULATOR_HUB;
-  if (!isEmulator) return db;
-
-  const appName = "production-firestore-v1";
-  let productionApp = admin.apps.find(app => app.name === appName);
-  if (!productionApp) {
-    const keyPath = path.resolve(__dirname, "../serviceAccountKey.json");
-    if (!fs.existsSync(keyPath)) {
-      throw new Error("로컬에서 운영 Firestore를 조회하기 위한 서비스 계정이 없습니다.");
-    }
-    const serviceAccount = JSON.parse(fs.readFileSync(keyPath, "utf8"));
-    productionApp = admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      projectId: serviceAccount.project_id || process.env.GCLOUD_PROJECT || "ygo-synapse",
-    }, appName);
-  }
-
-  // firebase-tools가 설정한 전역 에뮬레이터 주소가 보조 앱에도 적용되지 않도록
-  // 운영 Firestore 클라이언트를 만드는 동안에만 제거합니다.
-  const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
-  delete process.env.FIRESTORE_EMULATOR_HOST;
-  try {
-    return admin.firestore(productionApp);
-  } finally {
-    if (emulatorHost) process.env.FIRESTORE_EMULATOR_HOST = emulatorHost;
-  }
-}
-
 async function downloadProductionFile(objectPath) {
   const bucketName = process.env.STORAGE_BUCKET || "ygo-synapse.firebasestorage.app";
-  const token = await getProductionCredential().getAccessToken();
+  if (process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_EMULATOR_HUB
+      || process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_STORAGE_EMULATOR_HOST
+      || process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+    throw new Error("로컬에서는 운영 API로 조회해야 합니다.");
+  }
+  const token = await admin.app().options.credential.getAccessToken();
   const url = `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucketName)}/o/${encodeURIComponent(objectPath)}?alt=media`;
   const response = await fetch(url, { headers: { Authorization: `Bearer ${token.access_token}` } });
   if (!response.ok) throw new Error(`운영 Storage 파일 조회 실패: HTTP ${response.status}`);
@@ -131,10 +50,6 @@ module.exports = {
   db,
   getBucket,
   getStorageEmulatorBaseUrl,
-  getProductionBucket,
-  getProductionDb,
-  getProductionCredential,
-  getProductionAuth,
   downloadProductionFile,
   FieldValue,
   FieldPath,

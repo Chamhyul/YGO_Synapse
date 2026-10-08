@@ -1,6 +1,9 @@
-const { onRequest } = require("firebase-functions/v2/https");
+const { normalizeSourceMembership, resolveEffectiveMembership } = require('../services/membershipPolicy');
+const { onRequest: firebaseOnRequest } = require("firebase-functions/v2/https");
+const { withPublicReadRequest } = require("../services/publicReadTransport");
+const onRequest = (options, handler) => firebaseOnRequest(options, withPublicReadRequest(handler));
 const { db, admin, getBucket, getStorageEmulatorBaseUrl, FieldValue } = require("../config/firebase");
-const { setCors, verifyRegisteredUser, verifyAppCheck } = require("../utils/auth");
+const { setCors, verifyRegisteredUser, getVerifiedAccountRole, verifyAppCheck } = require("../utils/auth");
 const { downloadInventory, updateInventoryWithRetry, deleteInventory } = require("../utils/inventoryStorage");
 
 const { ensureInventoryV2, inventoryMigrationStatus } = require('../services/inventoryMigrationService');
@@ -73,10 +76,11 @@ exports.getUserData = onRequest({ invoker: "public", memory: "256MiB" }, async (
     return res.json({ success: true, message: "warmed up" });
   }
 
-  const uid = await verifyRegisteredUser(req, res);
+  const uid = await verifyRegisteredUser(req, res, { includeAccountRole: true });
   if (!uid) return;
 
   try {
+    const accountRole = await getVerifiedAccountRole(req, uid);
     const start = Date.now();
     
     // [Storage 전환] 인벤토리를 Storage에서 다운로드 + 설정, 기본 가입정보는 Firestore 유지
@@ -90,7 +94,8 @@ exports.getUserData = onRequest({ invoker: "public", memory: "256MiB" }, async (
     
     let inventory = inventoryResult.data;
     let userData = userSnap.exists ? userSnap.data() : {};
-    let userSettings = userData.settings || {};
+    const sourceMembership = normalizeSourceMembership(userData.settings?.membership);
+    let userSettings = { ...(userData.settings || {}), membership: resolveEffectiveMembership(accountRole, sourceMembership) };
 
     let createdAt = userData.createdAt ? (userData.createdAt.toDate ? userData.createdAt.toDate().getTime() : userData.createdAt) : null;
     const nickname = userData.Nickname || "";
@@ -162,11 +167,13 @@ exports.getUserData = onRequest({ invoker: "public", memory: "256MiB" }, async (
         ? { ...inventoryMigrationStatus(inventory), status: 'retryableError', retryAt: Date.now() + 30000 }
         : inventoryMigrationStatus(inventory),
       settings: userSettings,
+      sourceMembership,
       nickname,
       createdAt,
       debug: { serverTime: (end - start) }
     });
   } catch (e) {
+    if (e.code === 'ACCOUNT_ROLE_UNAVAILABLE') return res.status(503).json({ success: false, code: e.code, message: e.message });
     console.error("getUserData error:", e);
     return res.status(500).json({ success: false, message: e.toString() });
   }

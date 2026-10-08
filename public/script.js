@@ -20,8 +20,10 @@ const HTTP_FUNCTION_NAMES = [
     "completeRegistration",
     "updateUserSettings",
     "updateNickname",
-    "checkMembershipDiscord",
-    "checkMembershipCsv",
+    "startDiscordMembershipVerification",
+    "verifyDiscordMembership",
+    "startYoutubeMembershipVerification",
+    "verifyYoutubeMembership",
     "uploadMembershipCsv",
     "searchDeck",
     "searchCard",
@@ -56,7 +58,8 @@ const PRODUCTION_READ_FUNCTIONS = new Set([
     'getPackCids',
     'searchDeck',
     'getDeckCards',
-    'getRamMemoryStats'
+    'getRamMemoryStats',
+    'searchCardByImage'
 ]);
 function getFunctionBaseUrl(name) {
     return IS_LOCAL_DEV && !PRODUCTION_READ_FUNCTIONS.has(name)
@@ -70,6 +73,7 @@ const FIREBASE_CONFIG = {
 // AppCheck onTokenChanged가 즉시 호출될 수 있으므로 TDZ 방지를 위해 선언을 본 블록 앞에 위치
 let _cachedAuthToken = null;
 let _cachedAppCheckToken = null;
+let _appCheckTokenPromise = null;
 
 // Firebase App Check 즉시 초기화
 if (typeof firebase !== 'undefined' && firebase.appCheck) {
@@ -81,8 +85,8 @@ if (typeof firebase !== 'undefined' && firebase.appCheck) {
     appCheck.activate(provider, true);
     // Safari 최적화: AppCheck 토큰이 갱신될 때마다 캐시 변수에 저장
     appCheck.onTokenChanged((tokenResult) => {
-        _cachedAppCheckToken = tokenResult.token;
-    });
+        _cachedAppCheckToken = tokenResult?.token || null;
+    }, () => { _cachedAppCheckToken = null; });
 }
 
 const CLIENT_VERSION = "ver. 0.33.1";
@@ -224,21 +228,6 @@ function escapeHTML(str) {
         };
         return chars[tag] || tag;
     });
-}
-
-// 유튜브 채널 ID 조회 API 공통화
-async function fetchYoutubeChannelId(accessToken) {
-    const response = await fetch('https://www.googleapis.com/youtube/v3/channels?part=id&mine=true', {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
-    if (data.items && data.items.length > 0) {
-        return data.items[0].id;
-    }
-    return null;
 }
 
 // 프리-정규화된 카드 이름 동기화 함수
@@ -6239,6 +6228,25 @@ async function callApi(action, params = {}, postData = null) {
     return structuredClone(await promise);
 }
 
+async function getApiAppCheckToken(forceRefresh = false) {
+    if (!forceRefresh && _cachedAppCheckToken) return _cachedAppCheckToken;
+    if (forceRefresh) _cachedAppCheckToken = null;
+    if (!_appCheckTokenPromise) {
+        _appCheckTokenPromise = (async () => {
+            try {
+                if (typeof firebase === 'undefined' || !firebase.appCheck) throw new Error();
+                const result = await firebase.appCheck().getToken(forceRefresh);
+                if (!result?.token) throw new Error();
+                _cachedAppCheckToken = result.token;
+                return result.token;
+            } catch (_) {
+                throw Object.assign(new Error('앱 인증을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'), { code: 'APPCHECK_UNAVAILABLE' });
+            }
+        })().finally(() => { _appCheckTokenPromise = null; });
+    }
+    return _appCheckTokenPromise;
+}
+
 async function requestApi(action, params = {}, postData = null) {
     const endpoint = FIREBASE_CONFIG.ENDPOINTS[action];
     if (!endpoint) {
@@ -6259,6 +6267,7 @@ async function requestApi(action, params = {}, postData = null) {
         }
     };
     if (action === 'searchCardByImage') options.signal = AbortSignal.timeout(45000);
+    if (action === 'getRegistrationStatus') options.signal = AbortSignal.timeout(30000);
 
     // 최신 Firebase ID Token을 즉시 가져와 Authorization 헤더에 설정 (오래된 캐시 토큰으로 인한 403 거부 방지)
     const authUser = UserStore.user || (['getRegistrationStatus', 'completeRegistration'].includes(action)
@@ -6269,24 +6278,15 @@ async function requestApi(action, params = {}, postData = null) {
             _cachedAuthToken = token;
             options.headers['Authorization'] = `Bearer ${token}`;
         } catch (authErr) {
-            console.error("Auth token fetch failed:", authErr);
+            const invalid = ['auth/user-token-expired', 'auth/invalid-user-token', 'auth/user-disabled', 'auth/user-not-found'].includes(authErr.code);
+            throw Object.assign(new Error('로그인 인증 정보를 준비하지 못했습니다.'), {
+                code: invalid ? 'AUTH_INVALID' : 'AUTH_VERIFICATION_UNAVAILABLE'
+            });
         }
     }
 
-    if (!IS_LOCAL_DEV || PRODUCTION_READ_FUNCTIONS.has(action)) {
-        if (_cachedAppCheckToken) {
-            options.headers['X-Firebase-AppCheck'] = _cachedAppCheckToken;
-        } else if (typeof firebase !== 'undefined' && firebase.appCheck) {
-            // 캐시 미스 폴백
-            try {
-                const appCheckTokenResponse = await firebase.appCheck().getToken();
-                _cachedAppCheckToken = appCheckTokenResponse.token;
-                options.headers['X-Firebase-AppCheck'] = _cachedAppCheckToken;
-            } catch (err) {
-                console.warn("Failed to get App Check token:", err);
-            }
-        }
-    }
+    // App Check 실패를 로그인 실패로 바꾸거나 인증 헤더 없이 요청하지 않는다.
+    options.headers['X-Firebase-AppCheck'] = await getApiAppCheckToken();
 
     if (postData) {
         // POST 요청 시 ssId를 본문에 포함
@@ -6303,7 +6303,7 @@ async function requestApi(action, params = {}, postData = null) {
             const errBody = await response.json().catch(() => ({}));
             console.error(`[API Error Details] Action: ${action}, Status: ${response.status}`, errBody);
             const detailMsg = errBody.message || errBody.name || (Object.keys(errBody).length ? JSON.stringify(errBody) : "");
-            throw Object.assign(new Error(detailMsg ? `HTTP ${response.status}: ${detailMsg}` : `HTTP error! status: ${response.status}`), { code: errBody.code });
+            throw Object.assign(new Error(detailMsg ? `HTTP ${response.status}: ${detailMsg}` : `HTTP error! status: ${response.status}`), { code: errBody.code, status: response.status });
         }
 
         const res = await response.json();
@@ -7017,6 +7017,8 @@ async function loadUserData() {
         // 멤버십 정보가 없더라도 기본 UI 렌더링을 위해 초기화 호출
         const membership = (res && res.settings && res.settings.membership) ? res.settings.membership : null;
 
+        UserStore.sourceMembership = res?.sourceMembership || null;
+
         // 기타 사용자 설정 및 멤버십 동기화
         if (res && res.settings) {
             if (res.settings.isDetailMode !== undefined) UserStore.settings.isDetailMode = res.settings.isDetailMode;
@@ -7044,6 +7046,12 @@ async function loadUserData() {
         }
     } catch (e) {
         if (UserStore.user?.uid !== ownerUid) return;
+        // 현재 권한을 확인하지 못했을 때 과거 관리자 표시를 계속 인정하지 않는다.
+        if (!UserStore.settings) UserStore.settings = {};
+        UserStore.settings.membership = { status: 'unknown', type: 'none', levelName: '확인 필요' };
+        UserStore.sourceMembership = null;
+        applyMembershipStatus(UserStore.settings.membership);
+        showToast('회원 상태를 확인하지 못했습니다. 새로고침 후 다시 확인해 주세요.', 'toast-warn');
         // 서버 조회 실패는 설정 없음과 다르므로 계정 기록을 임의로 만들지 않는다.
         loadUserTheme(undefined, true);
         console.error("[Sync] getUserData Error:", e);
@@ -7116,7 +7124,7 @@ function renderMembershipSettings(membership) {
     if (!card || !label) return;
 
     const isPremium = membership?.status === 'active';
-    let levelName = '일반';
+    let levelName = membership?.status === 'unknown' ? '확인 필요' : '일반';
     if (isPremium) {
         levelName = membership.levelName || '유튜브 멤버십';
         if (levelName === '디스코드 멤버십 회원') levelName = '유튜브 멤버십';
@@ -10563,20 +10571,40 @@ let pendingRegistrationUser = null;
 let pendingConsentVersions = null;
 let registrationSaving = false;
 let loginInProgress = false;
+let registrationCheckPending = false;
+let pendingServiceAuthUser = null;
+
+async function getServiceRegistrationStatus(user, revision) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+        if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return null;
+        try { return await callApi('getRegistrationStatus'); }
+        catch (error) {
+            if (error.code === 'AUTH_INVALID' || attempt === 2
+                || (error.status && error.status !== 401 && error.status < 500)) throw error;
+            if (['APPCHECK_REQUIRED', 'APPCHECK_INVALID', 'APPCHECK_UNAVAILABLE'].includes(error.code)) {
+                await getApiAppCheckToken(true).catch(() => {});
+            }
+            await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 500 : 1500));
+        }
+    }
+}
 
 async function handleFirebaseAuthState(user) {
     const revision = ++authStateRevision;
     pendingRegistrationUser = null;
     pendingConsentVersions = null;
+    pendingServiceAuthUser = null;
+    registrationCheckPending = !!user;
+    toggleLoginBtn();
     if (!user) {
         applyServiceAuthState(null);
         M.Modal.getInstance(document.getElementById('signup-modal'))?.close();
         return;
     }
     // 다른 계정의 조회·보유 정보가 새 계정에 노출되지 않도록 먼저 분리한다.
-    if (UserStore.user && UserStore.user.uid !== user.uid) applyServiceAuthState(null);
+    applyServiceAuthState(null);
     try {
-        const status = await callApi('getRegistrationStatus');
+        const status = await getServiceRegistrationStatus(user, revision);
         if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return;
         if (!status?.success || typeof status.registered !== 'boolean') throw new Error('가입 상태 조회 실패');
         M.Modal.getInstance(document.getElementById('auth-modal'))?.close();
@@ -10594,13 +10622,24 @@ async function handleFirebaseAuthState(user) {
             setRegistrationSaving(false);
             getAppModal(document.getElementById('signup-modal')).open();
         }
-    } catch (_) {
-        if (revision !== authStateRevision) return;
+    } catch (error) {
+        if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return;
         applyServiceAuthState(null);
-        showToast('가입 상태를 확인하지 못했습니다. 다시 로그인해 주세요.', 'toast-error');
-        await firebase.auth().signOut().catch(() => {
-            showToast('로그아웃하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
-        });
+        if (error.code === 'AUTH_INVALID') {
+            showToast('로그인 정보가 만료되었거나 유효하지 않습니다. 다시 로그인해 주세요.', 'toast-error');
+            await firebase.auth().signOut().catch(() => {
+                showToast('로그아웃하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
+            });
+        } else {
+            pendingServiceAuthUser = user;
+            showToast('인증 확인이 지연되고 있습니다. 로그인 버튼을 눌러 다시 확인해 주세요.', 'toast-error');
+            toggleAuthModal(true);
+        }
+    } finally {
+        if (revision === authStateRevision) {
+            registrationCheckPending = false;
+            toggleLoginBtn();
+        }
     }
 }
 
@@ -10740,6 +10779,7 @@ function applyServiceAuthState(user) {
         cardCacheInstance.clearAll();
         clearTimeout(inventoryMigrationTimer);
         delete UserStore.settings.membership;
+        UserStore.sourceMembership = null;
         UserStore.settings.hideMembershipVerify = false;
         document.querySelectorAll('.target-inventory-section').forEach(section => renderOwnedCardsToContainer([], section));
     }
@@ -11021,64 +11061,53 @@ async function getYoutubeAccessTokenViaSecondaryApp() {
     }
 }
 
+let youtubeMembershipVerificationPending = false;
 async function startYoutubeMembershipVerify() {
-    if (!UserStore.user) {
+    const user = UserStore.user;
+    if (!user) {
         showToast('로그인이 필요합니다.', 'toast-warn');
         return;
     }
-
+    if (youtubeMembershipVerificationPending) return;
+    youtubeMembershipVerificationPending = true;
+    const revision = authStateRevision;
+    const current = () => authStateRevision === revision && UserStore.user?.uid === user.uid
+        && firebase.auth().currentUser?.uid === user.uid;
     try {
         showToast('유튜브 계정을 연결하는 중입니다...', 'toast-info');
-
-        // 보조 Firebase 앱 기반 독립 OAuth 팝업으로 accessToken 수집 (메인 로그인 세션 완전 분리)
-        const accessToken = await getYoutubeAccessTokenViaSecondaryApp();
-
-        if (accessToken) {
-            // YouTube 채널 ID 조회
-            const channelId = await fetchYoutubeChannelId(accessToken);
-
-            if (channelId) {
-                localStorage.setItem('ygo_youtube_channel_id', channelId);
-
-                // 백엔드 CSV 목록 비교 API 호출
-                const res = await callApi('checkMembershipCsv', {}, { userChannelId: channelId });
-
-                if (res && res.success) {
-                    if (res.isMemberActive) {
-                        showToast('유튜브 멤버십 인증에 성공했습니다!', 'toast-success');
-                    } else {
-                        showToast('유튜브 채널 ID가 멤버십 회원 목록에 등록되어 있지 않습니다.', 'toast-warn');
-                    }
-
-                    // 전역 스토어 및 UI 즉시 갱신
-                    if (res.membership) {
-                        if (!UserStore.settings) UserStore.settings = {};
-                        UserStore.settings.membership = res.membership;
-                        if (typeof applyMembershipStatus === 'function') applyMembershipStatus(res.membership);
-                        if (typeof updateAuthUI === 'function') updateAuthUI(UserStore.user);
-                    }
-
-                    // 모달 닫기
-                    const modalInstance = M.Modal.getInstance(document.getElementById('membership-auth-modal'));
-                    if (modalInstance) modalInstance.close();
-
-                    resetMembershipVerifyModal();
-                    if (typeof loadUserData === 'function') loadUserData();
-                } else {
-                    showToast(res?.message || 'CSV 멤버십 비교 검증에 실패했습니다.', 'toast-error');
-                }
-            } else {
-                showToast('유튜브 채널 정보를 찾을 수 없습니다.', 'toast-warn');
-            }
+        // 팝업은 클릭 직후 실행한다. 시작 요청을 먼저 기다리면 Safari에서 차단될 수 있다.
+        const [accessToken, challenge] = await Promise.all([
+            getYoutubeAccessTokenViaSecondaryApp(),
+            callApi('startYoutubeMembershipVerification', {}, {})
+        ]);
+        if (!current()) throw Object.assign(new Error(), { code: 'YOUTUBE_SESSION_CHANGED' });
+        if (!accessToken || !challenge?.success || challenge.uid !== user.uid || !challenge.verificationId) {
+            throw Object.assign(new Error(), { code: 'YOUTUBE_PROOF_REQUIRED' });
         }
+        const res = await callApi('verifyYoutubeMembership', {}, { verificationId: challenge.verificationId, accessToken });
+        if (!current()) throw Object.assign(new Error(), { code: 'YOUTUBE_SESSION_CHANGED' });
+        if (!res?.success || res.uid !== user.uid) {
+            showToast(res?.message || '멤버십을 확인하지 못했습니다. 다시 인증해 주세요.', 'toast-error');
+            return;
+        }
+        showToast(res.isMemberActive ? '유튜브 멤버십 인증에 성공했습니다!'
+            : '유튜브 채널이 멤버십 회원 목록에 등록되어 있지 않습니다.', res.isMemberActive ? 'toast-success' : 'toast-warn');
+        if (!UserStore.settings) UserStore.settings = {};
+        UserStore.sourceMembership = res.sourceMembership || null;
+        UserStore.settings.membership = res.membership;
+        applyMembershipStatus(res.membership);
+        updateAuthUI(UserStore.user);
+        const modalInstance = M.Modal.getInstance(document.getElementById('membership-auth-modal'));
+        if (modalInstance) modalInstance.close();
+        resetMembershipVerifyModal();
+        if (typeof loadUserData === 'function') loadUserData();
     } catch (error) {
-        console.error('[Auth] YouTube Verification Error:', error);
-        // 사용자가 팝업창을 직접 닫은 경우 오류 메시지 미표시
-        if (error.message && error.message.includes('access_denied')) {
-            // 사용자가 팝업에서 거부한 경우 — 조용히 처리
-        } else {
-            showToast('유튜브 채널 연결 중 오류가 발생했습니다: ' + (error.message || '알 수 없는 오류'), 'toast-error');
-        }
+        const cancelled = ['auth/popup-closed-by-user', 'auth/cancelled-popup-request', 'auth/user-cancelled', 'auth/access-denied'].includes(error.code);
+        if (!cancelled) showToast(error.code === 'YOUTUBE_SESSION_CHANGED'
+            ? '서비스 계정이 변경되었습니다. 다시 인증해 주세요.'
+            : '유튜브 인증을 완료하지 못했습니다. 계정과 승인한 권한을 확인하고 다시 시도해 주세요.', 'toast-error');
+    } finally {
+        youtubeMembershipVerificationPending = false;
     }
 }
 
@@ -11400,8 +11429,13 @@ function toggleAuthModal(showGuide = false) {
 
     const guide = document.getElementById('login-guide-msg');
     const introduction = document.getElementById('login-sub-msg');
-    if (guide) guide.hidden = !showGuide;
-    if (introduction) introduction.hidden = showGuide;
+    if (guide) {
+        guide.hidden = !showGuide && !pendingServiceAuthUser;
+        guide.textContent = pendingServiceAuthUser
+            ? '계정 인증은 유지됩니다. 아래 로그인 버튼을 누르면 가입 상태를 다시 확인합니다.'
+            : '로그인 후 이용 가능합니다.';
+    }
+    if (introduction) introduction.hidden = showGuide || !!pendingServiceAuthUser;
     if (pendingRegistrationUser) {
         getAppModal(document.getElementById('signup-modal')).open();
         return;
@@ -11413,7 +11447,7 @@ function toggleAuthModal(showGuide = false) {
 function toggleLoginBtn() {
     for (const id of ['google-login-btn', 'twitter-login-btn']) {
         const button = document.getElementById(id);
-        if (button) button.disabled = loginInProgress;
+        if (button) button.disabled = loginInProgress || registrationCheckPending;
     }
 }
 
@@ -11425,6 +11459,11 @@ async function signInWithProvider(providerName) {
     loginInProgress = true;
     toggleLoginBtn();
     try {
+        const current = firebase.auth().currentUser;
+        if (pendingServiceAuthUser?.uid === current?.uid && current) {
+            await handleFirebaseAuthState(current);
+            return;
+        }
         if (IS_LOCAL_DEV) await firebase.auth().signInWithPopup(provider);
         else await firebase.auth().signInWithRedirect(provider);
         // 가입 여부와 화면 전환은 onAuthStateChanged에서만 처리한다.
@@ -11449,12 +11488,12 @@ function openMembershipAuthModal(source = 'header') {
     const hideFooter = document.getElementById('membership-hide-footer');
     if (hideButton) hideButton.hidden = source === 'settings';
     if (hideFooter) hideFooter.hidden = source === 'settings';
-    const membership = UserStore.settings?.membership;
-    const active = membership?.status === 'active';
+    const linkedMembership = UserStore.sourceMembership;
+    const active = linkedMembership?.status === 'active';
     const discordBadge = document.getElementById('badge-discord-linked');
     const youtubeBadge = document.getElementById('badge-youtube-linked');
-    if (discordBadge) discordBadge.hidden = !(active && membership.type === 'discord');
-    if (youtubeBadge) youtubeBadge.hidden = !(active && membership.type === 'csv');
+    if (discordBadge) discordBadge.hidden = !(active && linkedMembership.type === 'discord');
+    if (youtubeBadge) youtubeBadge.hidden = !(active && linkedMembership.type === 'csv');
 
     const modal = document.getElementById('membership-auth-modal');
     if (modal) getAppModal(modal).open();
@@ -11463,83 +11502,71 @@ function openMembershipAuthModal(source = 'header') {
 /**
  * 디스코드 멤버십 인증 시작
  */
+let discordMembershipStarting = false;
 async function startDiscordMembershipVerify() {
-    if (!UserStore.user) {
-        showToast('로그인이 필요합니다.', 'toast-warn');
-        return;
-    }
-
-    const DISCORD_CLIENT_ID = "1536191827705733191";
-    const redirectUri = window.location.origin + window.location.pathname;
-    
-    // OAuth state 저장 (보안 및 연동 구분용)
-    sessionStorage.setItem('discord_oauth_pending', 'true');
-
-    const authUrl = `https://discord.com/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=identify`;
-    
-    // 디스코드 OAuth 인증 페이지로 이동
-    window.location.href = authUrl;
-}
-
-/**
- * 디스코드 OAuth2 리다이렉트 자동 감지 및 백엔드 검증 처리
- */
-async function handleDiscordOAuthCallback() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const isPending = sessionStorage.getItem('discord_oauth_pending');
-
-    if (code && isPending) {
+    const user = UserStore.user;
+    if (!user) { showToast('로그인이 필요합니다.', 'toast-warn'); return; }
+    if (discordMembershipStarting) return;
+    discordMembershipStarting = true;
+    const revision = authStateRevision;
+    try {
+        const redirectUri = location.origin + '/';
+        const res = await callApi('startDiscordMembershipVerification', {}, { redirectUri });
+        if (revision !== authStateRevision || UserStore.user?.uid !== user.uid) throw new Error();
+        if (!res?.success || res.uid !== user.uid || !/^[a-f0-9]{64}$/.test(res.verificationId)) throw new Error();
+        const url = new URL(res.authorizationUrl);
+        if (url.origin !== 'https://discord.com' || url.pathname !== '/oauth2/authorize'
+            || url.searchParams.get('state') !== res.verificationId || url.searchParams.get('redirect_uri') !== redirectUri) throw new Error();
+        sessionStorage.setItem('discord_membership_verification', JSON.stringify({ uid: user.uid, state: res.verificationId, expiresAt: Date.now() + 300000 }));
         sessionStorage.removeItem('discord_oauth_pending');
-
-        // URL 파라미터 정리
-        const cleanUrl = window.location.origin + window.location.pathname;
-        window.history.replaceState({}, document.title, cleanUrl);
-
-        try {
-            showToast('디스코드 멤버십 역할을 검증하는 중입니다...', 'toast-info');
-
-            // Firebase Auth 세션 복원 완료 대기 (최대 5초)
-            if (typeof waitForAuthInit === 'function') {
-                await waitForAuthInit(5000);
-            }
-
-            // currentUser 토큰 최신화
-            const currentUser = firebase.auth().currentUser;
-            if (currentUser) {
-                _cachedAuthToken = await currentUser.getIdToken(true);
-            }
-
-            const redirectUri = cleanUrl;
-            const res = await callApi('checkMembershipDiscord', {}, { code, redirectUri });
-
-            if (res && res.success) {
-                if (res.isMemberActive) {
-                    showToast('디스코드 멤버십 인증에 성공했습니다! 혜택이 적용됩니다.', 'toast-success');
-                } else {
-                    showToast(res.details || '디스코드 서버에 가입되어 있지 않거나 멤버십 역할이 없습니다.', 'toast-warn');
-                }
-
-                // 전역 스토어 및 UI 즉시 갱신
-                if (res.membership) {
-                    if (!UserStore.settings) UserStore.settings = {};
-                    UserStore.settings.membership = res.membership;
-                    if (typeof applyMembershipStatus === 'function') applyMembershipStatus(res.membership);
-                    if (typeof updateAuthUI === 'function') updateAuthUI(UserStore.user);
-                }
-
-                // 프로필/유저 데이터 갱신
-                if (typeof loadUserData === 'function') loadUserData();
-            } else {
-                showToast(res?.message || '디스코드 멤버십 연동에 실패했습니다.', 'toast-error');
-            }
-        } catch (err) {
-            console.error('[Auth] Discord verification error:', err);
-            showToast('디스코드 연동 중 오류가 발생했습니다: ' + err.message, 'toast-error');
-        }
-    }
+        window.location.href = url.href;
+    } catch (_) { showToast('Discord 인증을 시작하지 못했습니다. 복귀 주소와 로그인 상태를 확인해 주세요.', 'toast-error'); }
+    finally { discordMembershipStarting = false; }
 }
 
+// Firebase 초기화뿐 아니라 서비스 가입 확인까지 완료된 계정만 사용한다.
+async function waitForDiscordServiceUser(uid) {
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+        const user = firebase.auth().currentUser;
+        if (user && user.uid !== uid) throw new Error();
+        if (!registrationCheckPending && UserStore.user?.uid === uid && user?.uid === uid) return user;
+        if (window.isAuthInitialized && !registrationCheckPending) throw new Error();
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    throw new Error();
+}
+
+async function handleDiscordOAuthCallback() {
+    const params = new URLSearchParams(location.search);
+    const raw = sessionStorage.getItem('discord_membership_verification');
+    if (!raw && !sessionStorage.getItem('discord_oauth_pending')) return;
+    if (!params.has('code') && !params.has('error')) return;
+    sessionStorage.removeItem('discord_membership_verification');
+    sessionStorage.removeItem('discord_oauth_pending');
+    const code = params.get('code'), state = params.get('state');
+    params.delete('code'); params.delete('state'); params.delete('error'); params.delete('error_description');
+    const clean = new URL(location.href); clean.search = params.toString();
+    window.history.replaceState({}, document.title, clean.href);
+    try {
+        const pending = JSON.parse(raw);
+        if (!pending || pending.state !== state || pending.expiresAt <= Date.now()) throw new Error();
+        if (!code) { showToast('Discord 인증을 취소했습니다.', 'toast-info'); return; }
+        const user = await waitForDiscordServiceUser(pending.uid);
+        const revision = authStateRevision;
+        const res = await callApi('verifyDiscordMembership', {}, { code, verificationId: state });
+        if (revision !== authStateRevision || UserStore.user?.uid !== user.uid || firebase.auth().currentUser?.uid !== user.uid) throw new Error();
+        if (!res?.success || res.uid !== user.uid) throw new Error();
+        if (!UserStore.settings) UserStore.settings = {};
+        UserStore.sourceMembership = res.sourceMembership || null;
+        UserStore.settings.membership = res.membership;
+        applyMembershipStatus(res.membership);
+        updateAuthUI(UserStore.user);
+        showToast(res.isMemberActive ? '디스코드 멤버십 인증에 성공했습니다!'
+            : '디스코드 서버에 가입되어 있지 않거나 멤버십 역할이 없습니다.', res.isMemberActive ? 'toast-success' : 'toast-warn');
+        if (typeof loadUserData === 'function') loadUserData();
+    } catch (_) { showToast('Discord 인증이 만료되었거나 계정이 변경되었습니다. 다시 인증해 주세요.', 'toast-error'); }
+}
 
 /**
  * 멤버십 인증 메시지 숨기기 핸들러 (2단계 확인)
@@ -12084,7 +12111,7 @@ window.AdminManager = {
         return res;
     },
 
-    // 🛡️ 일반 관리자 지정 / 해제 (owner 전용, DB membership 자동 동기화)
+    // 🛡️ 일반 관리자 지정 / 해제 (owner 전용, 회원 혜택은 다음 사용자 조회에 반영)
     setAdmin(targetUid, isAdmin = true) {
         return this.request({ action: "setAdmin", targetUid, isAdmin: Boolean(isAdmin) });
     },

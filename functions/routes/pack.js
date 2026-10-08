@@ -1,4 +1,6 @@
-const { onRequest } = require("firebase-functions/v2/https");
+const { onRequest: firebaseOnRequest } = require("firebase-functions/v2/https");
+const { withPublicReadRequest } = require("../services/publicReadTransport");
+const onRequest = (options, handler) => firebaseOnRequest(options, withPublicReadRequest(handler));
 const { setCors, verifyAppCheck } = require("../utils/auth");
 const packService = require("../services/packService");
 

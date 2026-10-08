@@ -1,4 +1,6 @@
-const { onRequest } = require("firebase-functions/v2/https");
+const { onRequest: firebaseOnRequest } = require("firebase-functions/v2/https");
+const { withPublicReadRequest } = require("../services/publicReadTransport");
+const onRequest = (options, handler) => firebaseOnRequest(options, withPublicReadRequest(handler));
 const { setCors, verifyRegisteredUser } = require("../utils/auth");
 const { fetchMyCardData_Node, validateImportData } = require("../services/migrationService");
 const { resolveCardNumber } = require("../services/cardService");

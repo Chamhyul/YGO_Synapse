@@ -1,5 +1,7 @@
 const cardService = require("../services/cardService");
-const { onRequest } = require("firebase-functions/v2/https");
+const { onRequest: firebaseOnRequest } = require("firebase-functions/v2/https");
+const { withPublicReadRequest } = require("../services/publicReadTransport");
+const onRequest = (options, handler) => firebaseOnRequest(options, withPublicReadRequest(handler));
 const { admin } = require("../config/firebase");
 const { mapToRowArray } = require("../utils/common");
 const { setCors, verifyRegisteredUser, verifyAppCheck } = require("../utils/auth");

@@ -149,6 +149,7 @@ test('비로그인 진입은 동의 없이 로그인 수단을 선택한다', ()
     const opened = [];
     const context = vm.createContext({
       UserStore: { user: null }, loginInProgress: false, pendingRegistrationUser: null,
+      pendingServiceAuthUser: null, registrationCheckPending: false,
       switchToMode() { assert.fail('비로그인 진입으로 페이지를 이동하지 않는다'); },
       document: {
         documentElement: { classList: { contains: () => mobile } },

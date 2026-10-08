@@ -9,7 +9,8 @@ function load(file, mocks) {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
     module, exports: module.exports, console: { error() {} }, process: { env: {} },
-    require(name) { assert.ok(name in mocks, name); return mocks[name]; },
+    require(name) {
+      if (name === '../services/publicReadTransport' || name === './publicReadTransport') return { isLocal: () => false, withPublicReadRequest: handler => handler }; assert.ok(name in mocks, name); return mocks[name]; },
   });
   return module.exports;
 }
@@ -98,16 +99,42 @@ test('가입 전 보호 API 검증은 403, 장애는 503이며 기존 회원은 
   }
 });
 
-test('사용자 데이터·관리·이식·개인 멤버십 라우트는 가입 완료 검증을 사용한다', () => {
+test('사용자 데이터·관리·이식·개인 멤버십 라우트는 가입 완료 검증을 사용한다', async () => {
   for (const file of ['user', 'card', 'migration']) {
     const source = fs.readFileSync(path.join(__dirname, '../routes', file + '.js'), 'utf8');
     assert.match(source, /await verifyRegisteredUser\(req, res\)/);
     assert.doesNotMatch(source, /await verifyUser\(req, res\)/);
   }
-  const source = fs.readFileSync(path.join(__dirname, '../routes/integration.js'), 'utf8');
-  for (const name of ['checkMembershipDiscord', 'checkMembershipCsv']) {
-    const start = source.indexOf('exports.' + name);
-    const end = source.indexOf('\nexports.', start + 1);
-    assert.match(source.slice(start, end < 0 ? undefined : end), /await verifyRegisteredUser\(req, res\)/);
+  // YouTube 시작·완료의 가입 거부가 실제로 Google 조회·저장 전에 적용되는지 확인한다.
+  const { createYoutubeMembershipHandlers } = require('../services/youtubeMembership');
+  let checked = 0;
+  const handlers = createYoutubeMembershipHandlers({
+    setCors() {}, verifyAppCheck: async () => true,
+    verifyRegisteredUser: async (_, res) => {
+      checked++;
+      res.status(403).json({ success: false, code: 'REGISTRATION_REQUIRED' });
+      return null;
+    },
+    isLocal: () => false,
+    db: { collection() { throw Error('가입 전 DB 접근'); } },
+    auth: { getUser() { throw Error('가입 전 계정 조회'); } },
+    fetchImpl() { throw Error('가입 전 Google 호출'); },
+  });
+  for (const name of ['startYoutubeMembershipVerification', 'verifyYoutubeMembership']) {
+    const res = fixture().res();
+    await handlers[name]({ method: 'POST', body: {}, headers: {} }, res);
+    assert.equal(res.code, 403);
+    assert.equal(res.body.code, 'REGISTRATION_REQUIRED');
   }
+  const { createDiscordMembershipHandlers } = require('../services/discordMembership');
+  const discord = createDiscordMembershipHandlers({ setCors() {}, verifyAppCheck: async () => true,
+    verifyRegisteredUser: async (_, res) => { checked++; res.status(403).json({ success: false }); return null; },
+    db: { collection() { throw Error('가입 전 DB 접근'); } },
+    getMembership() { throw Error('가입 전 Discord 호출'); } });
+  for (const name of ['startDiscordMembershipVerification', 'verifyDiscordMembership']) {
+    const res = fixture().res();
+    await discord[name]({ method: 'POST', body: {} }, res);
+    assert.equal(res.code, 403);
+  }
+  assert.equal(checked, 4);
 });

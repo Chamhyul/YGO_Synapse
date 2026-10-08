@@ -9,6 +9,7 @@ function load(file, mocks) {
   const filename = path.join(__dirname, '..', file), module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { module, exports: module.exports,
     console: { error() {} }, require(name) {
+      if (name === '../services/publicReadTransport' || name === './publicReadTransport') return { isLocal: () => false, withPublicReadRequest: handler => handler };
       if (!(name in mocks)) throw Error(`격리되지 않은 의존성: ${name}`);
       return mocks[name];
     } }, { filename });

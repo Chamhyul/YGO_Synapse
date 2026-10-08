@@ -24,6 +24,7 @@ function load(relative, mocks) {
     console: Object.fromEntries(['log', 'warn', 'error'].map(level =>
       [level, (...args) => logs.push([level, ...args])])),
     require(name) {
+      if (name === '../services/publicReadTransport' || name === './publicReadTransport') return { isLocal: () => false, withPublicReadRequest: handler => handler };
       if (!Object.hasOwn(mocks, name)) throw new Error(`격리되지 않은 의존성: ${name}`);
       return mocks[name];
     },
@@ -127,8 +128,6 @@ function routeFixture() {
 }
 
 for (const [route, body, query, status] of [
-  ['checkMembershipDiscord', { code: SECRET, redirectUri: 'https://example.invalid' }, {}, 500],
-  ['checkMembershipCsv', { userChannelId: 'channel' }, {}, 500],
   ['uploadMembershipCsv', { members: [{ channelId: 'channel' }] }, {}, 500],
   ['checkSheet', {}, { targetId: 'sheet' }, 200],
 ]) {
@@ -140,6 +139,27 @@ for (const [route, body, query, status] of [
     assertPrivate(f.logs, res.body);
   });
 }
+
+test('구버전 CSV API는410으로 거부하고 요청의 인증정보를 로그·응답에 남기지 않는다', async () => {
+  const f = routeFixture();
+  const res = response();
+  await f.exports.checkMembershipCsv({ method: 'POST', body: { userChannelId: SECRET, accessToken: SECRET },
+    query: { userChannelId: SECRET }, headers: { authorization: `Bearer ${SECRET}` } }, res);
+  assert.equal(res.statusCode, 410);
+  assert.equal(res.body.code, 'YOUTUBE_PROOF_REQUIRED');
+  assert.equal(res.body.success, false);
+  assert.equal(f.logs.length, 0);
+  assert.ok(!JSON.stringify({ logs: f.logs, body: res.body }).includes(SECRET));
+});
+
+test('구버전 Discord API는410으로 거부하며 비밀정보를 기록하지 않는다', async () => {
+  const f = routeFixture(), res = response();
+  await f.exports.checkMembershipDiscord({ method: 'POST', body: { code: SECRET, redirectUri: SECRET } }, res);
+  assert.equal(res.statusCode, 410);
+  assert.equal(res.body.code, 'DISCORD_PROOF_REQUIRED');
+  assert.equal(f.logs.length, 0);
+  assert.ok(!JSON.stringify(res.body).includes(SECRET));
+});
 
 for (const [method, general] of [['verifyUser', false], ['verifyAppCheck', false], ['verifyAppCheck', true]]) {
   test(`${method} 인증 오류는 토큰과 원본 오류 메시지를 기록하지 않는다 (general=${general})`, async () => {
@@ -154,7 +174,7 @@ for (const [method, general] of [['verifyUser', false], ['verifyAppCheck', false
     const res = response();
     const result = await f.exports[method]({ headers: { authorization: `Bearer ${SECRET}`, 'x-firebase-appcheck': SECRET } }, res);
     assert.ok(!result);
-    assert.equal(res.statusCode, 401);
+    assert.equal(res.statusCode, 503);
     assertPrivate(f.logs, res.body);
   });
 }

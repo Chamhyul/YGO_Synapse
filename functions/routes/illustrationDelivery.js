@@ -2,8 +2,11 @@
 'use strict';
 const { onRequest } = require('firebase-functions/v2/https');
 const { downloadProductionFile } = require('../config/firebase');
-const { createHandler, createLimiter } = require('../services/illustrationDelivery');
+const { isLocal } = require('../services/publicReadTransport');
+const { createHandler, createLimiter, createProductionIllustrationHandler } = require('../services/illustrationDelivery');
 
 exports.getIllustration = onRequest({ invoker: 'public', memory: '256MiB',
   timeoutSeconds: 15, maxInstances: 5, concurrency: 20 },
-createHandler({ download: downloadProductionFile, allow: createLimiter() }));
+(req, res) => (isLocal() ? localHandler : productionHandler)(req, res));
+const localHandler = createProductionIllustrationHandler();
+const productionHandler = createHandler({ download: downloadProductionFile, allow: createLimiter() });

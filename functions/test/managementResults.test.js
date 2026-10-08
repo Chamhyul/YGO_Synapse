@@ -9,7 +9,8 @@ function load(file, mocks) {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
     module, exports: module.exports, console: { error() {} }, Buffer, Date,
-    require(name) { if (!Object.hasOwn(mocks, name)) throw Error(`격리되지 않은 의존성: ${name}`); return mocks[name]; }
+    require(name) {
+      if (name === '../services/publicReadTransport' || name === './publicReadTransport') return { isLocal: () => false, withPublicReadRequest: handler => handler }; if (!Object.hasOwn(mocks, name)) throw Error(`격리되지 않은 의존성: ${name}`); return mocks[name]; }
   });
   return module.exports;
 }

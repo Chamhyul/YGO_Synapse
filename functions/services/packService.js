@@ -1,5 +1,5 @@
 const { requestCardIndexWork } = require('./cardIndexDispatchService');
-const { db, getProductionDb } = require("../config/firebase");
+const { getCardsByCids } = require("./cardQueryService");
 const { normalizeText } = require("../utils/common");
 const { searchPack, crawlCardInPack, getPackCids, LOCALE_TO_INDEX } = require("../scrapers/cardScraper");
 const { saveCardToFirestore } = require("./cardService");
@@ -77,12 +77,9 @@ async function crawlPackCardsBatch(options) {
     }
 
     const results = [];
-    // 로컬 개발에서도 크롤링 필요 여부는 운영 카드 DB를 기준으로 판단합니다.
-    // saveCardToFirestore는 기본 앱을 유지하므로 새로 크롤링한 결과만 로컬 DB에 기록됩니다.
-    const lookupDb = getProductionDb();
-    const docRefs = cids.map(cid => lookupDb.collection("cards").doc(cid));
-    const existingDocs = await lookupDb.getAll(...docRefs);
-    const existingMap = new Map(existingDocs.map(doc => [doc.id, doc]));
+    // 운영 카드 정보는 공개 API로 읽고 새 수집 결과는 기본 로컬 저장소에 기록한다.
+    const existingCards = await getCardsByCids(cids);
+    const existingMap = new Map(existingCards.map(card => [card.cid, card]));
 
     for (let i = 0; i < cids.length; i++) {
       const cid = cids[i];
@@ -91,8 +88,8 @@ async function crawlPackCardsBatch(options) {
       let cachedInfo = null;
       let matchedNo = "";
 
-      if (doc.exists) {
-        const d = doc.data();
+      if (doc) {
+        const d = { ...doc.data };
         d.info = require('../utils/cardSchema').toRuntimeInfo(d.info);
         cachedInfo = new Array(18).fill(null);
         if (d.info) {

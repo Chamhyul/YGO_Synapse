@@ -165,7 +165,8 @@ test('운영·로컬 주소 목록이 서버 등록과 일치하고 레거시 �
       assert.ok(sandbox.endpoints.getPackCids.startsWith('https://asia-northeast3-ygo-synapse.cloudfunctions.net/'));
       const localHost = hostname === 'localhost' ? '127.0.0.1' : hostname;
       assert.ok(sandbox.endpoints.addCards.startsWith(`http://${localHost}:5001/`));
-      assert.ok(sandbox.endpoints.searchCardByImage.startsWith(`http://${localHost}:5001/`));
+      // 사진 검색은 모델·인덱스 운영 키 없이 고정 운영 API를 사용한다.
+      assert.equal(sandbox.endpoints.searchCardByImage, 'https://asia-northeast3-ygo-synapse.cloudfunctions.net/searchCardByImage');
       assert.ok(sandbox.endpoints.crawlPackCardsBatch.startsWith(`http://${localHost}:5001/`));
       assert.match(source,/callApi\('crawlPackCardsBatch',[\s\S]*?\{ cids \}\)/);
     }

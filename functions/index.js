@@ -100,3 +100,17 @@ exports.getCardFullMetaByCid = cardRoutes.getCardMetadata;
 // 세션 쿠키를 검증한 뒤 관리자 독립 문서를 제공한다.
 exports.adminPages = require("./routes/admin/pages").adminPages;
 exports.adminBackend = require("./routes/admin/pages").adminBackend;
+
+// 키 없는 로컬 공개 조회와 실제 사용자 확인을 위한 운영 진입점.
+const publicReadRoutes = require("./routes/publicRead");
+exports.getPublicCardData = publicReadRoutes.getPublicCardData;
+exports.verifyUserIdentity = publicReadRoutes.verifyUserIdentity;
+
+// YouTube 채널 소유를 확인한 뒤 기존 CSV 목록과 비교한다.
+const youtubeMembershipRoutes = require("./routes/youtubeMembership");
+exports.startYoutubeMembershipVerification = youtubeMembershipRoutes.startYoutubeMembershipVerification;
+exports.verifyYoutubeMembership = youtubeMembershipRoutes.verifyYoutubeMembership;
+
+const discordMembershipRoutes = require('./routes/discordMembership');
+exports.startDiscordMembershipVerification = discordMembershipRoutes.startDiscordMembershipVerification;
+exports.verifyDiscordMembership = discordMembershipRoutes.verifyDiscordMembership;

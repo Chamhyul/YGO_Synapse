@@ -1,6 +1,18 @@
 const { db } = require('../config/firebase');
 const { normalizeText } = require('../utils/common');
 const { toRuntimeInfo } = require('../utils/cardSchema');
+const { isLocal, requestProduction } = require('./publicReadTransport');
+
+async function readProductionCards(body) {
+  const result = await requestProduction('getPublicCardData', body);
+  if (!Array.isArray(result.cards) || result.cards.length > 100 || result.cards.some(card =>
+    !card || typeof card.cid !== 'string' || !/^[1-9]\d{0,9}$/.test(card.cid)
+    || !card.data || !Array.isArray(card.data.names) || !Array.isArray(card.data.numbers)
+    || !card.data.info || typeof card.data.info !== 'object')) {
+    throw new Error('운영 카드 조회 응답이 올바르지 않습니다.');
+  }
+  return result.cards.map(card => ({ cid: card.cid, data: card.data, info: toRuntimeInfo(card.data.info) }));
+}
 
 const TTL = 60 * 1000;
 const documents = new Map();
@@ -43,6 +55,10 @@ async function cachedRead(key, operation) {
 async function getCardByCid(cid) {
   const id = String(cid || '').trim();
   if (!id || id.includes('/')) return null;
+  if (isLocal()) {
+    if (!/^[1-9]\d{0,9}$/.test(id)) return null;
+    return (await getCardsByCids([id]))[0] || null;
+  }
   const cached = documents.get(id);
   if (cached && cached.expires > Date.now()) return cached.value;
   return cachedRead(`cid:${id}`, async () => {
@@ -56,6 +72,20 @@ async function getCardByCid(cid) {
 
 async function getCardsByCids(cids) {
   const ids = [...new Set(cids.map(value => String(value).trim()))].filter(id => id && !id.includes('/'));
+  if (isLocal()) {
+    const found = new Map();
+    for (let offset = 0; offset < ids.length; offset += 100) {
+      for (const card of await readProductionCards({ cids: ids.slice(offset, offset + 100) })) found.set(card.cid, card);
+    }
+    // 로컬에서 수집한 카드만 로컬 결과를 우선하며 저장 대상은 바꾸지 않는다.
+    if (ids.length) {
+      const snapshots = await db.getAll(...ids.map(id => db.collection('cards').doc(id)));
+      for (const doc of snapshots) if (doc.exists) {
+        const data = doc.data(); found.set(doc.id, { cid: doc.id, data, info: toRuntimeInfo(data.info) });
+      }
+    }
+    return ids.map(id => found.get(id)).filter(Boolean);
+  }
   const found = new Map();
   const missing = [];
   for (const id of ids) {
@@ -82,6 +112,15 @@ async function getCardsByCids(cids) {
 async function findCards(field, input) {
   const value = field === 'numbers' ? normalizeNumber(input) : normalizeText(input);
   if (!value) return [];
+  if (isLocal()) {
+    const remote = await readProductionCards({ field, value });
+    const found = new Map(remote.map(card => [card.cid, card]));
+    const snapshot = await db.collection('cards').where(field, 'array-contains', value).get();
+    for (const doc of snapshot.docs) {
+      const data = doc.data(); found.set(doc.id, { cid: doc.id, data, info: toRuntimeInfo(data.info) });
+    }
+    return [...found.values()];
+  }
   return cachedRead(`${field}:${value}`, async () => {
     const started = revision;
     const snapshot = await db.collection('cards').where(field, 'array-contains', value).get();
@@ -135,6 +174,7 @@ async function mapLimited(values, fn, concurrency = 5) {
 
 // 구형 탭 전환용 응답입니다. 새 클라이언트는 요청하지 않으며 JSON 인덱스를 읽지 않습니다.
 async function getLegacyCidMap() {
+  if (isLocal()) throw new Error('로컬에서는 공개 카드 목록 API를 사용하세요.');
   return cachedRead('legacy-cids', async () => {
     const result = Object.create(null);
     let cursor = null;

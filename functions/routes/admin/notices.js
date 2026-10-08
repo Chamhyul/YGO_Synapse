@@ -77,7 +77,7 @@ exports.manageAdminRole = onRequest(
         return res.json({ success: true, count: adminList.length, adminList });
       }
 
-      // ── action: setAdmin 또는 setOwner (권한 지정 및 DB 멤버십 연동) ───
+      // ── action: setAdmin 또는 setOwner (현재 계정 권한 지정) ───
       if (action === "setAdmin" || action === "setOwner") {
         // 관리자 지정/박탈은 오직 owner (총책임자) 권한 보유자만 실행 가능 (권한 싸움 방지)
         if (caller.role !== "owner") {
@@ -101,37 +101,7 @@ exports.manageAdminRole = onRequest(
           admin: targetIsAdmin
         });
 
-        // 2. Firestore DB users/{targetUid} 멤버십 상태 자동 반영 및 원복
-        const userRef = db.collection("users").doc(targetUid);
-        if (targetIsAdmin) {
-          // 관리자 등록 시: Administrator 멤버십 혜택 자동 부여
-          await userRef.set({
-            settings: {
-              membership: {
-                status: "active",
-                levelName: "Administrator",
-                lastChecked: Date.now()
-              }
-            }
-          }, { merge: true });
-        } else {
-          // 관리자 해제 시: 기존 레벨명이 Administrator인 경우 일반유저(none)로 자동 원복
-          const snap = await userRef.get();
-          if (snap.exists) {
-            const data = snap.data() || {};
-            const mem = (data.settings && data.settings.membership) || {};
-            if (mem.levelName === "Administrator") {
-              await userRef.set({
-                settings: {
-                  membership: {
-                    status: "none",
-                    lastChecked: Date.now()
-                  }
-                }
-              }, { merge: true });
-            }
-          }
-        }
+        // 회원 혜택은 현재 Auth 권한에서 계산하며 외부 회원 기록은 덮어쓰지 않는다.
 
         console.log(`[ManageAdminRole] ${action}: targetUid=${targetUid}, role=${newRole}`);
         return res.json({

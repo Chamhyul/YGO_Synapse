@@ -1,0 +1,9 @@
+const { onRequest } = require('firebase-functions/v2/https');
+const { db } = require('../config/firebase');
+const { isLocal } = require('../services/publicReadTransport');
+const { verifyAppCheck, verifyUser, getVerifiedAccountRole, setCors } = require('../utils/auth');
+const { createPublicReadHandlers } = require('../services/publicReadApi');
+const handlers = createPublicReadHandlers({ db, isLocal, verifyAppCheck, verifyUser, getVerifiedAccountRole, setCors });
+const options = { invoker: 'public', memory: '256MiB', timeoutSeconds: 30, maxInstances: 5, concurrency: 20 };
+exports.getPublicCardData = onRequest(options, handlers.getPublicCardData);
+exports.verifyUserIdentity = onRequest(options, handlers.verifyUserIdentity);

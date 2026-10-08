@@ -2,10 +2,11 @@ const test=require('node:test'),assert=require('node:assert/strict'),vm=require(
 const source=fs.readFileSync(require('node:path').join(__dirname,'../routes/admin/notices.js'),'utf8');
 function fixture({valid=true,role='admin',disabled=false}={}) {
  let writes=0,revokedCheck;
- const auth={async verifyIdToken(token,check){revokedCheck=check;if(!valid)throw Error();return{uid:'test-user'};},async getUser(){return{disabled,customClaims:{role}};}};
+ const auth={async verifyIdToken(token,check){revokedCheck=check;if(!valid)throw Object.assign(Error(),{code:'auth/argument-error'});return{uid:'test-user'};},async getUser(){return{disabled,customClaims:{role}};}};
  const authModule={exports:{}};
  vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname,'../utils/auth.js'),'utf8'), {
   module:authModule,process:{env:{}},console:{error(){}},require(name){
+   if(name==='../services/publicReadTransport')return{isLocal:()=>false};
    if(name==='../config/firebase')return{admin:{auth:()=>auth}};
    if(name==='./safeError')return{safeErrorSummary:()=>({type:'internal_error'})};
    throw Error(name);

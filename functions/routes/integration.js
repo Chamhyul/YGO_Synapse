@@ -1,18 +1,9 @@
 const { forwardAdminRequest } = require('../services/adminActionTransport');
 const { onRequest } = require("firebase-functions/v2/https");
-const { 
-  db,
-  admin,
-  DISCORD_BOT_TOKEN,
-  DISCORD_CLIENT_SECRET,
-  DISCORD_CLIENT_ID,
-  DISCORD_GUILD_ID,
-  DISCORD_ROLE_ID
-} = require("../config/firebase");
-const { setCors, verifyAppCheck, verifyAdmin, verifyRegisteredUser } = require("../utils/auth");
+const { db } = require("../config/firebase");
+const { setCors, verifyAppCheck, verifyAdmin } = require("../utils/auth");
 const { safeErrorSummary } = require("../utils/safeError");
 const sheets = require("../integrations/googleSheets");
-const { getDiscordUserWithCode, checkGuildMemberRole } = require("../integrations/discord");
 
 exports.checkSheet = onRequest({ invoker: "public" }, async (req, res) => {
   setCors(res, req);
@@ -36,213 +27,22 @@ exports.checkSheet = onRequest({ invoker: "public" }, async (req, res) => {
   }
 });
 
-/**
- * 유저 계정의 최상위 권한(owner/admin/none)을 Firebase Auth Custom Claims 기반 단독 조회
- */
-async function getUserRoleFromAuth(uid) {
-  try {
-    const authUser = await admin.auth().getUser(uid);
-    const claims = authUser.customClaims || {};
-    if (claims.role === "owner") return "owner";
-    if (claims.role === "admin" || claims.admin === true) return "admin";
-    return "none";
-  } catch (e) {
-    console.error("getUserRoleFromAuth error:", safeErrorSummary(e));
-    return "none";
-  }
-}
-
-// [메인] 디스코드 서버 역할 기반 멤버십 검증
-exports.checkMembershipDiscord = onRequest({
-  invoker: "public",
-  secrets: [DISCORD_BOT_TOKEN, DISCORD_CLIENT_SECRET]
-}, async (req, res) => {
+// 구버전의 state 없는 Discord 인증 경로는 저장 없이 차단한다.
+exports.checkMembershipDiscord = onRequest({ invoker: 'public' }, async (req, res) => {
   setCors(res, req);
-  if (req.method === "OPTIONS") return res.status(204).send("");
-
-  const uid = await verifyRegisteredUser(req, res);
-  if (!uid) return;
-
-  const code = req.body && req.body.code;
-  const redirectUri = req.body && req.body.redirectUri;
-
-  if (!code || !redirectUri) {
-    return res.status(400).json({ success: false, message: "Discord authorization code와 redirectUri가 필요합니다." });
-  }
-
-  try {
-    let botToken = "";
-    let clientSecret = "";
-
-    try {
-      botToken = DISCORD_BOT_TOKEN.value();
-    } catch (e) {
-      botToken = process.env.DISCORD_BOT_TOKEN || "";
-    }
-
-    try {
-      clientSecret = DISCORD_CLIENT_SECRET.value();
-    } catch (e) {
-      clientSecret = process.env.DISCORD_CLIENT_SECRET || "";
-    }
-
-    if (!botToken || !clientSecret) {
-      return res.status(500).json({ 
-        success: false, 
-        message: "서버에 디스코드 봇 토큰 또는 시크릿 설정이 누락되어 있습니다." 
-      });
-    }
-
-    // 1. OAuth code로 Discord 유저 정보 획득
-    const discordUser = await getDiscordUserWithCode(code, redirectUri, DISCORD_CLIENT_ID, clientSecret);
-
-    // 2. 디스코드 봇 API로 크리에이터 서버 멤버 역할 목록 조회
-    const roleCheck = await checkGuildMemberRole(botToken, DISCORD_GUILD_ID, discordUser.id, DISCORD_ROLE_ID);
-    const userRoles = roleCheck.roles || [];
-
-    // 3. Auth Custom Claims 단독 계정 권한(role) 조회 (owner / admin 여부)
-    const userAccountRole = await getUserRoleFromAuth(uid);
-
-    // 4. 우선순위에 따른 등급 이름 (levelName) 및 활성화(isMemberActive) 결정
-    let levelName = null;
-    let isMemberActive = false;
-
-    // 디스코드 역할 ID 매핑 (우선순위 순으로 정렬)
-    const ROLE_MAP = [
-      { id: "1462257396020809804", name: "이사님" },
-      { id: "1462257396020809803", name: "간부" },
-      { id: "1462257396020809802", name: "분대장" },
-      { id: "1462257396020809801", name: "대원" },
-      { id: "1462257396020809800", name: "유튜브 멤버십" },
-      { id: "914789528487735317",  name: "디스코드 서버 부스터" }
-    ];
-
-    // 우선순위 1: 소유자
-    if (userAccountRole === "owner") {
-      levelName = "소유자";
-      isMemberActive = true;
-    }
-    // 우선순위 2: 관리자
-    else if (userAccountRole === "admin") {
-      levelName = "관리자";
-      isMemberActive = true;
-    }
-    // 우선순위 3~5: 디스코드 역할군
-    else {
-      for (const item of ROLE_MAP) {
-        if (userRoles.includes(item.id)) {
-          levelName = item.name;
-          isMemberActive = true;
-          break; // 가장 높은 우선순위 하나만 선택
-        }
-      }
-    }
-
-    if (!isMemberActive) {
-      levelName = "일반";
-    }
-
-    const membership = {
-      status: isMemberActive ? "active" : "none",
-      type: "discord",
-      levelName: levelName,
-      discordId: discordUser.id,
-      discordUsername: discordUser.username,
-      lastChecked: Date.now()
-    };
-
-    // 5. Firestore 사용자 설정에 저장
-    await db.collection("users").doc(uid).set({
-      settings: {
-        membership
-      }
-    }, { merge: true });
-
-    return res.json({
-      success: true,
-      membership,
-      isMemberActive,
-      discordUser,
-      details: isMemberActive ? `멤버십 인증 완료 (${levelName})` : "디스코드 서버에 가입되어 있지 않거나 인증 가능한 역할이 없음"
-    });
-
-  } catch (err) {
-    console.error("checkMembershipDiscord error:", safeErrorSummary(err));
-    return res.status(500).json({
-      success: false,
-      message: "디스코드 멤버십 연동에 실패했습니다. 잠시 후 다시 시도해 주세요."
-    });
-  }
+  res.set('Cache-Control', 'no-store');
+  if (req.method === 'OPTIONS') return res.status(204).send('');
+  return res.status(410).json({ success: false, code: 'DISCORD_PROOF_REQUIRED',
+    message: '새로고침 후 Discord 인증을 다시 진행해 주세요.' });
 });
 
-// [보조] 유튜브 채널 ID 기반 CSV 회원 목록 비교 멤버십 검증
-exports.checkMembershipCsv = onRequest({
-  invoker: "public"
-}, async (req, res) => {
+// 구버전의 임의 채널 ID 제출 경로는 회원 상태를 변경하지 않는다.
+exports.checkMembershipCsv = onRequest({ invoker: "public" }, async (req, res) => {
   setCors(res, req);
-  if (req.method === "OPTIONS") return res.status(204).send("");
-
-  const uid = await verifyRegisteredUser(req, res);
-  if (!uid) return;
-
-  const userChannelId = (req.body && req.body.userChannelId) || req.query.userChannelId;
-  if (!userChannelId) {
-    return res.status(400).json({ success: false, message: "userChannelId가 누락되었습니다." });
-  }
-
-  try {
-    // 1. Auth Custom Claims 단독 계정 권한(role) 조회 (owner / admin 여부)
-    const userRole = await getUserRoleFromAuth(uid);
-
-    // 2. Firestore membership_csv_users 문서 확인
-    const csvDocRef = db.collection("membership_csv_users").doc(userChannelId);
-    const docSnap = await csvDocRef.get();
-
-    const isCsvMember = docSnap.exists;
-    const memberData = docSnap.data() || {};
-
-    let isMemberActive = isCsvMember;
-    let finalLevelName = "일반";
-
-    // 우선순위 판별 (1순위: 소유자 > 2순위: 관리자 > 3순위: CSV 등록 멤버십 등급)
-    if (userRole === "owner") {
-      isMemberActive = true;
-      finalLevelName = "소유자";
-    } else if (userRole === "admin") {
-      isMemberActive = true;
-      finalLevelName = "관리자";
-    } else if (isCsvMember) {
-      finalLevelName = memberData.levelName || "유튜브 멤버십";
-    }
-
-    const membership = {
-      status: isMemberActive ? "active" : "none",
-      type: "csv",
-      levelName: finalLevelName,
-      userChannelId: userChannelId,
-      lastChecked: Date.now()
-    };
-
-    // 3. Firestore 사용자 설정에 저장
-    await db.collection("users").doc(uid).set({
-      settings: {
-        membership
-      }
-    }, { merge: true });
-
-    return res.json({
-      success: true,
-      membership,
-      isMemberActive
-    });
-
-  } catch (err) {
-    console.error("checkMembershipCsv error:", safeErrorSummary(err));
-    return res.status(500).json({
-      success: false,
-      message: "CSV 멤버십 검증에 실패했습니다. 잠시 후 다시 시도해 주세요."
-    });
-  }
+  res.set('Cache-Control', 'no-store');
+  if (req.method === 'OPTIONS') return res.status(204).send('');
+  return res.status(410).json({ success: false, code: 'YOUTUBE_PROOF_REQUIRED',
+    message: '새로고침 후 YouTube 인증을 다시 진행해 주세요.' });
 });
 
 /**

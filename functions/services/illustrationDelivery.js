@@ -62,3 +62,45 @@ function createLimiter(limit = 180, windowMs = 60000) {
   };
 }
 module.exports = { PREFIX, INDEX, parseRequest, cardIndex, createHandler, createLimiter };
+
+// 이미지 요소에는 App Check 헤더를 붙일 수 없어 기존 카드별 경로·요청량 제한을 유지한다.
+function createProductionIllustrationDownload({ fetchImpl = fetch } = {}) {
+  return async objectPath => {
+    const match = /^private\/illustrations\/([1-9]\d{0,9}_[1-9]\d{0,3})\.webp$/.exec(objectPath);
+    if (!match) throw new Error('허용되지 않은 일러스트 경로입니다.');
+    const response = await fetchImpl(`https://ygo-synapse.web.app/api/illustrations/${match[1]}.webp`, {
+      redirect: 'error', signal: AbortSignal.timeout(12000),
+    });
+    if (!response.ok) throw Object.assign(new Error('일러스트 조회 실패'), { code: response.status === 404 ? 404 : 503 });
+    if (!response.headers.get('content-type')?.includes('image/webp')) throw new Error('잘못된 일러스트 응답입니다.');
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > 5 * 1024 * 1024) throw new Error('일러스트 크기 제한을 초과했습니다.');
+    return bytes;
+  };
+}
+function createProductionIllustrationHandler({ fetchImpl = fetch, allow = createLimiter() } = {}) {
+  const download = createProductionIllustrationDownload({ fetchImpl });
+  return async (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (req.method !== 'GET') return res.status(405).end();
+    const input = parseRequest(req.path);
+    if (!input) return res.status(404).end();
+    if (!allow(req.ip)) return res.status(429).end();
+    try {
+      if (input.ciid) {
+        res.setHeader('Content-Type', 'image/webp');
+        return res.send(await download(`private/illustrations/${input.cid}_${input.ciid}.webp`));
+      }
+      const response = await fetchImpl(`https://ygo-synapse.web.app/api/illustrations/${input.cid}.json`, {
+        redirect: 'error', signal: AbortSignal.timeout(12000),
+      });
+      if (!response.ok) throw Object.assign(new Error('조회 실패'), { code: response.status });
+      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('응답 오류');
+      const data = await response.json();
+      if (!data || !data.files || typeof data.files !== 'object' || Array.isArray(data.files)) throw new Error('응답 오류');
+      return res.json(cardIndex(data, input.cid));
+    } catch (error) { return res.status(error.code === 404 ? 404 : 503).end(); }
+  };
+}
+module.exports.createProductionIllustrationHandler = createProductionIllustrationHandler;
