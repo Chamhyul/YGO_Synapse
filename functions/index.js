@@ -114,3 +114,6 @@ exports.verifyYoutubeMembership = youtubeMembershipRoutes.verifyYoutubeMembershi
 const discordMembershipRoutes = require('./routes/discordMembership');
 exports.startDiscordMembershipVerification = discordMembershipRoutes.startDiscordMembershipVerification;
 exports.verifyDiscordMembership = discordMembershipRoutes.verifyDiscordMembership;
+
+// 제삼자용 API 키 기반 DB 전용 카드 조회.
+exports.getCardInfo = require('./routes/cardInfo').getCardInfo;
