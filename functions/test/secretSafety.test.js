@@ -120,6 +120,8 @@ function routeFixture() {
       DISCORD_BOT_TOKEN: secret, DISCORD_CLIENT_SECRET: secret,
     },
     '../services/adminActionTransport': { forwardAdminRequest: async () => false },
+    'node:crypto': require('node:crypto'),
+    '../services/membershipCsvService': require('../services/membershipCsvService'),
     '../utils/auth': { setCors() {}, verifyAppCheck: async () => true, verifyAdmin: async () => ({uid:'uid',role:'admin'}), verifyRegisteredUser: async () => 'uid' },
     '../utils/safeError': { safeErrorSummary },
     '../integrations/googleSheets': { getSpreadsheetMetadata: async () => { throw error; } },
@@ -128,7 +130,7 @@ function routeFixture() {
 }
 
 for (const [route, body, query, status] of [
-  ['uploadMembershipCsv', { members: [{ channelId: 'channel' }] }, {}, 500],
+  ['uploadMembershipCsv', { members: [{ channelId: 'UC'+'a'.repeat(22), memberName:'합성 회원', levelName:'합성 등급' }] }, {}, 503],
   ['checkSheet', {}, { targetId: 'sheet' }, 200],
 ]) {
   test(`${route} 실패 로그와 클라이언트 응답에 인증정보를 포함하지 않는다`, async () => {

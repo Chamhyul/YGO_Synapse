@@ -72,7 +72,7 @@ async function renderAdminDocument({ template, pathname, access, code = 200, exp
   }
   return $.html();
 }
-function createAdminPageHandler({ auth, store, template, getErrorSummary, getTrafficSummary, notices, now = Date.now }) {
+function createAdminPageHandler({ auth, store, template, getErrorSummary, getTrafficSummary, notices, membershipCsv, now = Date.now }) {
   function setCookie(req, res, value) {
     const secure = !localHttp(originOf(req));
     // 쿠키 자체는 브라우저 세션 동안만 유지하고 만료는 서버에서 검사한다.
@@ -110,20 +110,32 @@ function createAdminPageHandler({ auth, store, template, getErrorSummary, getTra
     const getSummary = pathname === '/admin/api/traffic' ? getTrafficSummary : getErrorSummary;
     const noticeApi = pathname === '/admin/api/notices' || pathname === '/admin/api/notices/preview';
     const noticeWrite = noticeApi && req.method === 'POST';
+    const membershipApi = ['/admin/api/membership-csv', '/admin/api/membership-csv/preview', '/admin/api/membership-csv/status'].includes(pathname);
+    if (membershipApi && (pathname !== '/admin/api/membership-csv' ? req.method !== 'POST' : !['GET','POST'].includes(req.method))) return res.status(405).json({success:false});
     if (noticeApi && !['GET','POST'].includes(req.method)) return res.status(405).json({success:false});
     if (pathname.endsWith('/preview') && req.method !== 'POST') return res.status(405).json({success:false});
     const endpoint = ['/admin/session', '/admin/session/activity', '/admin/session/logout'].includes(pathname);
     if (errorApi && req.method !== 'GET') return res.status(405).json({ success: false });
-    if (endpoint || noticeWrite) {
+    if (endpoint || noticeWrite || membershipApi && req.method === 'POST') {
       if (req.method !== 'POST') return res.status(405).json({ success: false });
       const origin = originOf(req);
       if (req.headers.origin !== origin || !(origin.startsWith('https://') || localHttp(origin))
           || !String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
         return res.status(403).json({ success: false });
       }
-    } else if (!errorApi && !noticeApi && !PAGES.has(pathname)) return res.status(404).send('페이지를 찾을 수 없습니다.');
+    } else if (!errorApi && !noticeApi && !membershipApi && !PAGES.has(pathname)) return res.status(404).send('페이지를 찾을 수 없습니다.');
     else if (!['GET', 'HEAD'].includes(req.method)) return res.status(405).send('허용되지 않는 요청입니다.');
     try {
+      if (membershipApi) {
+        const access = await checkedSession(req);
+        if (!access) return res.status(401).json({success:false});
+        if (!membershipCsv) return res.status(503).json({success:false});
+        if (new URL(req.originalUrl || req.url, 'http://localhost').search) return res.status(400).json({success:false});
+        const result = pathname.endsWith('/preview') ? await membershipCsv.preview(req.body)
+          : pathname.endsWith('/status') ? await membershipCsv.status(req.body, access.uid)
+          : req.method === 'GET' ? await membershipCsv.summary() : await membershipCsv.apply(req.body, access.uid);
+        return res.json({success:true,...result});
+      }
       if (noticeApi) {
         const access = await checkedSession(req);
         if (!access) return res.status(401).json({success:false});
@@ -180,7 +192,8 @@ function createAdminPageHandler({ auth, store, template, getErrorSummary, getTra
     } catch (error) {
       // 오류 원문이나 계정·쿠키·토큰은 출력하지 않는다.
       if (noticeApi && [400,404,409].includes(error.status)) return res.status(error.status).json({success:false,message:error.message});
-      return endpoint || errorApi || noticeApi ? res.status(503).json({ success: false }) : render(req, res, pathname, null, 503);
+      if (membershipApi && typeof error.code === 'string' && error.code.startsWith('MEMBERSHIP_CSV_')) return res.status(error.status).json({success:false,code:error.code,message:error.message});
+      return endpoint || errorApi || noticeApi || membershipApi ? res.status(503).json({ success: false }) : render(req, res, pathname, null, 503);
     }
   };
 }

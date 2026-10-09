@@ -6,6 +6,7 @@ const { createAdminPageHandler, createFirestoreStore } = require('../../services
 const { createErrorSummaryService } = require('../../services/adminErrorSummary');
 const { createTrafficSummaryService } = require('../../services/adminTrafficSummary');
 const { createNoticeService, createStorageNoticeStore } = require('../../services/noticeService');
+const { createMembershipCsvService, createFirestoreMembershipCsvStore } = require('../../services/membershipCsvService');
 const { createAdminProxy, createAdminBackendHandler, createLocalAdminRenderer, emulatorConfigured } = require('../../services/adminTransport');
 const { google } = require('googleapis');
 let productionHandler;
@@ -41,6 +42,7 @@ function production() {
   productionHandler = createAdminPageHandler({
     auth: admin.auth(), store: createFirestoreStore(db), getErrorSummary, getTrafficSummary,
     notices: createNoticeService({ storage: createStorageNoticeStore(admin.storage().bucket()), environment: 'production' }),
+    membershipCsv: createMembershipCsvService({ store: createFirestoreMembershipCsvStore(db) }),
     template: name => fs.readFile(path.join(__dirname, '../../templates/admin', name + '.html'), 'utf8')
   });
   return productionHandler;

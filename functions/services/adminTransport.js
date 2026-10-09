@@ -5,6 +5,7 @@ const BACKEND_URL = 'https://asia-northeast3-ygo-synapse.cloudfunctions.net/admi
 const BACKEND_HEADER = 'X-YGO-Admin-Backend';
 const ROUTES = new Set([...PAGES.keys(), '/admin/api/errors', '/admin/api/traffic',
   '/admin/api/notices', '/admin/api/notices/preview', '/admin/session',
+  '/admin/api/membership-csv', '/admin/api/membership-csv/preview', '/admin/api/membership-csv/status',
   '/admin/session/activity', '/admin/session/logout']);
 function routeOf(route) {
   if (typeof route !== 'string' || !route.startsWith('/') || route.startsWith('//') || route.length > 4096) return null;
