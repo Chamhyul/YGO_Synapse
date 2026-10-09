@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-const { createCardApiAccess, newKey, keyOptions } = require('../functions/services/cardApiAccess');
+const { UNLIMITED, createCardApiAccess, newKey, keyOptions } = require('../functions/services/cardApiAccess');
 const { initializeDataToolFirebaseApp } = require('./cloud_credentials');
 const ROOT = path.resolve(__dirname, '..');
 function parseArgs(argv) {
@@ -24,8 +24,8 @@ function parseArgs(argv) {
   if (command === 'issue') {
     if (result.id !== undefined) throw new Error('issue는 ID를 직접 받지 않습니다.');
     result.options = keyOptions({ label: result.label, origins: result.origins,
-      minuteLimit: result.minuteLimit === undefined ? 60 : Number(result.minuteLimit),
-      dayLimit: result.dayLimit === undefined ? 5000 : Number(result.dayLimit),
+      minuteLimit: result.minuteLimit === undefined ? 60 : result.minuteLimit === UNLIMITED ? UNLIMITED : Number(result.minuteLimit),
+      dayLimit: result.dayLimit === undefined ? 5000 : result.dayLimit === UNLIMITED ? UNLIMITED : Number(result.dayLimit),
       expiresAt: result.expiresAt === undefined ? null : Date.parse(result.expiresAt) });
   } else {
     if (!/^[a-f0-9]{24}$/.test(result.id || '')) throw new Error('유효한 키 ID가 필요합니다.');

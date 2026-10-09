@@ -26,3 +26,13 @@ test('키 원문 파일: 저장소 밖·0600·덮어쓰기 및 심볼릭 링크 
     assert.throws(() => saveKey(path.join(__dirname, 'key.json'), key, 'emulator'));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+test('관리 도구의 unlimited 식별자: 개별/동시 지정·미적용·오타 거부', () => {
+  const args = ['issue', '--label', '합성 무제한', '--emulator', '127.0.0.1:5003', '--out', '/tmp/synthetic-unlimited-key.json'];
+  const both = [...args, '--minute-limit', 'unlimited', '--day-limit', 'unlimited'];
+  assert.equal(parseArgs(both).options.minuteLimit, 'unlimited'); assert.equal(parseArgs(both).options.dayLimit, 'unlimited');
+  assert.equal(parseArgs([...args, '--minute-limit', 'unlimited']).options.dayLimit, 5000);
+  assert.equal(parseArgs([...args, '--day-limit', 'unlimited']).options.minuteLimit, 60);
+  for (const invalid of ['Unlimited', 'null', 'none', 'Infinity']) assert.throws(() => parseArgs([...args, '--minute-limit', invalid]));
+  const stdout = execFileSync(process.execPath, [script, ...both], { encoding: 'utf8' });
+  assert.match(stdout, /미적용/); assert.equal(fs.existsSync('/tmp/synthetic-unlimited-key.json'), false);
+});

@@ -143,3 +143,44 @@ test('실제 HTTP 파싱에서 중복 쿼리 거부·CORS·키 헤더·JSON 상�
     assert.equal((await fetch(url, { method: 'OPTIONS', headers: { Origin: 'https://example.org', 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'X-API-Key' } })).status, 204);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
+test('unlimited는 분/일별 한도만 면제하고 집계·헤더·교체·인증 조건 유지', async () => {
+  const f = await fixture({ minuteLimit: 'unlimited', dayLimit: 'unlimited' });
+  // 이전 기본 일 한도보다 많이 쓴 상태에서도 같은 UTC 창에서 조회 가능.
+  f.rows.set(`cardApiUsage/${f.key.id}`, { minute: Math.floor(Date.UTC(2026, 9, 10, 0, 0, 30) / 60000),
+    day: Math.floor(Date.UTC(2026, 9, 10) / 86400000), minuteCount: 6000, dayCount: 6000 });
+  const calls = await Promise.all(Array.from({ length: 8 }, () => f.call()));
+  assert.ok(calls.every(r => r.statusCode === 200));
+  const res = calls[0];
+  for (const header of ['X-RateLimit-Limit-Minute', 'X-RateLimit-Remaining-Minute', 'X-RateLimit-Limit-Day', 'X-RateLimit-Remaining-Day']) assert.equal(res.headers[header], 'unlimited');
+  assert.equal(f.rows.get(`cardApiUsage/${f.key.id}`).dayCount, 6008);
+  const replacement = newKey(f.key.id); await f.access.rotate(replacement);
+  assert.equal((await f.access.authenticate(replacement.token)).dayLimit, 'unlimited');
+  assert.equal((await f.call()).statusCode, 401);
+  await assert.rejects(f.access.consume(replacement.token, 'https://evil.org'), { status: 403 });
+  await f.access.disable(f.key.id);
+  await assert.rejects(f.access.consume(replacement.token), { status: 403 });
+});
+test('분/일 한도 각각 면제해도 다른 유한 한도는 집행하며 UTC 경계 후 집계', async () => {
+  for (const options of [{ minuteLimit: 'unlimited', dayLimit: 2 }, { minuteLimit: 2, dayLimit: 'unlimited' }]) {
+    const f = await fixture(options);
+    assert.equal((await f.call()).statusCode, 200); assert.equal((await f.call()).statusCode, 200);
+    const rejected = await f.call(); assert.equal(rejected.statusCode, 429);
+    assert.equal(rejected.headers['Retry-After'], options.dayLimit === 2 ? '86370' : '30');
+    assert.equal(f.rows.get(`cardApiUsage/${f.key.id}`).dayCount, 2);
+    f.advance(86400000); assert.equal((await f.call()).statusCode, 200);
+    assert.equal(f.rows.get(`cardApiUsage/${f.key.id}`).dayCount, 1);
+  }
+});
+test('무제한은 정확한 식별자만 허용하고 손상 설정·집계는 거부', async () => {
+  for (const value of [null, 0, -1, true, false, 'Unlimited', 'none', '60', Infinity]) {
+    assert.throws(() => keyOptions({ label: '합성', minuteLimit: value }), { status: 400 });
+    assert.throws(() => keyOptions({ label: '합성', dayLimit: value }), { status: 400 });
+    const f = await fixture(); f.rows.get(`cardApiKeys/${f.key.id}`).minuteLimit = value;
+    assert.equal((await f.call()).statusCode, 503);
+  }
+  const f = await fixture({ minuteLimit: 'unlimited', dayLimit: 'unlimited' });
+  f.rows.set(`cardApiUsage/${f.key.id}`, { minute: Math.floor(Date.UTC(2026, 9, 10, 0, 0, 30) / 60000), minuteCount: Number.MAX_SAFE_INTEGER });
+  assert.equal((await f.call()).statusCode, 503);
+  f.rows.get(`cardApiKeys/${f.key.id}`).expiresAt = 1;
+  assert.equal((await f.call()).statusCode, 403);
+});

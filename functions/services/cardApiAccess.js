@@ -4,6 +4,9 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 const KEY_ID = /^[a-f0-9]{24}$/;
 const TOKEN = /^ygo_([a-f0-9]{24})\.([A-Za-z0-9_-]{43})$/;
 const scope = 'getCardInfo';
+const UNLIMITED = 'unlimited';
+const validLimit = (value, max = Number.MAX_SAFE_INTEGER) => value === UNLIMITED ||
+  (Number.isSafeInteger(value) && value >= 1 && value <= max);
 function failure(status, code) { return Object.assign(new Error(code), { status, code }); }
 function newKey(id = randomBytes(12).toString('hex')) {
   if (!KEY_ID.test(id)) throw failure(400, 'INVALID_KEY_ID');
@@ -20,8 +23,7 @@ function validOrigin(origin) {
 }
 function keyOptions({ label, origins = [], minuteLimit = 60, dayLimit = 5000, expiresAt = null }) {
   if (typeof label !== 'string' || !label.trim() || label.length > 100 || !Array.isArray(origins) || origins.length > 20 || !origins.every(validOrigin) ||
-    !Number.isSafeInteger(minuteLimit) || minuteLimit < 1 || minuteLimit > 600 ||
-    !Number.isSafeInteger(dayLimit) || dayLimit < 1 || dayLimit > 100000 ||
+    !validLimit(minuteLimit, 600) || !validLimit(dayLimit, 100000) ||
     (expiresAt !== null && (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()))) throw failure(400, 'INVALID_KEY_OPTIONS');
   return { label: label.trim(), origins: [...new Set(origins)], minuteLimit, dayLimit, expiresAt, scope, enabled: true };
 }
@@ -35,8 +37,7 @@ function verifyRecord(record, parsed, now) {
     !timingSafeEqual(Buffer.from(record.secretHash, 'hex'), Buffer.from(parsed.secretHash, 'hex'))) throw failure(401, 'API_KEY_INVALID');
   if (!record.enabled || record.scope !== scope || (record.expiresAt !== null && (!Number.isSafeInteger(record.expiresAt) || record.expiresAt <= now))) throw failure(403, 'API_KEY_DISABLED');
   if (!Array.isArray(record.origins) || !record.origins.every(validOrigin) ||
-      !Number.isSafeInteger(record.minuteLimit) || record.minuteLimit < 1 ||
-      !Number.isSafeInteger(record.dayLimit) || record.dayLimit < 1) throw failure(503, 'API_UNAVAILABLE');
+      !validLimit(record.minuteLimit) || !validLimit(record.dayLimit)) throw failure(503, 'API_UNAVAILABLE');
   return record;
 }
 function createCardApiAccess(db, clock = Date.now) {
@@ -61,14 +62,16 @@ function createCardApiAccess(db, clock = Date.now) {
         const old = (await tx.get(ref)).data() || {};
         const minuteCount = old.minute === minute ? old.minuteCount : 0;
         const dayCount = old.day === day ? old.dayCount : 0;
-        if (![minuteCount, dayCount].every(n => Number.isSafeInteger(n) && n >= 0)) throw failure(503, 'API_UNAVAILABLE');
-        if (minuteCount >= record.minuteLimit || dayCount >= record.dayLimit) {
-          const reset = dayCount >= record.dayLimit ? (day + 1) * 86400000 : (minute + 1) * 60000;
+        if (![minuteCount, dayCount].every(n => Number.isSafeInteger(n) && n >= 0 && n < Number.MAX_SAFE_INTEGER)) throw failure(503, 'API_UNAVAILABLE');
+        const minuteExceeded = record.minuteLimit !== UNLIMITED && minuteCount >= record.minuteLimit;
+        const dayExceeded = record.dayLimit !== UNLIMITED && dayCount >= record.dayLimit;
+        if (minuteExceeded || dayExceeded) {
+          const reset = dayExceeded ? (day + 1) * 86400000 : (minute + 1) * 60000;
           throw Object.assign(failure(429, 'RATE_LIMIT_EXCEEDED'), { retryAfter: Math.max(1, Math.ceil((reset - now) / 1000)) });
         }
         tx.set(ref, { minute, day, minuteCount: minuteCount + 1, dayCount: dayCount + 1 });
-        return { minuteLimit: record.minuteLimit, minuteRemaining: record.minuteLimit - minuteCount - 1,
-          dayLimit: record.dayLimit, dayRemaining: record.dayLimit - dayCount - 1 };
+        return { minuteLimit: record.minuteLimit, minuteRemaining: record.minuteLimit === UNLIMITED ? UNLIMITED : record.minuteLimit - minuteCount - 1,
+          dayLimit: record.dayLimit, dayRemaining: record.dayLimit === UNLIMITED ? UNLIMITED : record.dayLimit - dayCount - 1 };
       });
     },
     // 키 원문은 저장하지 않는다. 도구에서 안전한 출력 파일을 만든 뒤 등록한다.
@@ -105,4 +108,4 @@ function createCardApiAccess(db, clock = Date.now) {
     },
   };
 }
-module.exports = { createCardApiAccess, newKey, keyOptions, validOrigin, failure };
+module.exports = { UNLIMITED, createCardApiAccess, newKey, keyOptions, validOrigin, failure };
