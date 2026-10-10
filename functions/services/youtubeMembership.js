@@ -1,5 +1,6 @@
 const { resolveAccountRole, normalizeSourceMembership, resolveEffectiveMembership } = require('./membershipPolicy');
 const { randomBytes, createHash } = require('node:crypto');
+const { createFirestoreMembershipCsvStore } = require('./membershipCsvService');
 const CHANNEL = /^UC[A-Za-z0-9_-]{22}$/;
 const fail = (status, code, message) => Object.assign(new Error(message), { status, code });
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -80,10 +81,10 @@ function createYoutubeMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
       if (account.disabled) throw fail(401, 'AUTH_INVALID', '사용할 수 없는 계정입니다.');
       const claims = account.customClaims || {};
       const role = resolveAccountRole(claims);
-      const csv = await db.collection('membership_csv_users').doc(channelId).get();
-      const active = csv.exists;
+      const csv = await createFirestoreMembershipCsvStore(db).readMember(channelId);
+      const active = !!csv;
       const membership = { status: active ? 'active' : 'none', type: 'csv',
-        levelName: csv.exists ? csv.data().levelName || '유튜브 멤버십' : '일반',
+        levelName: csv ? csv.levelName || '유튜브 멤버십' : '일반',
         userChannelId: channelId, verificationVersion: 2, verificationProvider: 'youtube', lastChecked: now() };
       await db.runTransaction(async tx => {
         const state = (await tx.get(ref)).data();

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createAdminPageHandler, createMemoryStore, createFirestoreStore, PAGES, IDLE_MS } = require('../services/adminPageSession');
-function fixture(role = 'owner', getErrorSummary, getTrafficSummary, notices) {
+function fixture(role = 'owner', getErrorSummary, getTrafficSummary, notices, membershipCsv) {
   let time = 10000000; let disabled = false; let revoked = false; let failure = false;
   const calls = []; const issued = new Set(); const store = createMemoryStore();
   const auth = {
@@ -16,7 +16,7 @@ function fixture(role = 'owner', getErrorSummary, getTrafficSummary, notices) {
       return { uid: 'test-owner' };
     }
   };
-  const handler = createAdminPageHandler({ auth, store, getErrorSummary, getTrafficSummary, notices, now: () => time,
+  const handler = createAdminPageHandler({ auth, store, getErrorSummary, getTrafficSummary, notices, membershipCsv, now: () => time,
     template: name => fs.readFile(path.join(__dirname, '../templates/admin', name + '.html'), 'utf8') });
   async function request(url = '/admin', { method = 'GET', cookie = '', origin = 'http://localhost:5005', headers = {}, body = {} } = {}) {
     const res = { code: 200, headers: {}, set(k, v) { this.headers[k] = v; return this; }, status(c) { this.code = c; return this; },
@@ -206,4 +206,25 @@ test('공지 충돌은409로 반환하고 저장소 장애의 원문은 숨긴�
     const f=fixture('owner',undefined,undefined,{mutate:async()=>{throw error;}});await f.signIn();
     const res=await f.request('/admin/api/notices',{method:'POST',cookie:f.cookie});assert.equal(res.code,expected);assert.doesNotMatch(JSON.stringify(res.body),/private-secret/);
   }
+});
+
+
+test('회원 CSV API도 현재 관리자 세션·CSRF를 검사하고 조회/미리보기/적용/결과를 구분한다',async()=>{
+  const calls=[];
+  const service={summary:async()=>{calls.push('read');return{count:1};},preview:async()=>{calls.push('preview');return{};},
+    apply:async(_,uid)=>{calls.push(['apply',uid]);return{};},status:async(_,uid)=>{calls.push(['status',uid]);return{status:'completed'};}};
+  const f=fixture('admin',undefined,undefined,undefined,service);
+  assert.equal((await f.request('/admin/api/membership-csv')).code,401);assert.equal(calls.length,0);
+  await f.signIn();
+  assert.equal((await f.request('/admin/api/membership-csv',{cookie:f.cookie})).code,200);
+  assert.equal((await f.request('/admin/api/membership-csv/preview',{cookie:f.cookie,method:'POST'})).code,200);
+  assert.deepEqual(calls,['read','preview']);
+  for(const headers of [{origin:'https://evil.invalid'},{'content-type':'text/plain'}]) {
+    assert.equal((await f.request('/admin/api/membership-csv',{cookie:f.cookie,method:'POST',headers})).code,403);
+  }
+  assert.equal((await f.request('/admin/api/membership-csv',{cookie:f.cookie,method:'POST'})).code,200);
+  assert.equal((await f.request('/admin/api/membership-csv/status',{cookie:f.cookie,method:'POST'})).code,200);
+  assert.deepEqual(calls.slice(2),[['apply','test-owner'],['status','test-owner']]);
+  assert.equal((await f.request('/admin/api/membership-csv?uid=owner',{cookie:f.cookie})).code,400);
+  f.role('user');assert.equal((await f.request('/admin/api/membership-csv',{cookie:f.cookie,method:'POST'})).code,401);
 });

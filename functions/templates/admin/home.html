@@ -28,8 +28,9 @@
     <script defer src="/auth-session.js?v=2"></script>
     <script defer src="/admin-session.js?v=2"></script>
     <script defer src="/admin.js?v=6"></script>
-    <link rel="stylesheet" href="/styles/admin-home.css?v=1">
+    <link rel="stylesheet" href="/styles/admin-home.css?v=2">
     <script defer src="/admin-home.js?v=3"></script>
+    <script defer src="/admin-membership-csv.js?v=1"></script>
 </head>
 <body>
         <section id="admin-login" class="admin-login" aria-labelledby="admin-title">
@@ -98,6 +99,24 @@
                         <p id="admin-errors-source" class="admin-home-note color-text-001"></p>
                         <noscript><p class="color-text-001">오류 데이터를 조회하려면 JavaScript를 사용해 주세요.</p></noscript>
                         <p class="admin-home-note color-text-001">연결된 서버 작업 기록 페이지는 아직 준비 화면입니다.</p>
+                    </section>
+                    <section id="membership-csv-panel" class="admin-home-panel color-surface-001 shape-rounded-lg" aria-labelledby="membership-csv-title">
+                        <div class="admin-home-section-heading"><h2 id="membership-csv-title">멤버십 회원 목록</h2><button id="membership-csv-refresh" type="button" class="ui-button ui-control--disabled color-disabled color-type000 shape-capsule admin-home-record-link">목록 정보 새로고침</button></div>
+                        <p id="membership-csv-current" class="admin-home-note color-text-001">현재 목록을 확인하고 있습니다.</p>
+                        <p class="admin-home-note color-text-001">YouTube Studio에서 내려받은 회원 CSV로 운영 목록 전체를 교체합니다. 기존 회원의 혜택은 다음 YouTube 인증 때 새 목록으로 확인됩니다.</p>
+                        <div class="membership-csv-actions">
+                            <label class="membership-csv-file ui-button ui-control--disabled color-disabled color-type000 shape-capsule admin-home-record-link">CSV 파일 선택<input id="membership-csv-file" type="file" accept=".csv,text/csv" aria-label="멤버십 CSV 파일 선택" disabled></label>
+                            <span id="membership-csv-filename" class="admin-home-note color-text-001">선택한 파일 없음</span>
+                            <button id="membership-csv-preview-button" type="button" class="ui-button ui-control--disabled color-disabled color-type000 shape-capsule admin-home-record-link" disabled>파일 내용 확인</button>
+                        </div>
+                        <div id="membership-csv-preview" hidden>
+                            <p id="membership-csv-changes" class="admin-home-note"></p>
+                            <ul id="membership-csv-tiers" class="admin-home-note color-text-001"></ul>
+                            <button id="membership-csv-apply" type="button" class="ui-button ui-control--disabled color-disabled color-theme shape-capsule admin-home-record-link" disabled>운영 목록 교체</button>
+                        </div>
+                        <button id="membership-csv-result" type="button" class="ui-button ui-control--disabled color-disabled color-type000 shape-capsule admin-home-record-link" hidden>적용 결과 확인</button>
+                        <p id="membership-csv-status" class="admin-home-note color-text-001" role="status" aria-live="polite">파일 선택만으로는 회원 목록이 변경되지 않습니다.</p>
+                        <noscript><p class="admin-home-note color-text-001">CSV를 업로드하려면 JavaScript를 사용해 주세요.</p></noscript>
                     </section>
                     <p class="admin-home-footer color-text-001">GA4 · Error Reporting · 진입 시 조회 또는 수동 새로고침 · 조회 결과는 최대 1분간 재사용</p>
                 </main>

@@ -231,6 +231,8 @@ test('멤버십 CSV 관리자 업로드도 실제 현재 권한을 확인한 뒤
       'firebase-functions/v2/https':{onRequest:(_,handler)=>handler},'../config/firebase':f.config,
       '../utils/auth':f.helpers,'../utils/safeError':{safeErrorSummary},
       '../services/adminActionTransport':{forwardAdminRequest:async()=>false},'../integrations/googleSheets':{},'../integrations/discord':{},
+      'node:crypto':require('node:crypto'),
+      '../services/membershipCsvService': {createFirestoreMembershipCsvStore:()=>({}),createMembershipCsvService:()=>({preview:async()=>{f.writes.push('preview');return{};},apply:async(_,uid)=>{assert.equal(uid,'verified-user');f.writes.push('apply');return{count:1};}}),},
     });
     await routes.uploadMembershipCsv(request({members:[{channelId:'synthetic-channel'}]}),res);
     assert.equal(res.code,allowed?200:403);assert.equal(f.writes.length,allowed?2:0);

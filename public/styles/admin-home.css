@@ -49,3 +49,10 @@
     .admin-home-errors li { gap: 10px; }
     .admin-home-heading h1 { font-size: 1.5rem; }
 }
+/* 관리자 홈의 회원 CSV 영역: 기존 버튼·표면 스타일에 배치만 추가한다. */
+.membership-csv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.membership-csv-actions > span { overflow-wrap: anywhere; min-width: 0; }
+.membership-csv-file { position: relative; overflow: hidden; }
+.membership-csv-file input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.membership-csv-file:focus-within { outline: 2px solid currentColor; outline-offset: 3px; }
+#membership-csv-tiers { padding-left: 20px; overflow-wrap: anywhere; }

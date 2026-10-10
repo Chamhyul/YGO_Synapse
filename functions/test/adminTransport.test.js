@@ -25,7 +25,8 @@ function fixture() {
     template: async () => '<html><title></title><body><section id="admin-login"></section><main id="admin-content" data-admin-title="관리자"><a id="admin-settings" hidden></a></main></body></html>',
     getTrafficSummary: async () => { reads++; return { value: 1 }; },
     getErrorSummary: async () => { reads++; return { value: 2 }; },
-    notices: { async list() { reads++; return { revision: '1', notices: [] }; }, async mutate() { writes++; return {}; }, preview: () => ({}) }
+    notices: { async list() { reads++; return { revision: '1', notices: [] }; }, async mutate() { writes++; return {}; }, preview: () => ({}) },
+    membershipCsv: { async summary(){reads++;return {count:1};}, async preview(){reads++;return {};}, async apply(_,uid){assert.equal(uid,'test');writes++;return {count:1};}, async status(){reads++;return {status:'completed'};} }
   });
   const backend = createAdminBackendHandler({ handler, env: {} });
   const proxy = createAdminProxy({ fetchImpl: async (url, options) => {
@@ -117,4 +118,18 @@ test('운영 인증 결과로 로컬 최신 템플릿을 표시하고 미인증�
   const expired = await render('<html><body data-admin-expired="true"></body></html>', '/admin/notices', 200);
   assert.doesNotMatch(expired, /id="admin-content"/); assert.match(expired, /data-admin-expired="true"/);
   await assert.rejects(render('<main id="admin-content" data-admin-role="owner"></main>', '/admin', 200));
+});
+
+
+test('로컬 회원 CSV 경로도 고정 운영 서버의 세션·CSRF 판정과 적용 결과를 사용한다',async()=>{
+  const f=fixture();
+  assert.equal((await f.call('/admin/api/membership-csv')).code,401);
+  await f.call('/admin/session',{method:'POST',token:'valid'});const cookie='__session=signed-cookie';
+  assert.equal((await f.call('/admin/api/membership-csv',{cookie})).code,200);
+  assert.equal((await f.call('/admin/api/membership-csv/preview',{cookie,method:'POST',body:{csvText:'합성'}})).code,200);
+  assert.equal(f.counts().writes,0);
+  assert.equal((await f.call('/admin/api/membership-csv',{cookie,method:'POST',body:{operationId:'합성'}})).code,200);
+  assert.equal((await f.call('/admin/api/membership-csv/status',{cookie,method:'POST',body:{operationId:'합성'}})).code,200);
+  assert.equal(f.counts().writes,1);
+  f.setRole('user');assert.equal((await f.call('/admin/api/membership-csv',{cookie,method:'POST'})).code,401);
 });
