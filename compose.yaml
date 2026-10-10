@@ -1,0 +1,137 @@
+name: ygo-synapse
+
+x-common: &common
+  image: ygo-synapse-local:dev
+  build: .
+  init: true
+  stop_grace_period: 2m
+  # 소스 폴더만 읽기 전용으로 연결한다. 호스트의 인증정보·의존성은 연결하지 않는다.
+  volumes:
+    # 문서 UI 테스트가 읽는 합성 견본 하나만 연결한다. 이미지에는 포함하지 않는다.
+    - type: bind
+      source: ./previews/document-specimen.html
+      target: /app/previews/document-specimen.html
+      read_only: true
+      bind:
+        create_host_path: false
+    - ./public:/app/public:ro
+    - ./scripts:/app/scripts:ro
+    - ./docker:/app/docker:ro
+    - ./functions/config:/app/functions/config:ro
+    - ./functions/integrations:/app/functions/integrations:ro
+    - ./functions/routes:/app/functions/routes:ro
+    - ./functions/schedules:/app/functions/schedules:ro
+    - ./functions/scrapers:/app/functions/scrapers:ro
+    - ./functions/services:/app/functions/services:ro
+    - ./functions/tasks:/app/functions/tasks:ro
+    - ./functions/templates:/app/functions/templates:ro
+    - ./functions/test:/app/functions/test:ro
+    - ./functions/utils:/app/functions/utils:ro
+    - ./functions/index.js:/app/functions/index.js:ro
+    - ./functions/package.json:/app/functions/package.json:ro
+    - ./functions/package-lock.json:/app/functions/package-lock.json:ro
+    - ./package.json:/app/package.json:ro
+    - ./package-lock.json:/app/package-lock.json:ro
+    - ./firebase.json:/app/firebase.json:ro
+    - ./.firebaserc:/app/.firebaserc:ro
+    - ./.gitignore:/app/.gitignore:ro
+    - ./.github/workflows:/app/.github/workflows:ro
+    - ./firestore.rules:/app/firestore.rules:ro
+    - ./firestore.indexes.json:/app/firestore.indexes.json:ro
+    - ./storage.rules:/app/storage.rules:ro
+
+services:
+  dev:
+    <<: *common
+    command: [dev]
+    ports:
+      - "127.0.0.1:5001:5001"
+      - "127.0.0.1:5002:5002"
+      - "127.0.0.1:5003:5003"
+      - "127.0.0.1:5004:5004"
+      - "127.0.0.1:5005:5005"
+      - "127.0.0.1:9150:9150"
+    volumes:
+      - ./public:/app/public:ro
+      - ./scripts:/app/scripts:ro
+      - ./docker:/app/docker:ro
+      - ./functions/config:/app/functions/config:ro
+      - ./functions/integrations:/app/functions/integrations:ro
+      - ./functions/routes:/app/functions/routes:ro
+      - ./functions/schedules:/app/functions/schedules:ro
+      - ./functions/scrapers:/app/functions/scrapers:ro
+      - ./functions/services:/app/functions/services:ro
+      - ./functions/tasks:/app/functions/tasks:ro
+      - ./functions/templates:/app/functions/templates:ro
+      - ./functions/test:/app/functions/test:ro
+      - ./functions/utils:/app/functions/utils:ro
+      - ./functions/index.js:/app/functions/index.js:ro
+      - ./functions/package.json:/app/functions/package.json:ro
+      - ./functions/package-lock.json:/app/functions/package-lock.json:ro
+      - ./package.json:/app/package.json:ro
+      - ./package-lock.json:/app/package-lock.json:ro
+      - ./firebase.json:/app/firebase.json:ro
+      - ./.firebaserc:/app/.firebaserc:ro
+      - ./.gitignore:/app/.gitignore:ro
+      - ./.github/workflows:/app/.github/workflows:ro
+      - ./firestore.rules:/app/firestore.rules:ro
+      - ./firestore.indexes.json:/app/firestore.indexes.json:ro
+      - ./storage.rules:/app/storage.rules:ro
+      - local-data:/data
+    healthcheck:
+      test: [CMD, node, /app/docker/healthcheck.cjs]
+      interval: 15s
+      timeout: 5s
+      start_period: 120s
+      retries: 4
+    restart: "no"
+
+  tests:
+    <<: *common
+    profiles: [tests]
+    command: [test]
+    network_mode: none
+    restart: "no"
+
+  browser-tests:
+    <<: *common
+    profiles: [tests]
+    command: [browser-test]
+    network_mode: none
+    shm_size: 1gb
+    environment:
+      MEMBERSHIP_TEST_BROWSER: chromium
+      TEST_ARTIFACT_DIR: /test-results
+      TEST_WEB_ASSETS: /opt/browser-assets
+    volumes:
+      - ./public:/app/public:ro
+      - ./scripts:/app/scripts:ro
+      - ./docker:/app/docker:ro
+      - ./functions/config:/app/functions/config:ro
+      - ./functions/integrations:/app/functions/integrations:ro
+      - ./functions/routes:/app/functions/routes:ro
+      - ./functions/schedules:/app/functions/schedules:ro
+      - ./functions/scrapers:/app/functions/scrapers:ro
+      - ./functions/services:/app/functions/services:ro
+      - ./functions/tasks:/app/functions/tasks:ro
+      - ./functions/templates:/app/functions/templates:ro
+      - ./functions/test:/app/functions/test:ro
+      - ./functions/utils:/app/functions/utils:ro
+      - ./functions/index.js:/app/functions/index.js:ro
+      - ./functions/package.json:/app/functions/package.json:ro
+      - ./functions/package-lock.json:/app/functions/package-lock.json:ro
+      - ./package.json:/app/package.json:ro
+      - ./package-lock.json:/app/package-lock.json:ro
+      - ./firebase.json:/app/firebase.json:ro
+      - ./.firebaserc:/app/.firebaserc:ro
+      - ./.gitignore:/app/.gitignore:ro
+      - ./.github/workflows:/app/.github/workflows:ro
+      - ./firestore.rules:/app/firestore.rules:ro
+      - ./firestore.indexes.json:/app/firestore.indexes.json:ro
+      - ./storage.rules:/app/storage.rules:ro
+      - browser-results:/test-results
+    restart: "no"
+
+volumes:
+  local-data:
+  browser-results:

@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
+const { fulfillTestWebAsset } = require('../docker/offline-web-assets.cjs');
+const artifactDir = process.env.TEST_ARTIFACT_DIR || 'private/2026.10.10/증거';
 const { sanitizeNoticeHtml } = require('../functions/services/noticeContent');
 const origin = 'http://127.0.0.1:5019';
 const fixture = fs.readFileSync('functions/templates/admin/notices.html','utf8')
@@ -19,6 +21,7 @@ test('서식·링크·실행 취소·기존 공지·표시 확인·저장·모�
     let notices=[{id:'2026.10.08T12:00',date:'2026.10.08',title:'합성 공지',content:'<h2>편집 예시</h2><p><strong>굵은 글자</strong>와 <u>밑줄</u></p><ul><li><p>첫 항목</p></li></ul>',isPinned:0}];
     page.on('pageerror',error=>errors.push(error.message));
     await page.route('**/*',async route=>{
+        if(await fulfillTestWebAsset(route))return;
         const url=new URL(route.request().url());
         if(['fonts.googleapis.com','fonts.gstatic.com','cdn.jsdelivr.net'].includes(url.hostname))return route.continue();
         if(url.origin!==origin)return route.abort();
@@ -77,15 +80,15 @@ test('서식·링크·실행 취소·기존 공지·표시 확인·저장·모�
         await page.locator('.notice-more summary').click();
         assert.equal(await page.locator('[data-command="undo"]').isDisabled(),true);
         await page.locator('.notice-more summary').click();
-        fs.mkdirSync('private/2026.10.10/증거',{recursive:true});
-        await page.screenshot({path:'private/2026.10.10/증거/공지편집기_데스크톱.png',fullPage:true});
+        fs.mkdirSync(artifactDir,{recursive:true});
+        await page.screenshot({path:path.join(artifactDir,'공지편집기_데스크톱.png'),fullPage:true});
         await page.setViewportSize({width:390,height:844});
         await page.evaluate(()=>document.documentElement.classList.add('is-mobile-device','dark-mode'));
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
         await page.locator('.notice-more summary').click();
         assert.equal(await page.locator('.notice-mobile-command[data-command="italic"]').isVisible(),true);
         await page.locator('.notice-more summary').click();
-        await page.screenshot({path:'private/2026.10.10/증거/공지편집기_모바일다크.png',fullPage:true});
+        await page.screenshot({path:path.join(artifactDir,'공지편집기_모바일다크.png'),fullPage:true});
         await page.evaluate(()=>document.getElementById('admin-content').hidden=true);
         await page.waitForFunction(()=>document.querySelector('.tiptap').getAttribute('contenteditable')==='false');
         assert.deepEqual(errors,[]);
