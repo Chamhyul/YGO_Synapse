@@ -712,19 +712,15 @@ html.is-mobile-device .ui-segment--compact {
   font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
-.ui-table--detail { min-width: 700px; }
-.ui-table--detail [data-column="sequence"] { width: 40px; text-align: center; }
-.ui-table--detail [data-column="name"] { min-width: 116px; }
-.ui-table--detail [data-column="number"] { min-width: 110px; font-family: monospace; white-space: nowrap; }
-.ui-table--detail [data-column="rarity"] { min-width: 96px; }
-.ui-table--detail [data-column="location"] { min-width: 110px; }
-.ui-table--detail [data-column="quantity"] { width: 1%; }
-.ui-table--detail[data-has-failures="true"] [data-column="quantity"] {
-    width: 160px;
-    min-width: 160px;
-    white-space: normal;
-    overflow-wrap: anywhere;
+/* 상세 표는 열별 고정 너비 없이 각 셀의 텍스트에 맞춰 배치한다. */
+.ui-table--detail { width: max-content; min-width: 100%; }
+.ui-table--detail [data-column] {
+    width: auto;
+    min-width: 0;
+    text-align: center;
+    white-space: nowrap;
 }
+.ui-table--detail [data-column="number"] { font-family: monospace; }
 
 /* UI: result list. 색상·곡률은 각 항목에 직접 조합한다. */
 .ui-result-list {

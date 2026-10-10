@@ -85,15 +85,16 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.2.0/css/all.min.css">
     <link rel="stylesheet" href="styles/tokens.css?v=177-danger-tokens">
     <link rel="stylesheet" href="styles/base.css?v=142-common-ui">
-    <link rel="stylesheet" href="styles/components.css?v=182-work-results">
-    <link rel="stylesheet" href="style.css?v=182-work-results">
+    <link rel="stylesheet" href="styles/components.css?v=183-result-table">
+    <link rel="stylesheet" href="style.css?v=185-style-cleanup">
     <link rel="stylesheet" href="styles/settings.css?v=154-ui-structure">
     <link rel="stylesheet" href="styles/dashboard.css?v=154-ui-structure">
-    <link rel="stylesheet" href="styles/search.css?v=165-search-overlay-motion">
-    <link rel="stylesheet" href="styles/search-results.css?v=164-common-overlays">
+    <link rel="stylesheet" href="styles/search.css?v=166-style-cleanup">
+    <link rel="stylesheet" href="styles/search-results.css?v=165-style-cleanup">
     <link rel="stylesheet" href="styles/home.css?v=154-ui-structure">
     <link rel="stylesheet" href="styles/layout.css?v=154-ui-structure">
-    <link rel="stylesheet" href="styles/overlays.css?v=182-work-results">
+    <link rel="stylesheet" href="styles/overlays.css?v=183-style-cleanup">
+    <link rel="stylesheet" href="styles/documents.css?v=10-document-cleanup">
 </head>
 
 <body class="no-transition">
@@ -2111,12 +2112,12 @@
             <span class="app-footer__link-separator">•</span>
             <a href="privacy.html" class="app-footer__link shape-rounded001 ui-button ui-button--text color-text-003 color-highlight-theme" onclick="openPrivacyModal(event)">개인정보 처리방침</a>
             <span class="app-footer__link-separator">•</span>
-            <a href="licenses.html" class="app-footer__link shape-rounded001 ui-button ui-button--text color-text-003 color-highlight-theme">라이선스 및 출처</a>
+            <a href="licenses.html" onclick="openLicensesModal(event)" class="app-footer__link shape-rounded001 ui-button ui-button--text color-text-003 color-highlight-theme">라이선스 및 출처</a>
         </div>
     </footer>
     </div>
 
-    <div id="add-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-overlay-size="large" data-result-operation="add" role="dialog" aria-labelledby="add-modal-title">
+    <div id="add-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-result-operation="add" role="dialog" aria-labelledby="add-modal-title">
         <header class="ui-overlay__header">
             <h2 id="add-modal-title" data-result-title class="color-text-000">카드 등록 완료!</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="등록 결과 닫기"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2147,7 +2148,7 @@
         <footer class="ui-overlay__footer"><button type="button" class="ui-button color-theme shape-capsule modal-close">확인</button></footer>
     </div>
 
-    <div id="move-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-overlay-size="large" data-result-operation="move" role="dialog" aria-labelledby="move-modal-title">
+    <div id="move-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-result-operation="move" role="dialog" aria-labelledby="move-modal-title">
         <header class="ui-overlay__header">
             <h2 id="move-modal-title" data-result-title class="color-text-000">카드 이동 완료!</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="이동 결과 닫기"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2178,7 +2179,7 @@
         <footer class="ui-overlay__footer"><button type="button" class="ui-button color-theme shape-capsule modal-close">확인</button></footer>
     </div>
 
-    <div id="discard-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-overlay-size="large" data-result-operation="discard" role="dialog" aria-labelledby="discard-modal-title">
+    <div id="discard-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-result-operation="discard" role="dialog" aria-labelledby="discard-modal-title">
         <header class="ui-overlay__header">
             <h2 id="discard-modal-title" data-result-title class="color-text-000">카드 제거 완료!</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="제거 결과 닫기"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2267,7 +2268,7 @@
         </header>
         <div class="ui-overlay__body">
             <i class="material-icons color-text-theme" aria-hidden="true">account_circle</i>
-            <p id="login-guide-msg" class="color-text-theme" hidden>로그인 후 이용 가능합니다.</p>
+            <p id="login-guide-msg" class="color-text-theme" role="status" aria-live="polite" hidden>로그인 후 이용 가능합니다.</p>
             <p id="login-sub-msg" class="color-text-001">로그인하여 멤버십 혜택과 다양한 기능을 이용해보세요.</p>
             <div>
                 <button type="button" id="google-login-btn" class="ui-button ui-control--disabled color-theme color-disabled shape-capsule social-login-btn" onclick="signInWithProvider('google')">
@@ -2275,6 +2276,9 @@
                 </button>
                 <button type="button" id="twitter-login-btn" class="ui-button ui-control--disabled color-theme color-disabled shape-capsule social-login-btn" onclick="signInWithProvider('twitter')">
                     <i class="fa-brands fa-x-twitter" aria-hidden="true"></i><span>X 계정으로 로그인</span>
+                </button>
+                <button type="button" id="service-login-retry-btn" class="ui-button ui-control--disabled color-theme color-disabled shape-capsule social-login-btn" onclick="retryServiceLoginConfirmation()" hidden>
+                    <i class="material-icons" aria-hidden="true">refresh</i><span>다시 시도</span>
                 </button>
             </div>
         </div>
@@ -2339,7 +2343,7 @@
                     <input type="text" id="migration-sheet-url" class="ui-input--filled color-type001 border-basic shape-rounded002" placeholder="https://docs.google.com/spreadsheets/…" aria-describedby="migration-sheet-guide migration-status-msg" oninput="validateMigrationLink()">
                     <span id="migration-valid-mark" aria-hidden="true"></span>
                 </div>
-                <p id="migration-sheet-guide" class="color-text-002">공유 설정과 MyCard 시트를 확인해주세요.</p>
+                <p id="migration-sheet-guide" class="color-text-002">공개·링크 공유 시트만 지원합니다. MyCard 시트를 확인해 주세요.</p>
             </div>
             <p id="migration-status-msg" class="color-text-001" role="status" aria-live="polite" hidden></p>
         </div>
@@ -2404,53 +2408,38 @@
     </section>
     <div id="noti-popup-backdrop" class="ui-overlay__backdrop color-surface-black" style="display: none;" onclick="closeNotiPopup()" aria-hidden="true"></div>
 
-    <!-- 공지사항 모달 (공통/데스크탑) -->
-    <div id="notice-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-overlay-size="large" role="dialog" aria-label="공지사항">
+    <!-- 공지 문서: 데스크톱 목록·본문 / 모바일 목록·내용 시트 -->
+    <section id="notice-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-overlay-size="large" role="dialog" aria-label="공지사항">
         <header class="ui-overlay__header"><h2 class="color-text-000">공지사항</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
-        <div class="ui-overlay__body">
-            <div class="notice-modal-layout">
-                <div class="notice-sidebar">
-                    <div class="sidebar-header">공지 내역</div>
-                    <div id="notice-date-list" class="date-list"></div>
-                </div>
-                <div class="notice-main">
-                    <div id="notice-content-area" class="notice-content-body">
-                        <p class="color-text-002">날짜를 선택하여 공지사항을 확인하세요.</p>
-                    </div>
-                </div>
-            </div>
+        <div class="ui-overlay__body document-view">
+            <nav id="notice-date-list" class="document-view__list color-surface-001" aria-label="공지 선택"></nav>
+            <article id="notice-content-area" class="document-view__content color-surface-000 shape-rounded-lg"></article>
         </div>
-        <footer class="ui-overlay__footer"><button type="button" class="ui-button ui-button--text color-text-001 modal-close">닫기</button></footer>
-    </div>
-
-    <!-- 모바일 문서 목록: 내부 문서 배치는 후속 정비 -->
-    <div id="notice-list-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="공지 목록">
-        <header class="ui-overlay__header"><h2 class="color-text-000">공지 목록</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
-        <div id="mobile-notice-list-container" class="mobile-notice-list ui-overlay__body"></div>
-    </div>
-
-    <!-- 모바일 문서 내용: 내부 문서 및 이동부는 후속 정비 -->
-    <div id="notice-detail-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="공지 상세">
-        <header class="ui-overlay__header">
-            <div class="mobile-header-text-group">
-                <span id="mobile-detail-date" class="mobile-detail-date"></span>
-                <h2 id="mobile-detail-title" class="color-text-000"></h2>
-            </div>
-            <button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button>
-        </header>
-        <div id="mobile-notice-content-body" class="mobile-notice-content-body ui-overlay__body"></div>
-        <footer class="ui-overlay__footer">
-            <button type="button" class="ui-button ui-button--text color-text-001" onclick="navigateNotice(-1)" aria-label="이전 공지"><i class="material-icons" aria-hidden="true">chevron_left</i></button>
-            <button type="button" class="ui-button color-type001 shape-capsule" onclick="openNoticeListMode()">목록</button>
-            <button type="button" class="ui-button ui-button--text color-text-001" onclick="navigateNotice(1)" aria-label="다음 공지"><i class="material-icons" aria-hidden="true">chevron_right</i></button>
+        <footer class="ui-overlay__footer ui-item-navigation" data-notice-navigation>
+            <button type="button" class="ui-button ui-button--text color-highlight-theme" data-navigation-slot="start" data-notice-more onclick="openNoticeListMode(this)">목록 보기</button>
+            <div class="ui-item-navigation__position"><button type="button" class="ui-button ui-button--text color-text-001" onclick="navigateNotice(-1)" data-notice-prev aria-label="이전 공지"><i class="material-icons" aria-hidden="true">chevron_left</i></button><output data-notice-position aria-label="현재 공지"></output><button type="button" class="ui-button ui-button--text color-text-001" onclick="navigateNotice(1)" data-notice-next aria-label="다음 공지"><i class="material-icons" aria-hidden="true">chevron_right</i></button></div>
+            <button type="button" class="ui-button color-theme shape-capsule modal-close" data-navigation-slot="end">확인</button>
         </footer>
-    </div>
+    </section>
+    <section id="notice-list-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="공지 목록">
+        <header class="ui-overlay__header"><h2 class="color-text-000">공지 목록</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
+        <div class="ui-overlay__body document-view"><nav id="mobile-notice-list-container" class="document-view__list color-surface-001" aria-label="공지 선택"></nav></div>
+    </section>
+    <section id="notice-detail-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="공지사항">
+        <header class="ui-overlay__header"><h2 class="color-text-000">공지사항</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
+        <div class="ui-overlay__body document-view"><article id="mobile-notice-content-body" class="document-view__content color-surface-000"></article></div>
+        <footer class="ui-overlay__footer ui-item-navigation" data-notice-navigation>
+            <button type="button" class="ui-button ui-button--text color-highlight-theme" data-navigation-slot="start" data-notice-more onclick="openNoticeListMode(this)">목록 보기</button>
+            <div class="ui-item-navigation__position"><button type="button" class="ui-button ui-button--text color-text-001" onclick="navigateNotice(-1)" data-notice-prev aria-label="이전 공지"><i class="material-icons" aria-hidden="true">chevron_left</i></button><output data-notice-position aria-label="현재 공지"></output><button type="button" class="ui-button ui-button--text color-text-001" onclick="navigateNotice(1)" data-notice-next aria-label="다음 공지"><i class="material-icons" aria-hidden="true">chevron_right</i></button></div>
+            <button type="button" class="ui-button color-type001 shape-capsule" data-navigation-slot="end" onclick="openNoticeListMode(this)">목록</button>
+        </footer>
+    </section>
 
     <!-- 이용약관 모달 -->
     <div id="terms-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="이용약관">
         <header class="ui-overlay__header"><h2 class="color-text-000">YGO Synapse 서비스 이용 약관</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
-        <div class="ui-overlay__body">
-            <div class="legal-content-scroll">
+        <div class="ui-overlay__body document-view">
+            <div class="document-view__content color-surface-000 shape-rounded-lg">
                 <p><strong>제1조 (목적)</strong><br>본 약관은 사용자가 YGO Synapse (이하 '서비스')에서 제공하는 웹앱 기능을 이용함에 있어, 서비스와 사용자 간의
                     권리,
                     의무 및 책임 사항, 기타 필요한 사항을 규정함을 목적으로 합니다.</p>
@@ -2491,9 +2480,7 @@
                     약관이 변경될 경우, '서비스' 내 공지사항이나 초기 화면을 통해 변경 내용을 안내합니다.</p>
             </div>
         </div>
-        <div class="ui-overlay__footer">
-            <button type="button" class="ui-button ui-button--text color-text-001 modal-close">닫기</button>
-        </div>
+        <footer class="ui-overlay__footer"><a href="terms.html" target="_blank" rel="noopener" data-overlay-action="auxiliary" class="ui-button ui-button--text color-highlight-theme">자세히보기</a></footer>
     </div>
 
     <!-- 멤버십 인증: 데스크톱 모달 / 모바일 시트 -->
@@ -2525,8 +2512,8 @@
     <!-- 개인정보 수집 및 이용 동의 모달 -->
     <div id="privacy-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="개인정보 처리방침">
         <header class="ui-overlay__header"><h2 class="color-text-000">개인정보 처리방침</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
-        <div class="ui-overlay__body">
-            <div class="legal-content-scroll">
+        <div class="ui-overlay__body document-view">
+            <div class="document-view__content color-surface-000 shape-rounded-lg">
                 <p><strong>1. 수집하는 개인정보 항목</strong><br>본 웹앱은 원활한 카드 관리 및 일관된 서비스 제공, 프리미엄 혜택 적용을 위해 아래와 같은 최소한의
                     개인정보를
                     수집하고 있습니다.<br>- 로그인 및 계정 정보: SNS 로그인을 통해 제공받는 고유 식별자(UID) 등 사용자 식별 정보 (이메일 주소 등 별도의 연락처 정보는 저장 및
@@ -2554,12 +2541,16 @@
                     데이터를 클라우드에 저장하고 동기화하는 것이 핵심 기능이므로, 동의를 거부하실 경우 서비스 이용이 불가능합니다.</p>
             </div>
         </div>
-        <div class="ui-overlay__footer">
-            <button type="button" class="ui-button ui-button--text color-text-001 modal-close">닫기</button>
-        </div>
+        <footer class="ui-overlay__footer"><a href="privacy.html" target="_blank" rel="noopener" data-overlay-action="auxiliary" class="ui-button ui-button--text color-highlight-theme">자세히보기</a></footer>
     </div>
 
 
+
+    <section id="licenses-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="라이선스 및 출처">
+        <header class="ui-overlay__header"><h2 class="color-text-000">라이선스 및 출처</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
+        <div class="ui-overlay__body document-view"><article id="licenses-content" class="document-view__content color-surface-000 shape-rounded-lg"></article></div>
+        <footer class="ui-overlay__footer"><a href="licenses.html" target="_blank" rel="noopener" data-overlay-action="auxiliary" class="ui-button ui-button--text color-highlight-theme">자세히보기</a></footer>
+    </section>
 
     <script src="onboarding.js?v=3-faq-segments" defer></script>
     <script src="illustration-images.js?v=3-private-storage" defer></script>
@@ -2569,14 +2560,15 @@
     <script src="search-illustrations.js?v=166-overlay-exteriors" defer></script>
     <script src="catalog-filters.js?v=1-search-filters" defer></script>
     <script src="search-navigation.js?v=154-ui-structure" defer></script>
-    <script src="management-results.js?v=182-work-results" defer></script>
+    <script src="management-results.js?v=183-style-cleanup" defer></script>
     <script src="data-transfer.js?v=178-data-dialogs" defer></script>
     <script src="overlays.js?v=177-overlay-height" defer></script>
-    <script src="catalog-search.js?v=164-common-overlays" defer></script>
+    <script src="catalog-search.js?v=165-style-cleanup" defer></script>
     <script src="owned-cards.js?v=156-owned-detail-colors" defer></script>
     <script src="auth-session.js?v=2" defer></script>
     <script src="admin-session.js?v=2" defer></script>
-    <script src="script.js?v=182-work-results" defer></script>
+    <script src="documents.js?v=3-document-list-overlay" defer></script>
+    <script src="script.js?v=188-style-cleanup" defer></script>
     <!-- 인벤토리 필터 팝업 -->
     <div id="inventory-filter-popup" class="filter-popup">
         <!-- JS에서 동적 렌더링 -->

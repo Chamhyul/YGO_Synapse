@@ -1,6 +1,6 @@
 /* 검색 입력·추천·최근 기록·모바일 검색·사진 검색 진입부.
  * 공통 캡슐은 components.css, 검색 결과·사진 분석 시트는 style.css에 둔다.
- * no-transition 검색 예외는 style.css의 전역 정책 뒤에서 적용한다. */
+ * 전역 no-transition은 검색 배경막·도구 행·추천 목록을 제외하여 아래 전환을 유지한다. */
 
 .help-trigger-btn {
   font-size: 0.75rem;
@@ -290,22 +290,6 @@ input.search-input--mobile[type]:not(.browser-default) {
 .item-delete-btn .material-icons,
 .clear-all-icon .material-icons {
   font-size: inherit;
-}
-
-/* [추가] 즉시 전환 시에도 모바일 검색 오버레이 및 내부 요소의 트랜지션이 차단되지 않도록 예외 처리 (명시도 보강) */
-body.no-transition .mobile-search,
-html.is-mobile-device body.no-transition .mobile-search {
-  transition: opacity 0.2s ease !important;
-}
-
-body.no-transition .mobile-search__toolbar,
-html.is-mobile-device body.no-transition .mobile-search__toolbar {
-  transition: transform 0.2s ease !important;
-}
-
-body.no-transition .mobile-dropdown,
-html.is-mobile-device body.no-transition .mobile-dropdown {
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease !important;
 }
 
 /* ============================================

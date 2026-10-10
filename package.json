@@ -13,13 +13,18 @@
     "illustrations:upload": "node scripts/upload_card_illustrations.js --apply",
     "illustrations:sync:cloud": "node scripts/sync_card_illustrations_cloud.js --apply",
     "illustrations:phash": "node scripts/build_card_illustration_phash.js",
-    "test:illustrations": "node --test scripts/sync_card_illustrations.test.js scripts/upload_card_illustrations.test.js scripts/build_card_illustration_phash.test.js scripts/illustration_images.test.js scripts/illustration_picker.test.js scripts/search_illustrations.test.js scripts/photo_card_search.test.js"
+    "test:illustrations": "node --test scripts/sync_card_illustrations.test.js scripts/upload_card_illustrations.test.js scripts/build_card_illustration_phash.test.js scripts/illustration_images.test.js scripts/illustration_picker.test.js scripts/search_illustrations.test.js scripts/photo_card_search.test.js",
+    "build:notice-editor": "node scripts/build_notice_editor.js"
   },
   "private": true,
   "devDependencies": {
+    "esbuild": "0.25.12",
     "sharp": "^0.35.4"
   },
   "dependencies": {
+    "@tiptap/core": "3.31.3",
+    "@tiptap/pm": "3.31.3",
+    "@tiptap/starter-kit": "3.31.3",
     "onnxruntime-web": "^1.21.0"
   }
 }

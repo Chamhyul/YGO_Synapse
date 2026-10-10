@@ -31,7 +31,7 @@ function fixture(extra = {}) {
     showToast: message => calls.push(['toast', message]),
     ...extra,
   });
-  vm.runInContext('let membershipHideClickCount = 0; let loginInProgress = false; let pendingRegistrationUser = {uid: "test"}; let registrationSaving = false;', context);
+  vm.runInContext('let membershipHideClickCount = 0; let loginInProgress = false; let pendingServiceAuthUser = null; let registrationCheckPending = false; let serviceLoginPending = false; let pendingRegistrationUser = {uid: "test"}; let registrationSaving = false;', context);
   for (const name of ['toggleLoginBtn', 'toggleRegistrationButton', 'signInWithProvider', 'resetMembershipVerifyModal',
     'handleNeverShowMembership', 'openMembershipAuthModal']) load(name, context);
   return { context, nodes, calls };
@@ -59,7 +59,7 @@ test('비활성 로그인 버튼은 외부 인증을 실행하지 않는다', as
 test('현재 상태 칩 없이도 멤버십 상태 변경에 따라 수단별 연동 배지를 갱신한다', () => {
   const { context, nodes } = fixture();
   for (const [status, type] of [['active', 'discord'], ['active', 'csv'], ['expired', 'csv']]) {
-    context.UserStore.settings.membership = { status, type };
+    context.UserStore.sourceMembership = { status, type };
     context.openMembershipAuthModal();
     assert.equal(nodes.get('badge-discord-linked').hidden, !(status === 'active' && type === 'discord'));
     assert.equal(nodes.get('badge-youtube-linked').hidden, !(status === 'active' && type === 'csv'));

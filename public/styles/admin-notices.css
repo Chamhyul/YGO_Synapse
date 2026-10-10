@@ -1,8 +1,6 @@
 /* 공지 편집의 배치와 입력 크기만 담당한다. 색상은 기존 조합을 소비한다. */
 .admin-notices-layout { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr); gap: 24px; margin-top: 24px; }
 .admin-notices-layout > section { min-width: 0; margin-bottom: 0; }
-.admin-notices-layout > section:first-child { grid-row: 1 / span 2; }
-.admin-notices-layout > section:last-child { grid-column: 2; }
 .admin-notices fieldset { border: 0; min-width: 0; margin: 0; padding: 0; }
 .admin-notices fieldset p { margin: 0 0 20px; }
 .admin-notices label { display: block; margin-bottom: 8px; }
@@ -19,4 +17,48 @@
     .admin-notices-layout { grid-template-columns: minmax(0, 1fr); }
     .admin-notices-layout > section:first-child { grid-row: auto; }
     .admin-notices-layout > section:last-child { grid-column: auto; }
+}
+
+/* Tiptap 내부 문서·도구줄·native dialog의 기능 배치. 색상/곡률은 공통 조합을 사용한다. */
+.notice-body-label { display: block; margin-bottom: 8px; }
+.notice-editor-frame { margin-bottom: 20px; }
+.notice-toolbar { display: flex; align-items: center; gap: 4px; padding: 8px; flex-wrap: wrap; }
+.notice-toolbar .ui-button { width: 44px; height: 44px; min-width: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.notice-toolbar select { max-width: 100px; min-height: 44px; padding: 8px; border: 0; font: inherit; background: var(--color-bg); color: var(--color-text); }
+.notice-toolbar .material-icons { font-size: 20px; width: 20px; overflow: hidden; pointer-events: none; }
+.notice-more { position: relative; margin-left: auto; }
+.notice-more summary { list-style: none; cursor: pointer; }
+.notice-more summary::-webkit-details-marker { display: none; }
+.notice-more-menu .notice-mobile-command { display: none; }
+.notice-more-menu { position: absolute; right: 0; top: 48px; z-index: 5; display: grid; grid-template-columns: repeat(4, 44px); gap: 4px; padding: 8px; background: var(--color-bg); color: var(--color-text); }
+.notice-rich-content { font: inherit; line-height: 1.8; overflow-wrap: anywhere; }
+.notice-rich-content .tiptap { min-height: 220px; padding: 14px; outline: none; }
+.notice-rich-content .tiptap:focus-visible { outline: 2px solid var(--color-text); outline-offset: -2px; border-radius: 20px; }
+.notice-rich-content :is(p, ul, ol, pre, blockquote) { margin: 0 0 12px; }
+.notice-rich-content :is(h1,h2,h3,h4,h5,h6) { line-height: 1.4; margin: 16px 0 12px; font-weight: 700; }
+.notice-rich-content h1 { font-size: 1.7rem; }
+.notice-rich-content h2 { font-size: 1.4rem; }
+.notice-rich-content h3 { font-size: 1.2rem; }
+.notice-rich-content :is(h4,h5,h6) { font-size: 1rem; }
+.notice-rich-content ul { list-style: disc; padding-left: 24px; }
+.notice-rich-content ol { list-style: decimal; padding-left: 24px; }
+.notice-rich-content li { list-style: inherit; }
+.notice-rich-content li p { margin-bottom: 0; }
+.notice-rich-content blockquote { padding-left: 16px; border-left: 2px solid currentColor; }
+.notice-rich-content pre { white-space: pre-wrap; }
+.notice-rich-content code { font-family: monospace; }
+.notice-rich-content a { color: inherit; text-decoration: underline; }
+.notice-dialog:not([open]) { display: none; }
+.notice-dialog { position: fixed; margin: auto; width: min(760px, calc(100% - 32px)); max-height: calc(100dvh - 32px); }
+.notice-dialog::backdrop { background: rgb(0 0 0 / 40%); }
+.notice-preview-document { padding: 16px; }
+.notice-dialog h3 { margin-top: 0; }
+.notice-link-dialog { width: min(400px, calc(100% - 32px)); }
+.notice-link-dialog label { display: block; margin-bottom: 8px; }
+.notice-link-dialog input { width: 100%; min-height: 44px; padding: 12px; border: 0; box-sizing: border-box; font: inherit; background: var(--color-bg); color: var(--color-text); }
+@media (max-width: 480px) {
+    .notice-toolbar { gap: 2px; }
+    .notice-toolbar [data-command="italic"], .notice-toolbar [data-command="orderedList"] { display: none; }
+    .notice-more-menu .notice-mobile-command { display: inline-flex; }
+    .notice-more-menu { grid-template-columns: repeat(3, 44px); }
 }

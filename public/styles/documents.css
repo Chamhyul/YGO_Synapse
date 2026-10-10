@@ -1,0 +1,45 @@
+/* 문서형 내부 배치·서식. 색상·곡률·버튼은 공통 조합으로 제공한다. */
+.document-view {position:relative;display:flex;gap:0;min-height:360px;overflow:hidden;}
+.document-view__list {flex:0 0 180px;min-width:0;height:auto;line-height:inherit;box-shadow:none;color:inherit;overflow:auto;overflow-x:hidden;}
+.document-view__list .document-view__item {display:flex;flex-direction:column;align-items:flex-start;gap:6px;width:100%;padding:12px;margin-bottom:8px;text-align:left;}
+.document-view__list .document-view__date {font-size:.8rem;}
+.document-view__item .material-icons {display:inline-block;height:auto;font-size:1rem;line-height:inherit;vertical-align:middle;margin:0;}
+.document-view__content {flex:1;min-width:0;overflow:auto;line-height:1.7;padding:16px;}
+.document-view__content h3 {font-size:1.25rem;margin:8px 0 16px;}
+.document-view__content p {margin:0 0 16px;}
+/* 모바일 목록·본문은 공통20px 여백으로 확장한다. */
+html.is-mobile-device .document-view {margin-inline:-20px;min-height:0;overflow:auto;display:block;}
+html.is-mobile-device .document-view__list {overflow:visible;}
+html.is-mobile-device .document-view__content {padding-inline:20px;overflow:visible;}
+/* 넓은 데스크톱은 좌우 배치, 좁은 데스크톱은 목록만 본문 위에 겹친다. */
+@media (min-width:769px) {
+  html:not(.is-mobile-device) .document-view:has(> .document-view__list:not([hidden])) {gap:24px;}
+  html:not(.is-mobile-device) .ui-overlay__panel:has(.document-view__list:not([hidden])) .ui-overlay__footer {display:none;}
+}
+@media (max-width:768px) {
+  /* 본문 경계 밖에서 목록을 잘라내되 외곽 높이와 내용 위치는 유지한다. */
+  html:not(.is-mobile-device) .document-view:has(> .document-view__list:not([hidden])) {
+    min-height:calc(360px + 2px);padding-block:1px;margin-block:-1px;
+  }
+  html:not(.is-mobile-device) .document-view__list {
+    position:absolute;inset:0;bottom:-1px;width:100%;z-index:1;
+    transform:translateX(-100%);visibility:hidden;pointer-events:none;
+    transition:transform .2s ease,visibility 0s .2s,var(--transition-colors);
+  }
+  html:not(.is-mobile-device) [data-document-mode="list"] .document-view__list {
+    transform:none;visibility:visible;pointer-events:auto;
+    transition:transform .2s ease,visibility 0s,var(--transition-colors);
+  }
+  /* 하단 조작부는 공간을 유지하여 목록 열림/닫힘으로 높이가 변하지 않게 한다. */
+  html:not(.is-mobile-device) [data-document-mode="list"] > .ui-overlay__footer {visibility:hidden;}
+}
+@media (prefers-reduced-motion:reduce) {
+  html:not(.is-mobile-device) .document-view__list,
+  html:not(.is-mobile-device) [data-document-mode="list"] .document-view__list {transition:none;}
+}
+
+[data-notice-page] {margin:24px;}
+[data-notice-page] .document-view {max-width:850px;margin:auto;min-height:0;}
+[data-notice-page] .document-view__content {overflow:visible;}
+
+.document-view__content[hidden] {display:none;}

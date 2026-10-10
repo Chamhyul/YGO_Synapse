@@ -8,7 +8,7 @@ body[data-palette-specimen] > main { padding: 24px; }
 [data-palette-grid] { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 12px; }
 [data-palette-card] { min-width: 0; padding: 16px; background: var(--surface-001); border-radius: 12px; }
 [data-palette-swatch] { height: 56px; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
-[data-palette-swatch="text"] { background: var(--surface-002); font-size: 28px; font-weight: 600; }
+[data-palette-swatch="text"] { height: auto; min-height: 56px; background: var(--surface-002); font-size: 28px; font-weight: 600; }
 [data-palette-swatch="line"] { height: 32px; margin-top: 24px; border-top: 4px solid; border-radius: 0; }
 [data-palette-role] { font-size: 11px; color: var(--text-001); margin: 5px 0 0; }
 [data-palette-row] { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
@@ -17,17 +17,20 @@ body[data-palette-specimen] > main { padding: 24px; }
 [data-palette-shadow-stage] { padding: 30px 14px 50px; }
 [data-palette-stack] { max-width: 320px; }
 [data-palette-stack] > div { padding: 16px; }
-[data-palette-inspection] { margin-top: 12px; font: 11px/1.6 ui-monospace, monospace; color: var(--text-001); white-space: pre-wrap; overflow-wrap: anywhere; }
+[data-palette-inspection] { display: block; margin-top: 12px; font: 11px/1.6 ui-monospace, monospace; color: var(--text-001); white-space: pre-wrap; overflow-wrap: anywhere; }
 [data-palette-example] { margin: 0 0 28px; min-width: 0; }
 [data-palette-example] > h2, [data-palette-example] > h3 { font-size: 16px; line-height: 1.5; margin: 0 0 10px; }
 [data-palette-example-body], [data-palette-example-stage], [data-palette-stage] { min-width: 0; overflow-x: auto; padding: 4px 0 12px; }
 /* 실제 앱 page-stack의 700px 상한을 문서 전시 틀에서 보존한다. */
 [data-palette-stage] { max-width: 700px; margin-inline: auto; }
+/* 기존 제품 여백과 중복되지 않도록 독립적인 견본 사이 두 경계만 분리한다. */
+[data-palette-stage="faq"] > .ui-segment--compact + .home-resources__panel,
+html:not(.is-mobile-device) [data-palette-stage="catalog"] > .catalog-search-filters + .catalog-search-list { margin-top: 16px; }
 /* 모바일 검색 오버레이 전체를 띄우지 않고 추천 목록만 문서 흐름에 배치한다. */
 [data-palette-search-list="mobile"] { position: static; max-height: none; }
 [data-palette-example-controls] { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 [data-palette-measure-row] { padding: 18px 0; border-bottom: 1px solid var(--border-000); }
 [data-palette-measure-row] > [data-palette-caption] { margin-top: 0; }
-[data-palette-measure-result] { margin: 8px 0 0; font: 11px/1.6 ui-monospace, monospace; color: var(--text-001); white-space: pre-wrap; overflow-wrap: anywhere; }
+[data-palette-measure-result] { display: block; margin: 8px 0 0; font: 11px/1.6 ui-monospace, monospace; color: var(--text-001); white-space: pre-wrap; overflow-wrap: anywhere; }
 [data-palette-notice] { padding: 12px 16px; margin: 0 0 22px; border-radius: 8px; background: var(--surface-002); color: var(--text-001); font-size: 12px; }
 @media (max-width: 480px) { body[data-palette-specimen] > main { padding: 16px; } }

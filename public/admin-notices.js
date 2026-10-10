@@ -5,11 +5,15 @@
     if (!content || content.hidden || !form) return;
     const get = id => document.getElementById('notice-' + id);
     let notices = [], revision = null, selected = null, baseline = '', busy = false, environment = '', ready = false;
-    const fields = () => ({title:get('title').value, content:get('body').value, isPinned:Number(get('pin').value)});
+    let editor;
+    try { editor = NoticeEditor.createNoticeEditor(get('body')); }
+    catch { get('status').textContent='본문 편집기를 불러오지 못했습니다. 새로고침해 주세요.'; return; }
+    const fields = () => ({title:get('title').value, content:editor.getHTML(), isPinned:Number(get('pin').value)});
     const dirty = () => JSON.stringify(fields()) !== baseline;
     const leave = () => !dirty() || window.confirm('저장하지 않은 변경을 버리시겠습니까?');
     function controls() {
         get('fields').disabled = busy || !ready;
+        editor.setEditable(!busy && ready && !content.hidden);
         get('save').disabled = busy || revision === null;
         get('delete').disabled = busy || revision === null;
         get('new').disabled = busy || revision === null;
@@ -19,7 +23,7 @@
     }
     function select(notice) {
         selected = notice?.id || null;
-        get('title').value = notice?.title || '';get('body').value = notice?.content || '';get('pin').value = notice?.isPinned || 0;
+        get('title').value = notice?.title || '';editor.setContent(notice?.content || '');get('pin').value = notice?.isPinned || 0;
         get('editor-title').textContent = notice ? '공지 수정' : '새 공지 작성';
         get('date').textContent = notice ? `등록일 ${notice.date} ${notice.id.slice(11)}` : '';
         get('delete').hidden = !notice;baseline = JSON.stringify(fields());
@@ -95,10 +99,13 @@
     form.addEventListener('submit',event=>{event.preventDefault();if(form.reportValidity())mutate(selected?'update':'add');});
     get('preview-button').addEventListener('click',async()=>{
         if(busy)return;busy=true;controls();get('status').textContent='미리보기를 준비하고 있습니다.';
-        try {const data=await request('/preview',fields());if(content.hidden)return;get('preview-heading').textContent=data.title;get('preview-body').innerHTML=data.content;get('status').textContent='미리보기입니다. 아직 저장하지 않았습니다.';}
+        try {const data=await request('/preview',fields());if(content.hidden)return;get('preview-heading').textContent=data.title;get('preview-body').innerHTML=data.content;get('preview-dialog').showModal();get('status').textContent='미리보기입니다. 아직 저장하지 않았습니다.';}
         catch {if(!content.hidden)get('status').textContent='미리보기를 불러오지 못했습니다.';}
         finally {busy=false;controls();}
     });
+    get('preview-close').addEventListener('click',()=>get('preview-dialog').close());
+    get('preview-dialog').addEventListener('close',()=>{if(!content.hidden)get('preview-button').focus();});
+    new MutationObserver(()=>{if(content.hidden){editor.setEditable(false);if(get('preview-dialog').open)get('preview-dialog').close();}}).observe(content,{attributes:true,attributeFilter:['hidden']});
     window.addEventListener('beforeunload',event=>{if((dirty()||busy) && !content.hidden){event.preventDefault();event.returnValue='';}});
     select(null);reload();
 })();

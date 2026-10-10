@@ -153,7 +153,7 @@
 
 /* 정비된 본문의 흐름 배치. 중앙 정렬은 지정된 인증창에만 적용한다. */
 :is(#auth-modal, #signup-modal, #membership-auth-modal,
-    #migration-modal, #migration-result-modal, #export-modal,
+    #migration-modal, #export-modal,
     #data-clear-confirm-modal, #data-clear-success-modal, #legacy-migration-modal) > .ui-overlay__body {
   display: flex;
   flex-direction: column;
@@ -161,7 +161,7 @@
 }
 :is(#auth-modal, #signup-modal, #membership-auth-modal) > .ui-overlay__body { text-align: center; }
 :is(#auth-modal, #signup-modal, #membership-auth-modal,
-    #migration-modal, #migration-result-modal, #export-modal,
+    #migration-modal, #export-modal,
     #data-clear-confirm-modal, #data-clear-success-modal, #legacy-migration-modal) > .ui-overlay__body > p {
   margin: 0;
   font-size: 0.9rem;
@@ -251,11 +251,11 @@
 .agree-row > a { flex-shrink: 0; }
 /* flex 배치를 사용해도 비활성 안내와 배지는 공간을 차지하지 않는다. */
 :is(#auth-modal, #signup-modal, #membership-auth-modal,
-    #migration-modal, #migration-result-modal, #export-modal,
+    #migration-modal, #export-modal,
     #data-clear-confirm-modal, #data-clear-success-modal, #legacy-migration-modal) [hidden] { display: none; }
 
 /* 데이터 작업창의 기능 배치. 색상·형태·표는 직접 조합한다. */
-:is(#migration-modal, #migration-result-modal) .ui-segment { align-self: center; }
+#migration-modal .ui-segment { align-self: center; }
 :is(#mig-content-file, #mig-content-sheet) { display: flex; flex-direction: column; gap: 16px; }
 :is(#mig-content-file, #mig-content-sheet) > p { margin: 0; font-size: 0.85rem; line-height: 1.6; }
 #mig-content-sheet > label { text-align: left; font-size: 0.9rem; }
@@ -304,7 +304,7 @@ html.is-mobile-device #migration-sheet-url { font-size: 16px; }
 
 /* 가져오기·등록·이동·제거 결과창의 공통 기능 배치. */
 [data-result-operation] > .ui-overlay__body { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
-[data-result-operation] > .ui-overlay__body > p { margin: 0; font-size: .9rem; line-height: 1.6; }
+[data-result-operation] > .ui-overlay__body > p { margin: 0; font-size: .9rem; line-height: 1.6; word-break: keep-all; }
 [data-result-operation] > .ui-overlay__body > [data-result-status] { text-align: center; font-size: 1.25rem; font-weight: 700; }
 [data-result-operation] [data-result-icon] { align-self: center; font-size: 4rem; line-height: 1; }
 [data-result-operation] .ui-segment { align-self: center; }

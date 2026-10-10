@@ -20,6 +20,318 @@
     },
     {
       "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/aix-ppc64",
+      "name": "@esbuild/aix-ppc64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/aix-ppc64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/android-arm",
+      "name": "@esbuild/android-arm",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/android-arm/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/android-arm64",
+      "name": "@esbuild/android-arm64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/android-arm64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/android-x64",
+      "name": "@esbuild/android-x64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/android-x64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/darwin-arm64",
+      "name": "@esbuild/darwin-arm64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": true,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/darwin-arm64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/darwin-x64",
+      "name": "@esbuild/darwin-x64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/darwin-x64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/freebsd-arm64",
+      "name": "@esbuild/freebsd-arm64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/freebsd-arm64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/freebsd-x64",
+      "name": "@esbuild/freebsd-x64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/freebsd-x64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/linux-arm",
+      "name": "@esbuild/linux-arm",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/linux-arm/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/linux-arm64",
+      "name": "@esbuild/linux-arm64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/linux-arm64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/linux-ia32",
+      "name": "@esbuild/linux-ia32",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/linux-ia32/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/linux-loong64",
+      "name": "@esbuild/linux-loong64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/linux-loong64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/linux-mips64el",
+      "name": "@esbuild/linux-mips64el",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/linux-mips64el/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/linux-ppc64",
+      "name": "@esbuild/linux-ppc64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/linux-ppc64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/linux-riscv64",
+      "name": "@esbuild/linux-riscv64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/linux-riscv64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/linux-s390x",
+      "name": "@esbuild/linux-s390x",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/linux-s390x/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/linux-x64",
+      "name": "@esbuild/linux-x64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/linux-x64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/netbsd-arm64",
+      "name": "@esbuild/netbsd-arm64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/netbsd-arm64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/netbsd-x64",
+      "name": "@esbuild/netbsd-x64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/netbsd-x64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/openbsd-arm64",
+      "name": "@esbuild/openbsd-arm64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/openbsd-arm64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/openbsd-x64",
+      "name": "@esbuild/openbsd-x64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/openbsd-x64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/openharmony-arm64",
+      "name": "@esbuild/openharmony-arm64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/openharmony-arm64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/sunos-x64",
+      "name": "@esbuild/sunos-x64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/sunos-x64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/win32-arm64",
+      "name": "@esbuild/win32-arm64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/win32-arm64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/win32-ia32",
+      "name": "@esbuild/win32-ia32",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/win32-ia32/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@esbuild/win32-x64",
+      "name": "@esbuild/win32-x64",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": true,
+      "installed": false,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/@esbuild/win32-x64/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
       "location": "node_modules/@img/colour",
       "name": "@img/colour",
       "version": "1.1.0",
@@ -521,6 +833,431 @@
     },
     {
       "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/core",
+      "name": "@tiptap/core",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/core/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-blockquote",
+      "name": "@tiptap/extension-blockquote",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-blockquote/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-bold",
+      "name": "@tiptap/extension-bold",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-bold/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-bullet-list",
+      "name": "@tiptap/extension-bullet-list",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-bullet-list/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-code",
+      "name": "@tiptap/extension-code",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-code/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-code-block",
+      "name": "@tiptap/extension-code-block",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-code-block/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-document",
+      "name": "@tiptap/extension-document",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-document/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-dropcursor",
+      "name": "@tiptap/extension-dropcursor",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-dropcursor/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-gapcursor",
+      "name": "@tiptap/extension-gapcursor",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-gapcursor/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-hard-break",
+      "name": "@tiptap/extension-hard-break",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-hard-break/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-heading",
+      "name": "@tiptap/extension-heading",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-heading/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-horizontal-rule",
+      "name": "@tiptap/extension-horizontal-rule",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-horizontal-rule/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-italic",
+      "name": "@tiptap/extension-italic",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-italic/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-link",
+      "name": "@tiptap/extension-link",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-link/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-list",
+      "name": "@tiptap/extension-list",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-list/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-list-item",
+      "name": "@tiptap/extension-list-item",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-list-item/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-list-keymap",
+      "name": "@tiptap/extension-list-keymap",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-list-keymap/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-ordered-list",
+      "name": "@tiptap/extension-ordered-list",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-ordered-list/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-paragraph",
+      "name": "@tiptap/extension-paragraph",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-paragraph/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-strike",
+      "name": "@tiptap/extension-strike",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-strike/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-text",
+      "name": "@tiptap/extension-text",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-text/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extension-underline",
+      "name": "@tiptap/extension-underline",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extension-underline/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/extensions",
+      "name": "@tiptap/extensions",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/extensions/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/pm",
+      "name": "@tiptap/pm",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/pm/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/@tiptap/starter-kit",
+      "name": "@tiptap/starter-kit",
+      "version": "3.31.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/@tiptap/starter-kit/v/3.31.3"
+    },
+    {
+      "lockfile": "package-lock.json",
       "location": "node_modules/@types/node",
       "name": "@types/node",
       "version": "26.5.0",
@@ -555,6 +1292,23 @@
     },
     {
       "lockfile": "package-lock.json",
+      "location": "node_modules/esbuild",
+      "name": "esbuild",
+      "version": "0.25.12",
+      "license": "MIT",
+      "dev": true,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/esbuild/v/0.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
       "location": "node_modules/flatbuffers",
       "name": "flatbuffers",
       "version": "25.9.23",
@@ -581,6 +1335,23 @@
       "installed": true,
       "legalFiles": [],
       "registry": "https://www.npmjs.com/package/guid-typescript/v/1.0.9"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/linkifyjs",
+      "name": "linkifyjs",
+      "version": "4.3.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "58e6f3677452cca096ce5328ebf7de37a1406bbeeb2f263c1b2ededc8c7d0228"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/linkifyjs/v/4.3.3"
     },
     {
       "lockfile": "package-lock.json",
@@ -625,6 +1396,23 @@
     },
     {
       "lockfile": "package-lock.json",
+      "location": "node_modules/orderedmap",
+      "name": "orderedmap",
+      "version": "2.1.1",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "869c30f368eb08735e779027b9f4bc9fea2f39624351856aebe42741f0bc0884"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/orderedmap/v/2.1.1"
+    },
+    {
+      "lockfile": "package-lock.json",
       "location": "node_modules/platform",
       "name": "platform",
       "version": "1.3.6",
@@ -642,6 +1430,227 @@
     },
     {
       "lockfile": "package-lock.json",
+      "location": "node_modules/prosemirror-changeset",
+      "name": "prosemirror-changeset",
+      "version": "2.4.4",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "7543dfe82fa61d5bb2478c78cbd9dfb2cbd500b6ac2893b24ed925773b67fb70"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/prosemirror-changeset/v/2.4.4"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/prosemirror-commands",
+      "name": "prosemirror-commands",
+      "version": "1.7.2",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/prosemirror-commands/v/1.7.2"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/prosemirror-dropcursor",
+      "name": "prosemirror-dropcursor",
+      "version": "1.8.4",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/prosemirror-dropcursor/v/1.8.4"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/prosemirror-gapcursor",
+      "name": "prosemirror-gapcursor",
+      "version": "1.4.1",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/prosemirror-gapcursor/v/1.4.1"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/prosemirror-history",
+      "name": "prosemirror-history",
+      "version": "1.5.1",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/prosemirror-history/v/1.5.1"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/prosemirror-inputrules",
+      "name": "prosemirror-inputrules",
+      "version": "1.5.1",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/prosemirror-inputrules/v/1.5.1"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/prosemirror-keymap",
+      "name": "prosemirror-keymap",
+      "version": "1.2.3",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/prosemirror-keymap/v/1.2.3"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/prosemirror-model",
+      "name": "prosemirror-model",
+      "version": "1.25.12",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/prosemirror-model/v/1.25.12"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/prosemirror-schema-list",
+      "name": "prosemirror-schema-list",
+      "version": "1.5.1",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/prosemirror-schema-list/v/1.5.1"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/prosemirror-state",
+      "name": "prosemirror-state",
+      "version": "1.4.4",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/prosemirror-state/v/1.4.4"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/prosemirror-tables",
+      "name": "prosemirror-tables",
+      "version": "1.8.5",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "d1d2046ebbe6362f9ad8fd4d62e9074f2553f289c0e1de895a650f10ba5f4239"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/prosemirror-tables/v/1.8.5"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/prosemirror-transform",
+      "name": "prosemirror-transform",
+      "version": "1.12.2",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/prosemirror-transform/v/1.12.2"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/prosemirror-view",
+      "name": "prosemirror-view",
+      "version": "1.42.6",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/prosemirror-view/v/1.42.6"
+    },
+    {
+      "lockfile": "package-lock.json",
       "location": "node_modules/protobufjs",
       "name": "protobufjs",
       "version": "7.6.6",
@@ -656,6 +1665,23 @@
         }
       ],
       "registry": "https://www.npmjs.com/package/protobufjs/v/7.6.6"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/rope-sequence",
+      "name": "rope-sequence",
+      "version": "1.3.4",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "530424aebdd0e73f53238d1f89df250057bc8d8ce090cf5954197fadce5bf226"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/rope-sequence/v/1.3.4"
     },
     {
       "lockfile": "package-lock.json",
@@ -724,6 +1750,23 @@
         }
       ],
       "registry": "https://www.npmjs.com/package/undici-types/v/8.9.0"
+    },
+    {
+      "lockfile": "package-lock.json",
+      "location": "node_modules/w3c-keyname",
+      "name": "w3c-keyname",
+      "version": "2.2.8",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "869c30f368eb08735e779027b9f4bc9fea2f39624351856aebe42741f0bc0884"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/w3c-keyname/v/2.2.8"
     },
     {
       "lockfile": "functions/package-lock.json",
@@ -3600,6 +4643,23 @@
     },
     {
       "lockfile": "functions/package-lock.json",
+      "location": "node_modules/adm-zip",
+      "name": "adm-zip",
+      "version": "0.5.18",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "6bb5b2d4c07d793ca928daa63a8899c6914fafb5ac3aa04ec10cae07f3d57dca"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/adm-zip/v/0.5.18"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
       "location": "node_modules/agent-base",
       "name": "agent-base",
       "version": "7.1.4",
@@ -4000,6 +5060,23 @@
       "installed": true,
       "legalFiles": [],
       "registry": "https://www.npmjs.com/package/boolbase/v/1.0.0"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
+      "location": "node_modules/boolean",
+      "name": "boolean",
+      "version": "3.2.0",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.txt",
+          "sha256": "8e4aa1aef825c37d6f74d4b867dccb7b059b66c75ecdedc74834e2f403568a27"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/boolean/v/3.2.0"
     },
     {
       "lockfile": "functions/package-lock.json",
@@ -4707,6 +5784,40 @@
     },
     {
       "lockfile": "functions/package-lock.json",
+      "location": "node_modules/define-data-property",
+      "name": "define-data-property",
+      "version": "1.1.4",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "b41d08bc3624d8c436fc80237d73ebb361985a67f4504bbcd703e5ca2b27254c"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/define-data-property/v/1.1.4"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
+      "location": "node_modules/define-properties",
+      "name": "define-properties",
+      "version": "1.2.1",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "00d402c2bbe7c67369bd01ce2c16b8ed46ccc949a1ee2d6bb8f9606afa8c7434"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/define-properties/v/1.2.1"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
       "location": "node_modules/delayed-stream",
       "name": "delayed-stream",
       "version": "1.0.0",
@@ -4772,6 +5883,23 @@
         }
       ],
       "registry": "https://www.npmjs.com/package/detect-newline/v/3.1.0"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
+      "location": "node_modules/detect-node",
+      "name": "detect-node",
+      "version": "2.1.0",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "54b32293ea560d22cd9b62af9b2cda1a030d910a48c6601d227c5ff2338d95f8"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/detect-node/v/2.1.0"
     },
     {
       "lockfile": "functions/package-lock.json",
@@ -5141,6 +6269,23 @@
         }
       ],
       "registry": "https://www.npmjs.com/package/es-set-tostringtag/v/2.1.0"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
+      "location": "node_modules/es6-error",
+      "name": "es6-error",
+      "version": "4.1.1",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE.md",
+          "sha256": "9f655c5baa5a6f254d1e87f27e14d04acaff4bd0b489ea3c2f33723919da2f44"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/es6-error/v/4.1.1"
     },
     {
       "lockfile": "functions/package-lock.json",
@@ -5972,6 +7117,57 @@
     },
     {
       "lockfile": "functions/package-lock.json",
+      "location": "node_modules/global-agent",
+      "name": "global-agent",
+      "version": "3.0.0",
+      "license": "BSD-3-Clause",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "ba98e94118579117505f6f11fd9a4354c5e65ece03b4898d8b8f7785efcd25c1"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/global-agent/v/3.0.0"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
+      "location": "node_modules/global-agent/node_modules/semver",
+      "name": "semver",
+      "version": "7.8.5",
+      "license": "ISC",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "4ec3d4c66cd87f5c8d8ad911b10f99bf27cb00cdfcff82621956e379186b016b"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/semver/v/7.8.5"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
+      "location": "node_modules/globalthis",
+      "name": "globalthis",
+      "version": "1.0.4",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "acfaf437865d82f0fa9b9cdcae8b550bed8d011adaa5b42d973191caf99f62a8"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/globalthis/v/1.0.4"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
       "location": "node_modules/google-auth-library",
       "name": "google-auth-library",
       "version": "10.6.2",
@@ -6253,6 +7449,23 @@
         }
       ],
       "registry": "https://www.npmjs.com/package/has-flag/v/4.0.0"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
+      "location": "node_modules/has-property-descriptors",
+      "name": "has-property-descriptors",
+      "version": "1.0.2",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "0f0ca96f50793990031ebc488a38f7292ff70bce8ab6a8e5eeda674abc32ccdf"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/has-property-descriptors/v/1.0.2"
     },
     {
       "lockfile": "functions/package-lock.json",
@@ -7358,6 +8571,23 @@
     },
     {
       "lockfile": "functions/package-lock.json",
+      "location": "node_modules/json-stringify-safe",
+      "name": "json-stringify-safe",
+      "version": "5.0.1",
+      "license": "ISC",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "4ec3d4c66cd87f5c8d8ad911b10f99bf27cb00cdfcff82621956e379186b016b"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/json-stringify-safe/v/5.0.1"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
       "location": "node_modules/json5",
       "name": "json5",
       "version": "2.2.3",
@@ -7834,6 +9064,40 @@
     },
     {
       "lockfile": "functions/package-lock.json",
+      "location": "node_modules/matcher",
+      "name": "matcher",
+      "version": "3.0.0",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "license",
+          "sha256": "5c932d88256b4ab958f64a856fa48e8bd1f55bc1d96b8149c65689e0c61789d3"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/matcher/v/3.0.0"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
+      "location": "node_modules/matcher/node_modules/escape-string-regexp",
+      "name": "escape-string-regexp",
+      "version": "4.0.0",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "license",
+          "sha256": "5c932d88256b4ab958f64a856fa48e8bd1f55bc1d96b8149c65689e0c61789d3"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/escape-string-regexp/v/4.0.0"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
       "location": "node_modules/math-intrinsics",
       "name": "math-intrinsics",
       "version": "1.1.0",
@@ -8254,6 +9518,23 @@
     },
     {
       "lockfile": "functions/package-lock.json",
+      "location": "node_modules/object-keys",
+      "name": "object-keys",
+      "version": "1.1.1",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "5640e5cbe2e9f57f6ccfdd8dbfbeadb875495bdbcb69d2666ce3177ccd0942e4"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/object-keys/v/1.1.1"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
       "location": "node_modules/on-finished",
       "name": "on-finished",
       "version": "2.4.1",
@@ -8302,6 +9583,30 @@
         }
       ],
       "registry": "https://www.npmjs.com/package/onetime/v/5.1.2"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
+      "location": "node_modules/onnxruntime-common",
+      "name": "onnxruntime-common",
+      "version": "1.23.2",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/onnxruntime-common/v/1.23.2"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
+      "location": "node_modules/onnxruntime-node",
+      "name": "onnxruntime-node",
+      "version": "1.23.2",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [],
+      "registry": "https://www.npmjs.com/package/onnxruntime-node/v/1.23.2"
     },
     {
       "lockfile": "functions/package-lock.json",
@@ -8968,6 +10273,40 @@
     },
     {
       "lockfile": "functions/package-lock.json",
+      "location": "node_modules/roarr",
+      "name": "roarr",
+      "version": "2.15.4",
+      "license": "BSD-3-Clause",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "ba98e94118579117505f6f11fd9a4354c5e65ece03b4898d8b8f7785efcd25c1"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/roarr/v/2.15.4"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
+      "location": "node_modules/roarr/node_modules/sprintf-js",
+      "name": "sprintf-js",
+      "version": "1.1.3",
+      "license": "BSD-3-Clause",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "f8287e4dd9480be58c56aca4a55c23b782c43a86e69aabad78fff4df0d29edef"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/sprintf-js/v/1.1.3"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
       "location": "node_modules/router",
       "name": "router",
       "version": "2.2.0",
@@ -9036,6 +10375,23 @@
     },
     {
       "lockfile": "functions/package-lock.json",
+      "location": "node_modules/semver-compare",
+      "name": "semver-compare",
+      "version": "1.0.0",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "435a6722c786b0a56fbe7387028f1d9d3f3a2d0fb615bb8fee118727c3f59b7b"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/semver-compare/v/1.0.0"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
       "location": "node_modules/send",
       "name": "send",
       "version": "1.2.1",
@@ -9084,6 +10440,40 @@
         }
       ],
       "registry": "https://www.npmjs.com/package/mime-types/v/3.0.2"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
+      "location": "node_modules/serialize-error",
+      "name": "serialize-error",
+      "version": "7.0.1",
+      "license": "MIT",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "license",
+          "sha256": "5c932d88256b4ab958f64a856fa48e8bd1f55bc1d96b8149c65689e0c61789d3"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/serialize-error/v/7.0.1"
+    },
+    {
+      "lockfile": "functions/package-lock.json",
+      "location": "node_modules/serialize-error/node_modules/type-fest",
+      "name": "type-fest",
+      "version": "0.13.1",
+      "license": "(MIT OR CC0-1.0)",
+      "dev": false,
+      "optional": false,
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "license",
+          "sha256": "64a93ffc0a06a2266dbb57ed7ebe3b56ba66ab337b6347fabdbf86c76819fbae"
+        }
+      ],
+      "registry": "https://www.npmjs.com/package/type-fest/v/0.13.1"
     },
     {
       "lockfile": "functions/package-lock.json",

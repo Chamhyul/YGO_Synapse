@@ -1,13 +1,13 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 const source=fs.readFileSync('public/admin-notices.js','utf8');const settle=()=>new Promise(r=>setImmediate(r));
-function node(){return {value:'',textContent:'',hidden:false,disabled:false,children:[],events:{},attributes:{},addEventListener(k,fn){this.events[k]=fn;},append(...n){this.children.push(...n);},replaceChildren(...n){this.children=n;},setAttribute(k,v){this.attributes[k]=v;},querySelectorAll(){return[];},reportValidity(){return true;}};}
+function node(){return {value:'',textContent:'',hidden:false,disabled:false,children:[],events:{},attributes:{},addEventListener(k,fn){this.events[k]=fn;},append(...n){this.children.push(...n);},replaceChildren(...n){this.children=n;},setAttribute(k,v){this.attributes[k]=v;},querySelectorAll(){return[];},reportValidity(){return true;},showModal(){this.open=true;},close(){this.open=false;}};}
 const notice={id:'2026.10.07T10:00',date:'2026.10.07',title:'기존 공지',content:'<p>본문</p>',isPinned:0};
 function fixture({responses,hidden=false,confirm=true}={}) {
- const ids=['form','fields','new','reload','list','empty','search','title','body','pin','editor-title','date','delete','preview-heading','preview-body','environment','status','save','cancel','preview-button'];
+ const ids=['form','fields','new','reload','list','empty','search','title','body','pin','editor-title','date','delete','preview-heading','preview-body','environment','status','save','cancel','preview-button','preview-dialog','preview-close'];
  const nodes=new Map(ids.map(id=>['notice-'+id,node()]));const content=node();content.hidden=hidden;nodes.set('admin-content',content);
  const calls=[],events={};let reloads=0;
  const queue=responses||[{success:true,revision:'1',environment:'local',notices:[notice]}];
- vm.runInNewContext(source,{document:{getElementById:id=>nodes.get(id),createElement:node},window:{confirm:()=>confirm,location:{reload(){reloads++;}},addEventListener(k,fn){events[k]=fn;}},AbortController,setTimeout,clearTimeout,
+ vm.runInNewContext(source,{NoticeEditor:{createNoticeEditor:element=>({getHTML:()=>element.value,setContent:html=>{element.value=html;},setEditable:enabled=>{element.editable=enabled;}})},MutationObserver:class{observe(){}},document:{getElementById:id=>nodes.get(id),createElement:node},window:{confirm:()=>confirm,location:{reload(){reloads++;}},addEventListener(k,fn){events[k]=fn;}},AbortController,setTimeout,clearTimeout,
  fetch:async(url,options)=>{calls.push({url,options});const next=queue.shift();const data=typeof next==='function'?await next():next;return{ok:!data.status,status:data.status||200,json:async()=>data};}});
  return{nodes,calls,events,reloads:()=>reloads,queue,get:id=>nodes.get('notice-'+id)};
 }
@@ -27,7 +27,7 @@ test('저장 성공 후 재조회 실패는 저장 완료와 구분하고 재전
  assert.match(f.get('status').textContent,/저장은 완료/);assert.equal(f.get('save').disabled,true);
 });
 test('미리보기는 저장 API를 호출하지 않고 로그아웃 후 늦은 응답은 반영하지 않는다',async()=>{
- const f=fixture();await settle();f.queue.push({success:true,title:'미리보기',content:'<b>서식</b>'});await f.get('preview-button').events.click();assert.ok(f.calls.at(-1).url.endsWith('/preview'));assert.equal(f.get('preview-body').innerHTML,'<b>서식</b>');
+ const f=fixture();await settle();f.queue.push({success:true,title:'미리보기',content:'<b>서식</b>'});await f.get('preview-button').events.click();assert.ok(f.calls.at(-1).url.endsWith('/preview'));assert.equal(f.get('preview-body').innerHTML,'<b>서식</b>');assert.equal(f.get('preview-dialog').open,true);f.get('preview-close').events.click();assert.equal(f.get('preview-dialog').open,false);
  let done;const delayed=fixture({responses:[()=>new Promise(r=>{done=r;})]});delayed.nodes.get('admin-content').hidden=true;done({success:true,revision:'1',environment:'local',notices:[notice]});await settle();assert.equal(delayed.get('fields').disabled,true);assert.equal(delayed.get('list').children.length,0);
  assert.equal(fixture({hidden:true}).calls.length,0);
 });

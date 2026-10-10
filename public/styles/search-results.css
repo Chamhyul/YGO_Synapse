@@ -42,6 +42,9 @@
   padding-inline: 4px;
 }
 
+.owned-card__content,
+.owned-card__detail { margin-inline: -16px; }
+
 .owned-card__content {
   position: relative;
   display: grid;
@@ -49,7 +52,6 @@
   align-items: start;
   align-content: start;
   overflow: clip;
-  margin-inline: -16px;
   padding-inline: 16px;
 }
 
@@ -145,7 +147,6 @@
 
 .owned-card__detail {
   grid-column: 1 / -1;
-  margin-inline: -16px;
   display: block;
   align-self: start;
   min-height: 0;
@@ -252,18 +253,11 @@
   text-align: center;
 }
 
-html.is-mobile-device .owned-card {
-  padding-inline: 12px;
-}
+html.is-mobile-device .owned-card,
+html.is-mobile-device .owned-card__content { padding-inline: 12px; }
 
-html.is-mobile-device .owned-card__content {
-  margin-inline: -12px;
-  padding-inline: 12px;
-}
-
-html.is-mobile-device .owned-card__detail {
-  margin-inline: -12px;
-}
+html.is-mobile-device .owned-card__content,
+html.is-mobile-device .owned-card__detail { margin-inline: -12px; }
 
 html.is-mobile-device .owned-card__content > .owned-card__locations.is-leaving {
   inset-inline: 12px;

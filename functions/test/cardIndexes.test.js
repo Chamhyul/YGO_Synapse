@@ -147,7 +147,11 @@ test('원본과 대기 기록은 하나의 배치로 저장하며 실패를 전�
 
 test('운영·로컬 주소 목록이 서버 등록과 일치하고 레거시 호출이 없다',async()=>{
   const source=fs.readFileSync(path.join(__dirname,'../../public/script.js'),'utf8');
-  const config=source.slice(0,source.indexOf('// Safari 최적화: callApi'));
+  const configEnd=source.indexOf('const FIREBASE_CONFIG =');
+  assert.ok(configEnd>0,'API 설정과 토큰 준비 코드의 경계를 확인해야 합니다.');
+  const configBlockEnd=source.indexOf('\n};',configEnd)+3;
+  assert.ok(configBlockEnd>configEnd);
+  const config=source.slice(0,configBlockEnd);
   const functions=require('../index');
   assert.equal(typeof functions.rebuildCardNames,'function');
   assert.equal(require.cache[require.resolve('../services/draw2CardClassifierService')],undefined,

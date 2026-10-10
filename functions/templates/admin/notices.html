@@ -29,8 +29,10 @@
     <script defer src="/admin-session.js?v=2"></script>
     <script defer src="/admin.js?v=6"></script>
     <link rel="stylesheet" href="/styles/admin-home.css?v=1">
-    <script defer src="/admin-notices.js?v=4"></script>
-    <link rel="stylesheet" href="/styles/admin-notices.css?v=3">
+    <link rel="stylesheet" href="/styles/overlays.css?v=1">
+    <script defer src="/vendor/notice-editor.js?v=1"></script>
+    <script defer src="/admin-notices.js?v=5"></script>
+    <link rel="stylesheet" href="/styles/admin-notices.css?v=4">
 </head>
 <body>
         <section id="admin-login" class="admin-login" aria-labelledby="admin-title">
@@ -77,14 +79,14 @@
                             <fieldset id="notice-fields" disabled>
                                 <p><label for="notice-title">제목</label><input id="notice-title" type="text" class="ui-input--filled color-surface-002 shape-capsule" required maxlength="200" autocomplete="off"></p>
                                 <p><label for="notice-pin">상단 고정 순위</label><input id="notice-pin" type="number" class="ui-input--filled color-surface-002 shape-capsule" min="0" max="9999" step="1" value="0" required><span class="admin-home-note color-text-001">0은 고정하지 않음, 작은 양수가 먼저 표시됩니다.</span></p>
-                                <label for="notice-body">본문</label>
-                                <p class="admin-home-note color-text-001">줄바꿈·굵게·목록·링크 등 HTML 서식을 사용할 수 있습니다. 미리보기에서 실제 표시를 확인하세요. 이미지 첨부는 지원하지 않습니다.</p>
-                                <textarea id="notice-body" class="materialize-textarea color-surface-002" rows="10" maxlength="100000" aria-label="공지 본문"></textarea>
-                                <div class="admin-home-periods"><button id="notice-preview-button" type="button" class="ui-button color-type000 shape-capsule admin-home-record-link">미리보기</button><button id="notice-save" type="submit" class="ui-button color-theme shape-capsule admin-home-record-link">저장</button><button id="notice-cancel" type="button" class="ui-button color-type000 shape-capsule admin-home-record-link">취소</button><button id="notice-delete" type="button" class="ui-button color-type000 shape-capsule admin-home-record-link" hidden>삭제</button></div>
+                                <span id="notice-body-label" class="notice-body-label">본문</span>
+                                <p id="notice-body-help" class="admin-home-note color-text-001">글을 선택하고 도구줄에서 서식을 적용하세요. 이미지 첨부는 지원하지 않습니다.</p>
+                                <div class="notice-editor-frame color-surface-002 shape-rounded-lg"><div id="notice-toolbar" class="notice-toolbar" role="toolbar" aria-label="본문 서식"><select id="notice-format" class="ui-input--filled color-surface-002 shape-capsule" aria-label="문단 형식"><option value="0">본문</option><option value="1">제목 1</option><option value="2">제목 2</option><option value="3">제목 3</option><option value="4">제목 4</option><option value="5">제목 5</option><option value="6">제목 6</option></select><button type="button" data-command="bold" class="ui-button color-type000 shape-capsule" title="굵게" aria-label="굵게"><i class="material-icons" aria-hidden="true">format_bold</i></button><button type="button" data-command="italic" class="ui-button color-type000 shape-capsule" title="기울임" aria-label="기울임"><i class="material-icons" aria-hidden="true">format_italic</i></button><button type="button" data-command="underline" class="ui-button color-type000 shape-capsule" title="밑줄" aria-label="밑줄"><i class="material-icons" aria-hidden="true">format_underlined</i></button><button type="button" data-command="link" class="ui-button color-type000 shape-capsule" title="링크" aria-label="링크"><i class="material-icons" aria-hidden="true">link</i></button><button type="button" data-command="bulletList" class="ui-button color-type000 shape-capsule" title="글머리 목록" aria-label="글머리 목록"><i class="material-icons" aria-hidden="true">format_list_bulleted</i></button><button type="button" data-command="orderedList" class="ui-button color-type000 shape-capsule" title="번호 목록" aria-label="번호 목록"><i class="material-icons" aria-hidden="true">format_list_numbered</i></button><details class="notice-more"><summary class="ui-button color-type000 shape-capsule" aria-label="추가 서식" title="추가 서식"><i class="material-icons" aria-hidden="true">more_horiz</i></summary><div class="notice-more-menu color-surface-001 shape-rounded-lg"><button type="button" data-command="italic" class="notice-mobile-command ui-button color-type000 shape-capsule" title="기울임" aria-label="기울임"><i class="material-icons" aria-hidden="true">format_italic</i></button><button type="button" data-command="orderedList" class="notice-mobile-command ui-button color-type000 shape-capsule" title="번호 목록" aria-label="번호 목록"><i class="material-icons" aria-hidden="true">format_list_numbered</i></button><button type="button" data-command="strike" class="ui-button color-type000 shape-capsule" title="취소선" aria-label="취소선"><i class="material-icons" aria-hidden="true">strikethrough_s</i></button><button type="button" data-command="blockquote" class="ui-button color-type000 shape-capsule" title="인용" aria-label="인용"><i class="material-icons" aria-hidden="true">format_quote</i></button><button type="button" data-command="code" class="ui-button color-type000 shape-capsule" title="인라인 코드" aria-label="인라인 코드"><i class="material-icons" aria-hidden="true">code</i></button><button type="button" data-command="codeBlock" class="ui-button color-type000 shape-capsule" title="코드 블록" aria-label="코드 블록"><i class="material-icons" aria-hidden="true">terminal</i></button><button type="button" data-command="horizontalRule" class="ui-button color-type000 shape-capsule" title="구분선" aria-label="구분선"><i class="material-icons" aria-hidden="true">horizontal_rule</i></button><button type="button" data-command="undo" class="ui-button color-type000 shape-capsule" title="실행 취소" aria-label="실행 취소"><i class="material-icons" aria-hidden="true">undo</i></button><button type="button" data-command="redo" class="ui-button color-type000 shape-capsule" title="다시 실행" aria-label="다시 실행"><i class="material-icons" aria-hidden="true">redo</i></button><button type="button" data-command="clear" class="ui-button color-type000 shape-capsule" title="서식 지우기" aria-label="서식 지우기"><i class="material-icons" aria-hidden="true">format_clear</i></button></div></details></div><div id="notice-body" class="notice-rich-content"></div></div>
+                                <div class="admin-home-periods"><button id="notice-preview-button" type="button" class="ui-button color-type000 shape-capsule admin-home-record-link">실제 표시 확인</button><button id="notice-save" type="submit" class="ui-button color-theme shape-capsule admin-home-record-link">저장</button><button id="notice-cancel" type="button" class="ui-button color-type000 shape-capsule admin-home-record-link">취소</button><button id="notice-delete" type="button" class="ui-button color-type000 shape-capsule admin-home-record-link" hidden>삭제</button></div>
                             </fieldset>
                         </form>
                     </section>
-                    <section class="admin-home-panel color-surface-001 shape-rounded-lg" aria-labelledby="notice-preview-title"><h2 id="notice-preview-title">미리보기</h2><h3 id="notice-preview-heading"></h3><div id="notice-preview-body" class="notice-content-body"></div><p class="admin-home-note color-text-001">미리보기는 저장하지 않습니다. 저장 시 공개 목록에 반영됩니다.</p></section>
+
 
                     </div>
                 </main>
@@ -97,5 +99,13 @@
                     <a class="ui-button app-navi-item color-navi app-navi-item--mobile" href="/admin/admin-logs" aria-label="관리자 작업 기록"><i class="material-icons app-navi-item__icon" aria-hidden="true">history</i><span class="app-navi-item__label">관리자 기록</span></a>
             </nav>
         </div>
+        <dialog id="notice-preview-dialog" class="notice-dialog ui-overlay__panel color-surface-001 shape-rounded-lg" aria-labelledby="notice-preview-title">
+            <div class="ui-overlay__header"><h2 id="notice-preview-title">실제 표시 확인</h2><button id="notice-preview-close" type="button" class="ui-button color-type000 shape-capsule" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></div>
+            <div class="ui-overlay__body notice-preview-document color-surface-000 shape-rounded-lg"><h3 id="notice-preview-heading"></h3><div id="notice-preview-body" class="notice-rich-content"></div></div>
+            <p class="admin-home-note color-text-001">서버가 정리한 표시 내용입니다. 아직 저장하지 않았으며 화면 너비에 따라 줄바꿈이 달라질 수 있습니다.</p>
+        </dialog>
+        <dialog id="notice-link-dialog" class="notice-dialog notice-link-dialog ui-overlay__panel color-surface-001 shape-rounded-lg" aria-labelledby="notice-link-title">
+            <form id="notice-link-form"><h2 id="notice-link-title">링크 편집</h2><label for="notice-link-url">링크 주소</label><input id="notice-link-url" type="text" class="ui-input--filled color-surface-002 shape-capsule" autocomplete="off" placeholder="https://…"><p class="admin-home-note color-text-001">주소를 비우고 적용하면 링크를 제거합니다.</p><div class="admin-home-periods"><button id="notice-link-cancel" type="button" class="ui-button color-type000 shape-capsule">취소</button><button type="submit" class="ui-button color-theme shape-capsule">적용</button></div></form>
+        </dialog>
     </body>
 </html>

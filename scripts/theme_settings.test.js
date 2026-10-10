@@ -159,6 +159,8 @@ test('서버 조회 실패는 초기 표시를 유지하고 계정 기록을 만
     f.context.loadTheme();
     Object.assign(f.context, {
         callApi: async () => { throw new Error('test network failure'); },
+        applyMembershipStatus: () => {},
+        showToast: () => {},
         showLoading: () => {},
         checkAndHideInitialLoading: () => {},
         UIStore: { mode: 'home' },

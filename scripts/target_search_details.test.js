@@ -252,7 +252,7 @@ test('언어별 레어도 툴팁은 현재 pane만 갱신하고 HTML을 이스�
         f.context.rarityColMap = { en: 1 };
         f.context.rarityRows = [['UR', 'Ultra <b>Rare</b> (Foil)']];
         f.document.querySelectorAll = () => [oldHeader, currentHeader, fallbackHeader, unrelated];
-        vm.runInContext(source.slice(source.indexOf('function escapeHTML('), source.indexOf('async function fetchYoutubeChannelId(')), f.context);
+        vm.runInContext(source.slice(source.indexOf('function escapeHTML('), source.indexOf('\nfunction ', source.indexOf('function escapeHTML(') + 1)), f.context);
         vm.runInContext(source.slice(source.indexOf('function updateTooltipsOnly('), source.indexOf('function updateRarityInputs(')), f.context);
         f.context.updateTooltipsOnly();
         assert.equal(initialized.length, 1);

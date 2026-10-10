@@ -69,11 +69,8 @@ function getFunctionBaseUrl(name) {
 const FIREBASE_CONFIG = {
     ENDPOINTS: Object.fromEntries(HTTP_FUNCTION_NAMES.map(name => [name, `${getFunctionBaseUrl(name)}/${name}`]))
 };
-// Safari 최적화: callApi에서 await 없이 토큰을 동기적으로 사용하기 위한 캐시
-// AppCheck onTokenChanged가 즉시 호출될 수 있으므로 TDZ 방지를 위해 선언을 본 블록 앞에 위치
+// 사용자 토큰은 SDK에서 가져오며 App Check 캐시·갱신도 SDK에 맡긴다.
 let _cachedAuthToken = null;
-let _cachedAppCheckToken = null;
-let _appCheckTokenPromise = null;
 
 // Firebase App Check 즉시 초기화
 if (typeof firebase !== 'undefined' && firebase.appCheck) {
@@ -83,10 +80,6 @@ if (typeof firebase !== 'undefined' && firebase.appCheck) {
     const appCheck = firebase.appCheck();
     const provider = new firebase.appCheck.ReCaptchaEnterpriseProvider('6Le3FaksAAAAAFE9lMsuyGfgTkvNaVzrThMUthe3');
     appCheck.activate(provider, true);
-    // Safari 최적화: AppCheck 토큰이 갱신될 때마다 캐시 변수에 저장
-    appCheck.onTokenChanged((tokenResult) => {
-        _cachedAppCheckToken = tokenResult?.token || null;
-    }, () => { _cachedAppCheckToken = null; });
 }
 
 const CLIENT_VERSION = "ver. 0.33.1";
@@ -6229,22 +6222,30 @@ async function callApi(action, params = {}, postData = null) {
 }
 
 async function getApiAppCheckToken(forceRefresh = false) {
-    if (!forceRefresh && _cachedAppCheckToken) return _cachedAppCheckToken;
-    if (forceRefresh) _cachedAppCheckToken = null;
-    if (!_appCheckTokenPromise) {
-        _appCheckTokenPromise = (async () => {
-            try {
-                if (typeof firebase === 'undefined' || !firebase.appCheck) throw new Error();
-                const result = await firebase.appCheck().getToken(forceRefresh);
-                if (!result?.token) throw new Error();
-                _cachedAppCheckToken = result.token;
-                return result.token;
-            } catch (_) {
-                throw Object.assign(new Error('앱 인증을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'), { code: 'APPCHECK_UNAVAILABLE' });
-            }
-        })().finally(() => { _appCheckTokenPromise = null; });
+    try {
+        if (typeof firebase === 'undefined' || !firebase.appCheck) throw new Error();
+        // getToken은 유효한 캐시를 사용하고, 필요할 때만 갱신한다. 동시 발급도 SDK가 처리한다.
+        const result = await firebase.appCheck().getToken(forceRefresh);
+        if (!result?.token) throw new Error();
+        return result.token;
+    } catch (_) {
+        throw Object.assign(new Error('앱 인증을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'), { code: 'APPCHECK_UNAVAILABLE' });
     }
-    return _appCheckTokenPromise;
+}
+
+// SDK 호출 자체를 취소하지는 않지만, 만료된 조회가 토큰 준비를 계속 기다리지는 않는다.
+function awaitApiPreparation(promise, signal) {
+    if (!signal) return promise;
+    return new Promise((resolve, reject) => {
+        const abort = () => reject(Object.assign(new Error('서비스 연결 확인 시간이 초과됐습니다.'), { code: 'SERVICE_CHECK_TIMEOUT' }));
+        if (signal.aborted) {
+            Promise.resolve(promise).catch(() => {});
+            abort();
+            return;
+        }
+        signal.addEventListener('abort', abort, { once: true });
+        Promise.resolve(promise).then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+    });
 }
 
 async function requestApi(action, params = {}, postData = null) {
@@ -6274,10 +6275,11 @@ async function requestApi(action, params = {}, postData = null) {
         ? firebase.auth().currentUser : null);
     if (authUser) {
         try {
-            const token = await authUser.getIdToken();
+            const token = await awaitApiPreparation(authUser.getIdToken(), options.signal);
             _cachedAuthToken = token;
             options.headers['Authorization'] = `Bearer ${token}`;
         } catch (authErr) {
+            if (authErr.code === 'SERVICE_CHECK_TIMEOUT') throw authErr;
             const invalid = ['auth/user-token-expired', 'auth/invalid-user-token', 'auth/user-disabled', 'auth/user-not-found'].includes(authErr.code);
             throw Object.assign(new Error('로그인 인증 정보를 준비하지 못했습니다.'), {
                 code: invalid ? 'AUTH_INVALID' : 'AUTH_VERIFICATION_UNAVAILABLE'
@@ -6286,7 +6288,7 @@ async function requestApi(action, params = {}, postData = null) {
     }
 
     // App Check 실패를 로그인 실패로 바꾸거나 인증 헤더 없이 요청하지 않는다.
-    options.headers['X-Firebase-AppCheck'] = await getApiAppCheckToken();
+    options.headers['X-Firebase-AppCheck'] = await awaitApiPreparation(getApiAppCheckToken(), options.signal);
 
     if (postData) {
         // POST 요청 시 ssId를 본문에 포함
@@ -7451,6 +7453,11 @@ function checkAndHideInitialLoading() {
 
 
 function showLoading(show, html) {
+    // 인증 팝업 완료와 서비스 로그인 완료는 다르다. 확인 중에는 다른 작업도 로딩을 닫지 못한다.
+    if (typeof serviceLoginPending !== 'undefined' && serviceLoginPending) {
+        show = true;
+        html = '로그인 중...';
+    }
     const overlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
     if (overlay && loadingText) {
@@ -10573,6 +10580,12 @@ let registrationSaving = false;
 let loginInProgress = false;
 let registrationCheckPending = false;
 let pendingServiceAuthUser = null;
+let serviceLoginPending = false;
+
+function setServiceLoginPending(pending) {
+    serviceLoginPending = pending;
+    showLoading(pending, '로그인 중...');
+}
 
 async function getServiceRegistrationStatus(user, revision) {
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -10582,7 +10595,7 @@ async function getServiceRegistrationStatus(user, revision) {
             if (error.code === 'AUTH_INVALID' || attempt === 2
                 || (error.status && error.status !== 401 && error.status < 500)) throw error;
             if (['APPCHECK_REQUIRED', 'APPCHECK_INVALID', 'APPCHECK_UNAVAILABLE'].includes(error.code)) {
-                await getApiAppCheckToken(true).catch(() => {});
+                await awaitApiPreparation(getApiAppCheckToken(true), AbortSignal.timeout(30000)).catch(() => {});
             }
             await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 500 : 1500));
         }
@@ -10595,8 +10608,11 @@ async function handleFirebaseAuthState(user) {
     pendingConsentVersions = null;
     pendingServiceAuthUser = null;
     registrationCheckPending = !!user;
+    if (user) setServiceLoginPending(true);
     toggleLoginBtn();
     if (!user) {
+        // 진행 중인 인증 팝업에 앞서 도착한 초기 비로그인 알림은 종료 결과가 아니다.
+        if (!loginInProgress && serviceLoginPending) setServiceLoginPending(false);
         applyServiceAuthState(null);
         M.Modal.getInstance(document.getElementById('signup-modal'))?.close();
         return;
@@ -10607,6 +10623,7 @@ async function handleFirebaseAuthState(user) {
         const status = await getServiceRegistrationStatus(user, revision);
         if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return;
         if (!status?.success || typeof status.registered !== 'boolean') throw new Error('가입 상태 조회 실패');
+        setServiceLoginPending(false);
         M.Modal.getInstance(document.getElementById('auth-modal'))?.close();
         if (status.registered) {
             applyServiceAuthState(user);
@@ -10624,6 +10641,7 @@ async function handleFirebaseAuthState(user) {
         }
     } catch (error) {
         if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return;
+        setServiceLoginPending(false);
         applyServiceAuthState(null);
         if (error.code === 'AUTH_INVALID') {
             showToast('로그인 정보가 만료되었거나 유효하지 않습니다. 다시 로그인해 주세요.', 'toast-error');
@@ -10632,7 +10650,7 @@ async function handleFirebaseAuthState(user) {
             });
         } else {
             pendingServiceAuthUser = user;
-            showToast('인증 확인이 지연되고 있습니다. 로그인 버튼을 눌러 다시 확인해 주세요.', 'toast-error');
+            showToast('로그인을 완료하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
             toggleAuthModal(true);
         }
     } finally {
@@ -10728,6 +10746,7 @@ function initFirebaseAuth() {
 
     // 리다이렉트 로그인 복귀 시 발생하는 예외 처리
     firebase.auth().getRedirectResult().catch(function (error) {
+        if (!registrationCheckPending && serviceLoginPending) setServiceLoginPending(false);
         showToast('로그인하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
     });
 
@@ -10849,82 +10868,108 @@ function applyServiceAuthState(user) {
     checkAndHideInitialLoading();
 }
 
-let currentNoticeIndex = -1; // 모바일 공지 상세 보기 인덱스
+let currentNoticeIndex = -1; // 데스크톱·모바일에서 선택한 공지 인덱스
 
-function openNoticeModal(targetDate) {
-    // 팝업 안의 '더 보기'는 모달을 열 때 숨겨지므로 헤더 버튼을 복귀점으로 쓴다.
+function openNoticeModal(targetId) {
     const trigger = document.getElementById('noti-btn');
-    // 알림 팝업 닫기
     closeNotiPopup();
-
-
-    // 모바일 기기인 경우 전용 모드 실행
+    const index = Math.max(0, notices.findIndex(n => n.id === targetId));
     if (document.documentElement.classList.contains('is-mobile-device')) {
-        if (targetDate) {
-            // 특정 날짜가 전달된 경우 해당 날짜의 첫 번째 공지 상세 보기
-            const idx = notices.findIndex(n => n.date === targetDate);
-            if (idx !== -1) {
-                openNoticeDetailMode(idx, trigger);
-                return;
-            }
-        }
-        openNoticeListMode(trigger);
+        if (targetId && notices.length) openNoticeDetailMode(index, trigger);
+        else openNoticeListMode(trigger);
         return;
     }
-
-    const modalElem = document.getElementById('notice-modal');
-    const instance = M.Modal.getInstance(modalElem);
-
-    const dateListContainer = document.getElementById('notice-date-list');
-    const contentArea = document.getElementById('notice-content-area');
-
-    if (notices.length === 0) {
-        dateListContainer.innerHTML = '<div style="padding:20px; color:var(--text-muted); text-align:center;">공지사항이 없습니다.</div>';
-        contentArea.innerHTML = '<div style="color:var(--text-muted); text-align:center; margin-top:100px;">등록된 공지사항이 없습니다.</div>';
-        instance.open(trigger ? [trigger] : undefined);
-        return;
-    }
-
-    // 날짜 유니크 추출 및 정렬 (핀 상단 고정 로직 포함)
-    const dates = [...new Set(notices.map(n => n.date))].sort((a, b) => {
-        const aNotices = notices.filter(n => n.date === a);
-        const bNotices = notices.filter(n => n.date === b);
-
-        // 해당 날짜 공지 중 최소 핀 번호 (0보다 큰 수 중 가장 작은 것)
-        const aMinPin = Math.min(...aNotices.map(n => n.isPinned > 0 ? n.isPinned : 9999));
-        const bMinPin = Math.min(...bNotices.map(n => n.isPinned > 0 ? n.isPinned : 9999));
-
-        if (aMinPin !== bMinPin) return aMinPin - bMinPin;
-        return b.localeCompare(a); // 최신 날짜 우선
-    });
-
-    dateListContainer.innerHTML = '';
-    dates.forEach(date => {
-        const noticesOnDate = notices.filter(n => n.date === date);
-        const hasNewInDate = noticesOnDate.some(noti => isNoticeNew(noti));
-        const hasPinInDate = noticesOnDate.some(noti => noti.isPinned > 0);
-
-        const item = document.createElement('div');
-        item.className = 'date-item';
-        item.innerHTML = `${date}${hasPinInDate ? '<i class="material-icons pin-icon">push_pin</i>' : ''}${hasNewInDate ? '<span class="new-indicator">NEW</span>' : ''}`;
-        item.onclick = (e) => renderNoticeContentByDate(date, item);
-        dateListContainer.appendChild(item);
-    });
-
-    instance.open(trigger ? [trigger] : undefined);
-
-    // 초기 날짜 선택 로직
-    if (dates.length > 0) {
-        const initialDate = targetDate || dates[0];
-        const initialItem = Array.from(dateListContainer.children).find(el => el.innerText.includes(initialDate));
-        renderNoticeContentByDate(initialDate, initialItem);
-    }
+    delete document.getElementById('notice-modal').dataset.documentMode;
+    document.querySelector('#notice-modal .ui-overlay__header h2').textContent = '공지사항';
+    document.getElementById('notice-content-area').hidden = false;
+    document.querySelector('#notice-modal [data-notice-navigation]').hidden = false;
+    currentNoticeIndex = notices.length ? index : -1;
+    if (notices[index]) markNoticeAsRead(notices[index].id);
+    renderDocumentNoticeList(document.getElementById('notice-date-list'));
+    renderCurrentNotice(document.getElementById('notice-modal'));
+    syncDocumentListAccess();
+    getAppModal(document.getElementById('notice-modal')).open(trigger ? [trigger] : undefined);
 }
+
+function renderDocumentNoticeList(container) {
+    container.replaceChildren();
+    if (!notices.length) {
+        const p = document.createElement('p'); p.className = 'color-text-002'; p.textContent = '공지사항이 없습니다.'; container.append(p); return;
+    }
+    notices.forEach((noti, index) => {
+        const item = document.createElement('button'); item.type = 'button';
+        item.className = 'document-view__item ui-button ' + (currentNoticeIndex === index ? 'color-type004' : 'color-type000') + (document.documentElement.classList.contains('is-mobile-device') ? '' : ' shape-rounded002');
+        item.setAttribute('aria-current', currentNoticeIndex === index ? 'true' : 'false');
+        const date = document.createElement('time'); date.className = 'document-view__date color-text-002'; date.textContent = noti.date;
+        const title = document.createElement('span'); title.textContent = noti.title + (isNoticeNew(noti) ? ' · NEW' : '');
+        if (noti.isPinned > 0) { const pin = document.createElement('i'); pin.className = 'material-icons color-text-theme'; pin.setAttribute('aria-hidden', 'true'); pin.textContent = 'push_pin'; title.prepend(pin); }
+        item.append(date, title);
+        item.onclick = () => {
+            if (document.documentElement.classList.contains('is-mobile-device')) openNoticeDetailMode(index, item);
+            else {
+                const panel = document.getElementById('notice-modal');
+                delete panel.dataset.documentMode;
+                currentNoticeIndex = index; markNoticeAsRead(noti.id);
+                renderDocumentNoticeList(container); renderCurrentNotice(panel); syncDocumentListAccess();
+                (compactDocument.matches ? panel.querySelector('.ui-overlay__header button') : container.children[index])?.focus({preventScroll:true});
+            }
+        };
+        container.append(item);
+    });
+}
+
+function renderCurrentNotice(panel) {
+    const content = panel.querySelector('.document-view__content'); content.replaceChildren();
+    const notice = notices[currentNoticeIndex];
+    if (notice) {
+        const title = document.createElement('h3'); title.className = 'color-text-000'; title.textContent = notice.title;
+        const date = document.createElement('p'); date.className = 'color-text-002'; date.textContent = notice.date;
+        const body = document.createElement('div'); body.innerHTML = sanitizeNoticeHtml(notice.content); content.append(title, date, body);
+    } else { const p = document.createElement('p'); p.className = 'color-text-002'; p.textContent = '등록된 공지사항이 없습니다.'; content.append(p); }
+    content.scrollTop = 0;
+    panel.querySelector('[data-notice-position]').textContent = notice ? `${currentNoticeIndex + 1} / ${notices.length}` : '0 / 0';
+    for (const [selector, disabled] of [['[data-notice-prev]', currentNoticeIndex <= 0], ['[data-notice-next]', currentNoticeIndex < 0 || currentNoticeIndex >= notices.length - 1]]) {
+        const button = panel.querySelector(selector); button.disabled = disabled; button.classList.toggle('color-disabled', disabled);
+    }
+    const more = panel.querySelector('[data-notice-more]'); more.hidden = !notice;
+
+}
+
+const compactDocument = window.matchMedia('(max-width:768px)');
+function syncDocumentListAccess() {
+    const panel = document.getElementById('notice-modal');
+    const list = document.getElementById('notice-date-list');
+    const mobile = document.documentElement.classList.contains('is-mobile-device');
+    document.querySelectorAll('.document-view__content').forEach(content => content.classList.toggle('shape-rounded-lg', !mobile));
+    const overlay = !mobile && compactDocument.matches && panel.dataset.documentMode === 'list';
+    const collapsed = !mobile && compactDocument.matches && !overlay;
+    const content = panel.querySelector('.document-view__content');
+    const footer = panel.querySelector('[data-notice-navigation]');
+    if ((collapsed && list.contains(document.activeElement)) || (overlay && (content.contains(document.activeElement) || footer.contains(document.activeElement)))) {
+        panel.querySelector('.ui-overlay__header button')?.focus({preventScroll:true});
+    }
+    list.inert = collapsed;
+    if (collapsed) list.setAttribute('aria-hidden', 'true'); else list.removeAttribute('aria-hidden');
+    content.inert = overlay; footer.inert = overlay;
+    for (const element of [content, footer]) {
+        if (overlay) element.setAttribute('aria-hidden', 'true'); else element.removeAttribute('aria-hidden');
+    }
+    panel.querySelector('.ui-overlay__header h2').textContent = overlay ? '공지 목록' : '공지사항';
+}
+compactDocument.addEventListener('change', syncDocumentListAccess);
+syncDocumentListAccess();
 
 /**
  * 모바일: 공지 목록 모달 열기
  */
 function openNoticeListMode(trigger) {
+    if (!document.documentElement.classList.contains('is-mobile-device')) {
+        const panel = document.getElementById('notice-modal');
+        panel.dataset.documentMode = 'list';
+        syncDocumentListAccess();
+        panel.querySelector('[aria-current="true"]')?.focus({preventScroll:true});
+        return;
+    }
     const listModal = document.getElementById('notice-list-modal');
     const detailModal = document.getElementById('notice-detail-modal');
     if (!listModal) return;
@@ -10935,60 +10980,12 @@ function openNoticeListMode(trigger) {
 
     updateMobileNoticeList();
 
-    // 공통 onOpenEnd 이후 한 번만 실행되는 화면 교체 훅.
-    modalAfterOpen.set(listModal, () => {
-        if (detailInstance && detailInstance.isOpen) detailInstance.close();
-    });
+    // 새 시트의 잠금을 먼저 등록한 뒤 이전 본문 시트를 동시에 닫는다.
     listInstance.open(trigger ? [trigger] : undefined);
+    if (detailInstance && detailInstance.isOpen) detailInstance.close();
 }
 
-const NOTICE_ALLOWED_TAGS = new Set([
-    'a', 'b', 'blockquote', 'br', 'code', 'del', 'div', 'em', 'h1', 'h2', 'h3',
-    'h4', 'h5', 'h6', 'hr', 'i', 'li', 'ol', 'p', 'pre', 's', 'span', 'strong', 'u', 'ul'
-]);
-const NOTICE_DROP_WITH_CONTENT_TAGS = new Set([
-    'base', 'embed', 'frame', 'iframe', 'link', 'meta', 'object', 'script', 'style', 'svg', 'template'
-]);
-
-function isSafeNoticeHref(href) {
-    try {
-        const url = new URL(href, window.location.origin);
-        return ['http:', 'https:', 'mailto:'].includes(url.protocol);
-    } catch (e) {
-        return false;
-    }
-}
-
-// 기존 notices.json도 안전하게 표시하기 위한 클라이언트 측 방어선입니다.
-function sanitizeNoticeHtml(content) {
-    const template = document.createElement('template');
-    template.innerHTML = String(content || '').replace(/\r?\n/g, '<br>');
-
-    Array.from(template.content.querySelectorAll('*')).reverse().forEach(element => {
-        const tag = element.tagName.toLowerCase();
-        if (!NOTICE_ALLOWED_TAGS.has(tag)) {
-            if (NOTICE_DROP_WITH_CONTENT_TAGS.has(tag)) element.remove();
-            else element.replaceWith(...Array.from(element.childNodes));
-            return;
-        }
-
-        const href = element.getAttribute('href');
-        const title = element.getAttribute('title');
-        const target = element.getAttribute('target');
-        Array.from(element.attributes).forEach(attr => element.removeAttribute(attr.name));
-
-        if (tag === 'a') {
-            if (href && isSafeNoticeHref(href)) element.setAttribute('href', href);
-            if (title) element.setAttribute('title', title);
-            if (target === '_blank') {
-                element.setAttribute('target', '_blank');
-                element.setAttribute('rel', 'noopener noreferrer');
-            }
-        }
-    });
-
-    return template.innerHTML;
-}
+function sanitizeNoticeHtml(content) { return AppDocuments.sanitize(content); }
 
 /**
  * 모바일: 개별 공지 상세 모달 열기
@@ -11008,13 +11005,11 @@ function openNoticeDetailMode(index, trigger) {
     const noti = notices[index];
 
     // 내용 렌더링
-    document.getElementById('mobile-detail-date').innerText = noti.date;
-    document.getElementById('mobile-detail-title').innerText = noti.title;
-    document.getElementById('mobile-notice-content-body').innerHTML = sanitizeNoticeHtml(noti.content);
+    renderCurrentNotice(detailModal);
 
     modalAfterOpen.set(detailModal, () => {
         if (listInstance && listInstance.isOpen) listInstance.close();
-        markNoticeAsRead(noti.date);
+        markNoticeAsRead(noti.id);
     });
     detailInstance.open(trigger ? [trigger] : undefined);
 }
@@ -11174,53 +11169,17 @@ function getCommonModalOptions() {
  * 모바일: 공지 목록 렌더링
  */
 function updateMobileNoticeList() {
-    const container = document.getElementById('mobile-notice-list-container');
-    if (!container) return;
-
-    if (notices.length === 0) {
-        container.innerHTML = '<div style="padding:40px; text-align:center; color:var(--text-muted);">공지사항이 없습니다.</div>';
-        return;
-    }
-
-    container.innerHTML = '';
-    notices.forEach((noti, idx) => {
-        const item = document.createElement('div');
-        item.className = 'mobile-noti-item';
-        const isNew = isNoticeNew(noti);
-        const pinIcon = noti.isPinned > 0 ? '<i class="material-icons" style="font-size:1rem; color:var(--theme-000); margin-right:4px;">push_pin</i>' : '';
-
-        item.innerHTML = `
-            <div class="mobile-noti-item-date">${noti.date}</div>
-            <div class="mobile-noti-item-title">${pinIcon}${escapeHTML(noti.title)}${isNew ? '<span class="new-indicator" style="margin-left:6px;">NEW</span>' : ''}</div>
-        `;
-        item.onclick = () => openNoticeDetailMode(idx);
-        container.appendChild(item);
-    });
+    renderDocumentNoticeList(document.getElementById('mobile-notice-list-container'));
 }
 
-/**
- * 모바일: 이전/다음 공지 내비게이션
- */
 function navigateNotice(direction) {
-    const newIndex = currentNoticeIndex + direction;
-    if (newIndex >= 0 && newIndex < notices.length) {
-        currentNoticeIndex = newIndex;
-        const noti = notices[newIndex];
-
-        document.getElementById('mobile-detail-date').innerText = noti.date;
-        document.getElementById('mobile-detail-title').innerText = noti.title;
-        document.getElementById('mobile-notice-content-body').innerHTML = sanitizeNoticeHtml(noti.content);
-
-        // 읽음 처리
-        markNoticeAsRead(noti.date);
-
-        // 스크롤 상단으로
-        const contentBody = document.getElementById('mobile-notice-content-body');
-        if (contentBody) contentBody.scrollTop = 0;
-    } else {
-        const msg = direction > 0 ? '마지막 공지입니다.' : '첫 번째 공지입니다.';
-        M.toast({ html: msg, displayLength: 1500 });
-    }
+    const index = currentNoticeIndex + direction;
+    if (index < 0 || index >= notices.length) return;
+    currentNoticeIndex = index;
+    markNoticeAsRead(notices[index].id);
+    const mobile = document.documentElement.classList.contains('is-mobile-device');
+    renderCurrentNotice(document.getElementById(mobile ? 'notice-detail-modal' : 'notice-modal'));
+    if (!mobile) renderDocumentNoticeList(document.getElementById('notice-date-list'));
 }
 
 function renderLinkedAccounts(user) {
@@ -11432,7 +11391,7 @@ function toggleAuthModal(showGuide = false) {
     if (guide) {
         guide.hidden = !showGuide && !pendingServiceAuthUser;
         guide.textContent = pendingServiceAuthUser
-            ? '계정 인증은 유지됩니다. 아래 로그인 버튼을 누르면 가입 상태를 다시 확인합니다.'
+            ? '로그인을 완료하지 못했습니다. 다시 시도해 주세요.'
             : '로그인 후 이용 가능합니다.';
     }
     if (introduction) introduction.hidden = showGuide || !!pendingServiceAuthUser;
@@ -11445,29 +11404,51 @@ function toggleAuthModal(showGuide = false) {
 }
 
 function toggleLoginBtn() {
+    const retryAvailable = !!pendingServiceAuthUser && pendingServiceAuthUser.uid === firebase.auth().currentUser?.uid;
     for (const id of ['google-login-btn', 'twitter-login-btn']) {
         const button = document.getElementById(id);
-        if (button) button.disabled = loginInProgress || registrationCheckPending;
+        if (button) {
+            button.disabled = loginInProgress || registrationCheckPending;
+            button.hidden = retryAvailable;
+        }
+    }
+    const retry = document.getElementById('service-login-retry-btn');
+    if (retry) {
+        retry.hidden = !retryAvailable;
+        retry.disabled = loginInProgress || registrationCheckPending || !retryAvailable;
+    }
+}
+
+async function retryServiceLoginConfirmation() {
+    if (loginInProgress || registrationCheckPending || typeof firebase === 'undefined' || !firebase.auth) return;
+    const current = firebase.auth().currentUser;
+    if (!current || pendingServiceAuthUser?.uid !== current.uid) {
+        toggleAuthModal();
+        return;
+    }
+    loginInProgress = true;
+    try { await handleFirebaseAuthState(current); }
+    finally {
+        loginInProgress = false;
+        toggleLoginBtn();
     }
 }
 
 async function signInWithProvider(providerName) {
+    if (pendingServiceAuthUser) return retryServiceLoginConfirmation();
     const btn = document.getElementById(providerName === 'google' ? 'google-login-btn' : 'twitter-login-btn');
     if (!btn || btn.disabled || typeof firebase === 'undefined' || !firebase.auth) return;
     const provider = getProviderInstance(providerName);
     if (!provider) return;
     loginInProgress = true;
+    setServiceLoginPending(true);
     toggleLoginBtn();
     try {
-        const current = firebase.auth().currentUser;
-        if (pendingServiceAuthUser?.uid === current?.uid && current) {
-            await handleFirebaseAuthState(current);
-            return;
-        }
         if (IS_LOCAL_DEV) await firebase.auth().signInWithPopup(provider);
         else await firebase.auth().signInWithRedirect(provider);
-        // 가입 여부와 화면 전환은 onAuthStateChanged에서만 처리한다.
+        // 인증 결과 반환만으로 로딩을 닫지 않는다. 최종 결과는 onAuthStateChanged에서 처리한다.
     } catch (_) {
+        if (!registrationCheckPending) setServiceLoginPending(false);
         showToast('로그인하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
     } finally {
         loginInProgress = false;
@@ -11777,60 +11758,38 @@ async function fetchNotices() {
     }
 }
 
-function getTop8NoticeUids() {
-    return notices.slice(0, 8).map(n => `${n.date}-${n.title}`);
+function getTop8NoticeIds() {
+    return notices.slice(0, 8).map(n => n.id);
 }
 
-/**
- * 공지가 '신규' 상태인지 판별합니다 (최신 8개 이내 & 미열람).
- */
+/** 기존 날짜-제목 기록과 과도기 ID도 읽되, 저장은 현재 공지 ID로 한다. */
+function getReadNoticeIds() {
+    let stored;
+    try { stored = JSON.parse(localStorage.getItem(READ_NOTICES_KEY) || '[]'); }
+    catch { return []; }
+    if (!Array.isArray(stored)) return [];
+    const readKeys = new Set(stored.filter(key => typeof key === 'string').map(key =>
+        key.replace(/^(\d{4})-(\d{2})-(\d{2})T/, '$1.$2.$3T')));
+    return notices.filter(n => readKeys.has(n.id) || readKeys.has(`${n.date}-${n.title}`)).map(n => n.id);
+}
+
+/** 최신 8건 중 아직 열람하지 않은 공지인지 확인한다. */
 function isNoticeNew(noti) {
-    const top8Uids = getTop8NoticeUids();
-    const notiUid = `${noti.date}-${noti.title}`;
-
-    // 최신 8개 이내의 공지가 아니면 무조건 읽은 것으로 간주 (새 공지 아님)
-    if (!top8Uids.includes(notiUid)) return false;
-
-    // 읽음 상태 확인
-    const readList = JSON.parse(localStorage.getItem(READ_NOTICES_KEY) || '[]');
-    return !readList.includes(notiUid);
+    return getTop8NoticeIds().includes(noti.id) && !getReadNoticeIds().includes(noti.id);
 }
 
-/**
- * 특정 날짜의 모든 공지를 읽음 처리합니다 (최신 8개 제한 동기화).
- */
-function markDateAsRead(date) {
-    const readList = JSON.parse(localStorage.getItem(READ_NOTICES_KEY) || '[]');
-    const top8Uids = getTop8NoticeUids();
-    let changed = false;
-
-    notices.filter(n => n.date === date).forEach(noti => {
-        const notiUid = `${noti.date}-${noti.title}`;
-        // 최신 8개 이내 공지일 때만 읽음 목록에 추가
-        if (top8Uids.includes(notiUid) && !readList.includes(notiUid)) {
-            readList.push(notiUid);
-            changed = true;
-        }
-    });
-
-    if (changed) {
-        // 저장 시, 최신 8개에 해당하지 않게 된(오래된) UID들은 배열에서 정리
-        const updatedReadList = readList.filter(uid => top8Uids.includes(uid));
-
-        localStorage.setItem(READ_NOTICES_KEY, JSON.stringify(updatedReadList));
-        updateNotiBadge();
-
-        // 서버 동기화
-        if (typeof saveUserSetting === 'function') {
-            saveUserSetting('readNotices', updatedReadList);
-        }
-
-        // 팝업이 열려있다면 즉시 갱신
-        const popup = document.getElementById('noti-popup');
-        if (popup && popup.classList.contains('active')) {
-            renderNotiPopup();
-        }
-    }
+/** 선택한 공지 1건만 읽음 처리한다. 기존 기록은 저장 시 ID로 호환한다. */
+function markNoticeAsRead(id) {
+    const top8Ids = getTop8NoticeIds();
+    if (!top8Ids.includes(id)) return;
+    const readIds = getReadNoticeIds();
+    if (readIds.includes(id)) return;
+    const updatedReadList = [...new Set([...readIds, id])].filter(key => top8Ids.includes(key));
+    localStorage.setItem(READ_NOTICES_KEY, JSON.stringify(updatedReadList));
+    updateNotiBadge();
+    if (typeof saveUserSetting === 'function') saveUserSetting('readNotices', updatedReadList);
+    const popup = document.getElementById('noti-popup');
+    if (popup && popup.classList.contains('active')) renderNotiPopup();
 }
 
 function closeNotiPopup() {
@@ -11896,7 +11855,7 @@ function renderNotiPopup() {
         const isNew = isNoticeNew(noti);
         const pinIcon = noti.isPinned > 0 ? '<i class="material-icons pin-icon">push_pin</i>' : '';
         htmlStr += `
-            <div class="noti-item ${noti.isPinned > 0 ? 'is-pinned' : ''} ${isNew ? 'is-new' : ''}" onclick="openNoticeModal('${noti.date}')">
+            <div class="noti-item ${noti.isPinned > 0 ? 'is-pinned' : ''} ${isNew ? 'is-new' : ''}" data-notice-id="${escapeHTML(noti.id)}">
                 <div class="noti-item-title">${pinIcon}${escapeHTML(noti.title)}</div>
                 <div class="noti-item-date">${noti.date}</div>
             </div>
@@ -11908,6 +11867,9 @@ function renderNotiPopup() {
     }
 
     listContainer.innerHTML = htmlStr;
+    listContainer.querySelectorAll('[data-notice-id]').forEach(item => {
+        item.onclick = () => openNoticeModal(item.dataset.noticeId);
+    });
 }
 
 function updateNotiBadge() {
@@ -11918,70 +11880,6 @@ function updateNotiBadge() {
     const hasUnreadNew = notices.slice(0, 8).some(noti => isNoticeNew(noti));
     badge.hidden = !hasUnreadNew;
 }
-/**
- * 데스크탑: 날짜별 공지 내용 렌더링
- */
-function renderNoticeContentByDate(date, element) {
-    const contentArea = document.getElementById('notice-content-area');
-    const dateItems = document.querySelectorAll('.date-item');
-
-    // 사이드바 활성화 표시 업데이트
-    dateItems.forEach(item => item.classList.remove('active'));
-    if (element) {
-        element.classList.add('active');
-    } else {
-        dateItems.forEach(item => {
-            if (item.textContent.trim().startsWith(date)) item.classList.add('active');
-        });
-    }
-
-    const noticesOnDate = notices.filter(n => n.date === date).sort((a, b) => {
-        if (a.isPinned !== b.isPinned) {
-            if (a.isPinned > 0 && b.isPinned > 0) return a.isPinned - b.isPinned;
-            return b.isPinned > 0 ? 1 : -1;
-        }
-        return b.createdAt - a.createdAt;
-    });
-
-    let contentHtml = '';
-    noticesOnDate.forEach(noti => {
-        const pinIcon = noti.isPinned > 0 ? '<i class="material-icons pin-icon">push_pin</i>' : '';
-        contentHtml += `<div class="notice-content-item">
-            <div class="notice-content-title">${pinIcon}${escapeHTML(noti.title)}</div>
-            <div class="notice-content-date">등록일: ${noti.date} ${new Date(noti.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</div>
-            <div class="notice-content-body">${sanitizeNoticeHtml(noti.content)}</div>
-        </div>`;
-    });
-
-    contentArea.innerHTML = contentHtml;
-    contentArea.scrollTop = 0;
-
-    // 해당 날짜 읽음 처리
-    markNoticeAsRead(date);
-
-    // new 라벨 제거
-    if (element) {
-        const indicator = element.querySelector('.new-indicator');
-        if (indicator) indicator.remove();
-    } else {
-        dateItems.forEach(item => {
-            if (item.textContent.trim().startsWith(date)) {
-                const indicator = item.querySelector('.new-indicator');
-                if (indicator) indicator.remove();
-            }
-        });
-    }
-}
-
-/**
- * 공지사항 읽음 처리 유틸리티
- */
-function markNoticeAsRead(date) {
-    if (typeof markDateAsRead === 'function') {
-        markDateAsRead(date);
-    }
-}
-
 /**
  * [공지사항 전용 도구] 콘솔용 공지사항 관리 헬퍼 (NoticeSet)
  * 사용법: NoticeSet.list(), NoticeSet.add(), NoticeSet.update(), NoticeSet.delete()
@@ -12292,7 +12190,7 @@ function validateMigrationLink() {
                 setMigrationMessage(migrationPreviewMessage(result), result.legacyQuantity || result.skippedZeroCount ? 'color-text-001' : 'color-text-theme', 'check_circle');
                 document.getElementById('migration-exec-btn').disabled = false;
             } else if (result?.status === 'NO_ACCESS') {
-                setMigrationMessage('읽기 권한이 없습니다. 시트 공유 설정을 확인해주세요.', 'color-text-001', 'warning');
+                setMigrationMessage('공개·링크 공유 및 다운로드 허용 설정을 확인해 주세요.', 'color-text-001', 'warning');
             } else setMigrationMessage(result?.message || '시트 데이터를 확인할 수 없습니다. 서버의 가져오기 기능을 확인해주세요.', 'color-text-red', 'error');
         } catch (_) {
             if (current()) setMigrationMessage('시트 연결 확인에 실패했습니다. 다시 확인해주세요.', 'color-text-red', 'error');
@@ -12453,6 +12351,22 @@ function updateTotals() {
 /**
  * 이용약관 및 개인정보 처리방침 모달 제어 (해시 연동)
  */
+async function openLicensesModal(e) {
+    e?.preventDefault();
+    const panel = document.getElementById('licenses-modal');
+    getAppModal(panel).open(e?.currentTarget ? [e.currentTarget] : undefined);
+    const content = document.getElementById('licenses-content');
+    content.textContent = '불러오는 중...';
+    try {
+        const response = await fetch('licenses.html');
+        if (!response.ok) throw new Error('문서 조회 실패');
+        const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const main = doc.querySelector('main');
+        main.querySelector('h1')?.remove(); main.querySelector(':scope > a[href="/"]')?.remove();
+        content.innerHTML = sanitizeNoticeHtml(main.innerHTML.replace(/\r?\n/g, ''));
+    } catch (error) { content.textContent = '문서를 불러오지 못했습니다. 자세히보기에서 원문을 확인해 주세요.'; }
+}
+
 function openTermsModal(e) {
     if (e && e.preventDefault) e.preventDefault();
     const modal = document.getElementById('terms-modal');
