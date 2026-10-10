@@ -11,10 +11,60 @@ jobs:
   build_and_preview:
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      checks: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: FirebaseExtended/action-hosting-deploy@v0
+      - uses: actions/setup-node@v4
         with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YGO_SYNAPSE }}
-          projectId: ygo-synapse
+          node-version: 24
+      - name: Check keyless authentication settings
+        env:
+          WIF_PROVIDER: ${{ vars.GCP_PREVIEW_WIF_PROVIDER }}
+          WIF_SERVICE_ACCOUNT: ${{ vars.GCP_PREVIEW_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$WIF_PROVIDER" ] || [ -z "$WIF_SERVICE_ACCOUNT" ]; then
+            echo "::error::GCP_PREVIEW_WIF_PROVIDER와 GCP_PREVIEW_SERVICE_ACCOUNT 설정이 필요합니다."
+            exit 1
+          fi
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ygo-synapse
+          workload_identity_provider: ${{ vars.GCP_PREVIEW_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_PREVIEW_SERVICE_ACCOUNT }}
+      - name: Deploy Hosting preview
+        env:
+          PREVIEW_CHANNEL: pr-${{ github.event.pull_request.number }}
+        run: npx firebase-tools hosting:channel:deploy "$PREVIEW_CHANNEL" --project ygo-synapse --expires 7d --non-interactive --json > "$RUNNER_TEMP/hosting-preview.json"
+      - name: Publish preview link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const deployment = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'hosting-preview.json'), 'utf8'));
+            if (deployment.status !== 'success') throw new Error('미리보기 배포 결과를 확인하지 못했습니다.');
+            const urls = Object.values(deployment.result || {}).map(site => site.url).filter(Boolean);
+            if (!urls.length || urls.some(value => {
+              const url = new URL(value);
+              return url.protocol !== 'https:' || !url.hostname.endsWith('.web.app');
+            })) throw new Error('미리보기 주소를 확인하지 못했습니다.');
+            const links = urls.map(url => `[미리보기 열기](${url})`).join('\n');
+            await core.summary.addHeading('Firebase Hosting 미리보기').addRaw(links).write();
+            const marker = '<!-- ygo-firebase-hosting-preview -->';
+            const body = `${marker}\nFirebase Hosting 미리보기가 준비되었습니다.\n\n${links}\n\n7일 후 만료됩니다.`;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number });
+            const previous = comments.find(comment => comment.user.login === 'github-actions[bot]' && comment.body.includes(marker));
+            if (previous) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: previous.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number, body });
+            }
+            await github.rest.checks.create({ ...context.repo, name: 'Firebase Hosting 미리보기',
+              head_sha: context.payload.pull_request.head.sha, status: 'completed', conclusion: 'success',
+              details_url: urls[0], output: { title: '미리보기 배포 완료', summary: links } });

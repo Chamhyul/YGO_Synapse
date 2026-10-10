@@ -33,7 +33,7 @@ async function run(){
       const excluded=[];
       for(const name of names){
         if(name==='serviceAccountKey.json'){excluded.push(name);continue;}
-        if(name.startsWith('/')||name.split('/').includes('..')||/(^|\/)(\.env(?:\.|$)|\.secret|\.git\/)|service.?account|\.(pem|p12|webp|jpe?g|png|sqlite|csv)$/i.test(name))throw new Error('Unsafe archive filename: '+name);
+        if(name.startsWith('/')||name.split('/').includes('..')||/(^|\/)(\.env(?:\.|$)|\.secret|\.git\/|gha-creds-[^/]*\.json$)|service.?account|\.(pem|p12|webp|jpe?g|png|sqlite|csv)$/i.test(name))throw new Error('Unsafe archive filename: '+name);
         if(name.endsWith('/'))continue;
         const b=cp.execFileSync('unzip',['-p',file,name],{maxBuffer:20e6});const s=b.toString();
         if(/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|GOCSPX-[\w-]{15,}|gh[pousr]_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}/.test(s)||knownSecrets.some(v=>s.includes(v)))throw new Error('Credential candidate in '+name);

@@ -22,6 +22,7 @@
         "**/.secret*",
         "**/*serviceAccount*.json",
         "**/*service-account*.json",
+        "**/gha-creds-*.json",
         "**/*.pem",
         "**/*.p12",
         "test"
@@ -35,6 +36,7 @@
       "firebase.json",
       "**/.*",
       "**/node_modules/**",
+      "**/gha-creds-*.json",
       "firebase-debug.log",
       "firestore-debug.log",
       "*.log"

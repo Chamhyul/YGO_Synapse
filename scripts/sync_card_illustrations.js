@@ -5,6 +5,7 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const os = require('node:os');
+const { initializeDataToolFirebaseApp } = require('./cloud_credentials');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DEFAULT_OUTPUT_DIR = path.join(ROOT_DIR, 'resources', 'illustrations');
@@ -262,32 +263,9 @@ function loadFirebaseAdmin() {
   }
 }
 
-function findServiceAccountPath() {
-  const candidates = [
-    process.env.GOOGLE_APPLICATION_CREDENTIALS,
-    path.join(ROOT_DIR, 'functions', 'serviceAccountKey.json'),
-    path.join(ROOT_DIR, 'serviceAccountKey.json'),
-  ].filter(Boolean);
-  return candidates.find(candidate => fs.existsSync(candidate)) || null;
-}
-
 function initializeFirestore() {
   const admin = loadFirebaseAdmin();
-  if (!admin.apps.length) {
-    const serviceAccountPath = findServiceAccountPath();
-    if (serviceAccountPath) {
-      const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
-      if (serviceAccount.project_id !== DEFAULT_PROJECT_ID) {
-        throw new Error(`서비스 계정 프로젝트가 예상과 다릅니다: ${serviceAccount.project_id}`);
-      }
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        projectId: DEFAULT_PROJECT_ID,
-      });
-    } else {
-      admin.initializeApp({ projectId: DEFAULT_PROJECT_ID });
-    }
-  }
+  initializeDataToolFirebaseApp(admin, { projectId: DEFAULT_PROJECT_ID });
   return { admin, db: admin.firestore() };
 }
 

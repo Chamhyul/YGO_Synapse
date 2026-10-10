@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { initializeDataToolFirebaseApp } = require('./cloud_credentials');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DEFAULT_IMAGE_DIR = path.join(ROOT_DIR, 'resources', 'illustrations');
@@ -95,24 +96,9 @@ function loadFirebaseAdmin() {
   }
 }
 
-function findServiceAccountPath() {
-  return [
-    process.env.GOOGLE_APPLICATION_CREDENTIALS,
-    path.join(ROOT_DIR, 'functions', 'serviceAccountKey.json'),
-    path.join(ROOT_DIR, 'serviceAccountKey.json'),
-  ].filter(Boolean).find(candidate => fs.existsSync(candidate)) || null;
-}
-
 function initializeStorage(bucketName) {
   const admin = loadFirebaseAdmin();
-  if (!admin.apps.length) {
-    const serviceAccountPath = findServiceAccountPath();
-    const config = { projectId: 'ygo-synapse', storageBucket: bucketName };
-    if (serviceAccountPath) {
-      config.credential = admin.credential.cert(JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8')));
-    }
-    admin.initializeApp(config);
-  }
+  initializeDataToolFirebaseApp(admin, { projectId: 'ygo-synapse', storageBucket: bucketName });
   return { admin, bucket: admin.storage().bucket(bucketName) };
 }
 

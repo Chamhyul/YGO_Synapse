@@ -36,6 +36,8 @@ Thumbs.db
 # Firebase Service Account Keys
 *serviceAccount*.json
 serviceAccountKey.json
+# GitHub OIDC 교환 중 생성되는 임시 인증 설정
+gha-creds-*.json
 
 # Locally synchronized card illustration assets and state
 resources/illustrations/
