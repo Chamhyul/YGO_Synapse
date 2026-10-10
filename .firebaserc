@@ -1,5 +1,12 @@
 {
   "projects": {
     "default": "ygo-synapse"
+  },
+  "targets": {
+    "ygo-synapse": {
+      "storage": {
+        "main": ["ygo-synapse.firebasestorage.app"]
+      }
+    }
   }
 }
