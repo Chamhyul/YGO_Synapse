@@ -1,8 +1,10 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { CARD_WORKER_OPTIONS } = require('../config/serviceAccounts');
 const { runAutoCrawl } = require("../services/autoCrawlerService");
 const { ALL_LOCALES, MAIN_LOCALES } = require("../config/crawler");
 
 exports.autoCrawlFull = onSchedule({
+  ...CARD_WORKER_OPTIONS,
   schedule: "0 4 * * *",
   timeZone: "Asia/Seoul",
   region: "asia-northeast3",
@@ -18,6 +20,7 @@ exports.autoCrawlFull = onSchedule({
  * 매일 12:00, 22:00 KST - 주요 3개 언어만 스캔
  */
 exports.autoCrawlQuick = onSchedule({
+  ...CARD_WORKER_OPTIONS,
   schedule: "0 12,22 * * *",
   timeZone: "Asia/Seoul",
   region: "asia-northeast3",
@@ -28,4 +31,3 @@ exports.autoCrawlQuick = onSchedule({
   const result = await runAutoCrawl(MAIN_LOCALES);
   console.log("[Scheduler] 주요 언어 크롤링 결과:", JSON.stringify(result));
 });
-
