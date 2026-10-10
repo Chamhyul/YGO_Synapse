@@ -1,17 +1,19 @@
 'use strict';
 
-// 저장소는 기존 DB·버킷을 사용한다. 실행 계정의 실제 권한은 IAM에서 별도로 관리한다.
+// Firebase CLI의 함수 분석 프로세스는 일반 CI 환경변수를 전달하지 않는다.
+// CLI가 직접 전달하는 프로젝트 ID로 배포 계정을 선택한다. 이메일은 비밀값이 아니다.
+const CARD_WORKER_ACCOUNTS = Object.freeze({
+  'ygo-synapse': 'card-worker@ygo-synapse.iam.gserviceaccount.com',
+});
+
 function resolveCardWorkerOptions(env = process.env) {
-  const serviceAccount = env.CARD_WORKER_SERVICE_ACCOUNT;
-  if (serviceAccount === undefined || serviceAccount === '') return {};
-  if (typeof serviceAccount !== 'string'
-      || serviceAccount !== serviceAccount.trim()
-      || !/^[a-z0-9-]+@[a-z0-9-]+\.iam\.gserviceaccount\.com$/.test(serviceAccount)) {
-    throw new Error('CARD_WORKER_SERVICE_ACCOUNT에는 유효한 서비스 계정 이메일이 필요합니다.');
-  }
-  return { serviceAccount };
+  if (env.FUNCTIONS_EMULATOR === 'true' || env.FIREBASE_EMULATOR_HUB
+      || env.FIRESTORE_EMULATOR_HOST || env.FIREBASE_STORAGE_EMULATOR_HOST) return {};
+  const serviceAccount = Object.hasOwn(CARD_WORKER_ACCOUNTS, env.GCLOUD_PROJECT)
+    ? CARD_WORKER_ACCOUNTS[env.GCLOUD_PROJECT] : undefined;
+  return serviceAccount ? { serviceAccount } : {};
 }
 
-// 미설정 상태에서는 Firebase의 기존 기본 실행 계정을 유지한다.
+// 로컬 에뮬레이터와 미등록 프로젝트는 기존 기본 동작을 유지한다.
 const CARD_WORKER_OPTIONS = resolveCardWorkerOptions();
 module.exports = { CARD_WORKER_OPTIONS, resolveCardWorkerOptions };

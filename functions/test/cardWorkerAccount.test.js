@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const { onTaskDispatched } = require('firebase-functions/v2/tasks');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 
-const account = 'card-worker@demo-ygo.iam.gserviceaccount.com';
+const account = 'card-worker@ygo-synapse.iam.gserviceaccount.com';
 function load(file, mocks = {}, env = {}) {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
@@ -22,31 +22,29 @@ function load(file, mocks = {}, env = {}) {
 }
 const plain = value => JSON.parse(JSON.stringify(value));
 
-test('실행 계정을 지정하지 않으면 기본 계정 선택을 Firebase에 맡긴다', () => {
-  for (const env of [{}, { CARD_WORKER_SERVICE_ACCOUNT: '' }]) {
+test('미등록 프로젝트는 기본 계정 선택을 Firebase에 맡긴다', () => {
+  for (const env of [{}, { GCLOUD_PROJECT: 'demo-ygo' }, { GCLOUD_PROJECT: 'toString' }]) {
     assert.deepEqual(plain(load('config/serviceAccounts.js', {}, env).CARD_WORKER_OPTIONS), {});
   }
 });
 
-test('기존 저장소에서도 실행 계정을 지정할 수 있고 입력 환경을 바꾸지 않는다', () => {
-  const env = { CARD_WORKER_SERVICE_ACCOUNT: account, STORAGE_BUCKET: 'fixture-service-bucket' };
+test('CLI의 프로젝트 ID만으로 운영 계정을 선택하고 입력 환경을 바꾸지 않는다', () => {
+  const env = { GCLOUD_PROJECT: 'ygo-synapse', STORAGE_BUCKET: 'fixture-service-bucket' };
   const before = { ...env };
   assert.deepEqual(plain(load('config/serviceAccounts.js', {}, env).CARD_WORKER_OPTIONS), { serviceAccount: account });
   assert.deepEqual(env, before);
 });
 
-test('잘못된 실행 계정은 로드 단계에서 거부하고 입력값을 오류에 노출하지 않는다', () => {
-  for (const value of ['bad-account', 'user@example.com', ` ${account}`, `${account}\n`, 42, null]) {
-    assert.throws(() => load('config/serviceAccounts.js', {}, { CARD_WORKER_SERVICE_ACCOUNT: value }), error => {
-      assert.equal(error.message, 'CARD_WORKER_SERVICE_ACCOUNT에는 유효한 서비스 계정 이메일이 필요합니다.');
-      return true;
-    });
+test('운영 프로젝트 ID를 사용해도 로컬 에뮬레이터에는 실행 계정을 지정하지 않는다', () => {
+  for (const flags of [{ FUNCTIONS_EMULATOR: 'true' }, { FIREBASE_EMULATOR_HUB: 'localhost:4400' },
+    { FIRESTORE_EMULATOR_HOST: 'localhost:5003' }, { FIREBASE_STORAGE_EMULATOR_HOST: 'localhost:5004' }]) {
+    assert.deepEqual(plain(load('config/serviceAccounts.js', {}, { GCLOUD_PROJECT: 'ygo-synapse', ...flags }).CARD_WORKER_OPTIONS), {});
   }
 });
 
 test('실행 계정 설정은 기본 DB·버킷과 로컬 운영 다운로드 차단을 바꾸지 않는다', async () => {
   const db = {}, bucketCalls = [], initCalls = [];
-  const env = { CARD_WORKER_SERVICE_ACCOUNT: account, STORAGE_BUCKET: 'fixture-service-bucket',
+  const env = { GCLOUD_PROJECT: 'ygo-synapse', STORAGE_BUCKET: 'fixture-service-bucket',
     FUNCTIONS_EMULATOR: 'true', FIRESTORE_EMULATOR_HOST: '127.0.0.1:5003',
     FIREBASE_STORAGE_EMULATOR_HOST: '127.0.0.1:5004' };
   const before = { ...env };
@@ -92,7 +90,7 @@ for (const definition of definitions) {
       })[definition.name];
     }
     const original = worker({});
-    const configured = worker({ CARD_WORKER_SERVICE_ACCOUNT: account });
+    const configured = worker({ GCLOUD_PROJECT: 'ygo-synapse' });
     const before = plain(original.__endpoint), after = plain(configured.__endpoint);
     assert.equal(before.serviceAccountEmail, null);
     assert.equal(after.serviceAccountEmail, account);
