@@ -10,10 +10,6 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 // Secrets 정의
-const GOOGLE_CLIENT_ID = defineSecret("GOOGLE_CLIENT_ID");
-const GOOGLE_CLIENT_SECRET = defineSecret("GOOGLE_CLIENT_SECRET");
-const GOOGLE_REFRESH_TOKEN = defineSecret("GOOGLE_REFRESH_TOKEN");
-const DISCORD_BOT_TOKEN = defineSecret("DISCORD_BOT_TOKEN");
 const DISCORD_CLIENT_SECRET = defineSecret("DISCORD_CLIENT_SECRET");
 
 // Discord 상수
@@ -53,10 +49,6 @@ module.exports = {
   downloadProductionFile,
   FieldValue,
   FieldPath,
-  GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET,
-  GOOGLE_REFRESH_TOKEN,
-  DISCORD_BOT_TOKEN,
   DISCORD_CLIENT_SECRET,
   DISCORD_CLIENT_ID,
   DISCORD_GUILD_ID,
