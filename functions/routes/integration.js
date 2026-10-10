@@ -7,23 +7,25 @@ const sheets = require("../integrations/googleSheets");
 
 exports.checkSheet = onRequest({ invoker: "public" }, async (req, res) => {
   setCors(res, req);
+  res.set('Cache-Control', 'no-store');
   if (req.method === "OPTIONS") return res.status(204).send("");
+  if (req.method !== 'GET') return res.status(405).json({ success: false, message: 'GET 요청만 지원합니다.' });
   if (!(await verifyAppCheck(req, res))) return;
 
   const id = req.query.targetId;
-  if (!id) return res.status(400).json({ success: false, message: "Missing Spreadsheet ID" });
+  if (!sheets.sheetsIsValidSpreadsheetId(id)) return res.status(400).json({ success: false, message: '올바른 시트 ID가 필요합니다.' });
 
   try {
-    const metadata = await sheets.getSpreadsheetMetadata(id);
-    const { fetchMyCardData_Node } = require("../services/migrationService");
-    const preview = await fetchMyCardData_Node(id);
-    return res.json({ status: 'OK', sheetName: metadata.properties.title, rowCount: preview.data.length,
+    const { migrationFetchPublicMyCardData } = require("../services/migrationService");
+    const preview = await migrationFetchPublicMyCardData(id);
+    return res.json({ status: 'OK', sheetName: 'MyCard', rowCount: preview.data.length,
       totalQty: preview.totalQty, skippedZeroCount: preview.skippedZeroCount,
       legacyQuantity: preview.legacyQuantity, fingerprint: preview.fingerprint });
   } catch (err) {
     console.error("checkSheet error:", safeErrorSummary(err));
     if (err.code === 'INVALID_IMPORT') return res.json({ status: 'INVALID_DATA', message: err.message });
-    return res.json({ status: 'NO_ACCESS' });
+    if (err.code === 'PUBLIC_SHEET_NO_ACCESS') return res.json({ status: 'NO_ACCESS' });
+    return res.status(503).json({ success: false, message: '시트를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.' });
   }
 });
 

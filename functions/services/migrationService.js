@@ -46,8 +46,8 @@ function parseMyCardRows(values) {
   return validateImportData(raw);
 }
 
-async function fetchMyCardData_Node(spreadsheetId) {
-  const values = await sheets.getSheetValues(spreadsheetId, 'MyCard!A1:Z');
+async function migrationFetchPublicMyCardData(spreadsheetId) {
+  const values = await sheets.sheetsReadPublicMyCardRows(spreadsheetId);
   const parsed = parseMyCardRows(values);
   const locations = Object.create(null), rarities = Object.create(null), names = new Set();
   const allCards = parsed.data.map(item => {
@@ -60,4 +60,4 @@ async function fetchMyCardData_Node(spreadsheetId) {
   return { ...parsed, allCards, locations, rarities, amount: parsed.totalQty, names: [...names].sort(),
     fingerprint: createHash('sha256').update(JSON.stringify(values)).digest('hex') };
 }
-module.exports = { fetchMyCardData_Node, parseMyCardRows, validateImportData };
+module.exports = { migrationFetchPublicMyCardData, parseMyCardRows, validateImportData };

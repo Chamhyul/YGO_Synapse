@@ -2,7 +2,8 @@ const { onRequest: firebaseOnRequest } = require("firebase-functions/v2/https");
 const { withPublicReadRequest } = require("../services/publicReadTransport");
 const onRequest = (options, handler) => firebaseOnRequest(options, withPublicReadRequest(handler));
 const { setCors, verifyRegisteredUser } = require("../utils/auth");
-const { fetchMyCardData_Node, validateImportData } = require("../services/migrationService");
+const { migrationFetchPublicMyCardData, validateImportData } = require("../services/migrationService");
+const { sheetsIsValidSpreadsheetId } = require('../integrations/googleSheets');
 const { resolveCardNumber } = require("../services/cardService");
 const { updateInventoryWithRetry, processAddCards } = require("../utils/inventoryStorage");
 const { findCard } = require('../services/cardQueryService');
@@ -98,10 +99,10 @@ function importRoute(source) {
       let parsed;
       if (source === 'sheet') {
         const { spreadsheetId, fingerprint } = req.body || {};
-        if (!/^[\w-]{25,}$/.test(spreadsheetId || '')) {
+        if (!sheetsIsValidSpreadsheetId(spreadsheetId)) {
           return res.status(400).json({ success: false, message: '올바른 시트 ID가 필요합니다.' });
         }
-        parsed = await fetchMyCardData_Node(spreadsheetId);
+        parsed = await migrationFetchPublicMyCardData(spreadsheetId);
         if (!fingerprint || fingerprint !== parsed.fingerprint) {
           return res.status(409).json({ success: false, message: '시트 내용이 변경되었습니다. 링크를 다시 확인해주세요.', code: 'SHEET_CHANGED' });
         }
@@ -109,6 +110,10 @@ function importRoute(source) {
       return res.json(await importValidated(uid, parsed));
     } catch (error) {
       console.error('Data import failed:', safeErrorSummary(error));
+      if (error.code === 'PUBLIC_SHEET_NO_ACCESS') return res.status(403).json({ success: false,
+        code: 'PUBLIC_SHEET_NO_ACCESS', message: '공개·링크 공유 및 다운로드 허용 설정을 확인해 주세요.' });
+      if (error.code === 'PUBLIC_SHEET_UNAVAILABLE') return res.status(503).json({ success: false,
+        message: '시트를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.' });
       return res.status(error.code === 'INVALID_IMPORT' ? 400 : 500).json({ success: false,
         message: error.code === 'INVALID_IMPORT' ? error.message : '카드 데이터를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.' });
     }

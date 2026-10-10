@@ -124,19 +124,20 @@ function routeFixture() {
     '../services/membershipCsvService': require('../services/membershipCsvService'),
     '../utils/auth': { setCors() {}, verifyAppCheck: async () => true, verifyAdmin: async () => ({uid:'uid',role:'admin'}), verifyRegisteredUser: async () => 'uid' },
     '../utils/safeError': { safeErrorSummary },
-    '../integrations/googleSheets': { getSpreadsheetMetadata: async () => { throw error; } },
+    '../integrations/googleSheets': { sheetsIsValidSpreadsheetId: require('../integrations/googleSheets').sheetsIsValidSpreadsheetId },
+    '../services/migrationService': { migrationFetchPublicMyCardData: async () => { throw error; } },
     '../integrations/discord': { getDiscordUserWithCode: async () => { throw error; } },
   });
 }
 
 for (const [route, body, query, status] of [
   ['uploadMembershipCsv', { members: [{ channelId: 'UC'+'a'.repeat(22), memberName:'합성 회원', levelName:'합성 등급' }] }, {}, 503],
-  ['checkSheet', {}, { targetId: 'sheet' }, 200],
+  ['checkSheet', {}, { targetId: 'a'.repeat(30) }, 503],
 ]) {
   test(`${route} 실패 로그와 클라이언트 응답에 인증정보를 포함하지 않는다`, async () => {
     const f = routeFixture();
     const res = response();
-    await f.exports[route]({ method: 'POST', body, query }, res);
+    await f.exports[route]({ method: route === 'checkSheet' ? 'GET' : 'POST', body, query }, res);
     assert.equal(res.statusCode, status);
     assertPrivate(f.logs, res.body);
   });
