@@ -2,7 +2,9 @@
 # https://github.com/firebase/firebase-tools
 
 name: Deploy to Firebase Hosting on PR
-on: pull_request
+on:
+  pull_request:
+    branches: [main]
 permissions:
   checks: write
   contents: read
@@ -39,7 +41,7 @@ jobs:
       - name: Deploy Hosting preview
         env:
           PREVIEW_CHANNEL: pr-${{ github.event.pull_request.number }}
-        run: npx firebase-tools hosting:channel:deploy "$PREVIEW_CHANNEL" --project ygo-synapse --expires 7d --non-interactive --json > "$RUNNER_TEMP/hosting-preview.json"
+        run: npx firebase-tools@15.12.0 hosting:channel:deploy "$PREVIEW_CHANNEL" --project ygo-synapse --expires 7d --non-interactive --json > "$RUNNER_TEMP/hosting-preview.json"
       - name: Publish preview link
         uses: actions/github-script@v7
         with:
