@@ -31,7 +31,7 @@ async function downloadProductionFile(objectPath) {
   const bucketName = process.env.STORAGE_BUCKET || "ygo-synapse.firebasestorage.app";
   if (process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_EMULATOR_HUB
       || process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_STORAGE_EMULATOR_HOST
-      || process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+      || process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
     throw new Error("로컬에서는 운영 API로 조회해야 합니다.");
   }
   const token = await admin.app().options.credential.getAccessToken();

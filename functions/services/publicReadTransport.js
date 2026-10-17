@@ -5,7 +5,7 @@ const BASE = 'https://asia-northeast3-ygo-synapse.cloudfunctions.net';
 const ALLOWED = new Set(['getPublicCardData', 'verifyUserIdentity', 'searchCardByImage']);
 const isLocal = () => !!(process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_EMULATOR_HUB
   || process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_STORAGE_EMULATOR_HOST
-  || process.env.FIREBASE_AUTH_EMULATOR_HOST);
+  || process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.FIREBASE_DATABASE_EMULATOR_HOST);
 const withPublicReadRequest = handler => (req, res) => {
   if (isLocal() && (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_STORAGE_EMULATOR_HOST)) {
     return res.status(503).json({ success: false, message: '로컬 데이터 에뮬레이터가 필요합니다.' });

@@ -28,6 +28,9 @@
     <script defer src="/auth-session.js?v=2"></script>
     <script defer src="/admin-session.js?v=2"></script>
     <script defer src="/admin.js?v=6"></script>
+    <link rel="stylesheet" href="/styles/admin-home.css?v=2">
+    <link rel="stylesheet" href="/styles/admin-settings.css?v=1">
+    <script defer src="/admin-settings.js?v=1"></script>
 </head>
 <body>
         <section id="admin-login" class="admin-login" aria-labelledby="admin-title">
@@ -57,9 +60,21 @@
                     <span class="admin-header-title color-text-000">YGO Synapse · 관리자</span>
                     <div class="admin-header-account"><span id="admin-account" class="color-text-001">관리자 계정</span><a id="admin-settings" aria-current="page" href="/admin/settings" class="ui-button color-type000 shape-capsule" hidden>관리자 설정</a><button id="admin-logout" type="button" class="ui-button color-type000 shape-capsule">로그아웃</button></div>
                 </header>
-                <main id="admin-main" class="admin-main" tabindex="-1" aria-labelledby="admin-page-title">
+                <main id="admin-main" class="admin-main admin-home" tabindex="-1" aria-labelledby="admin-page-title">
                     <h1 id="admin-page-title">관리자 설정</h1>
-                    <p class="admin-placeholder color-text-001">관리 기능을 준비 중입니다.</p>
+                    <p class="admin-home-intro color-text-001">소유자 계정에서 운영 계정의 관리자 권한을 관리합니다. 로컬에서 변경해도 실제 운영 계정에 반영됩니다.</p>
+                    <p id="admin-accounts-status" class="admin-home-note color-text-001" role="status" aria-live="polite"></p>
+                    <div class="admin-settings-grid">
+                        <section class="admin-home-panel color-surface-001 shape-rounded-lg" aria-labelledby="admin-account-lookup-title">
+                            <div class="admin-home-section-heading"><h2 id="admin-account-lookup-title">계정 조회</h2></div>
+                            <p class="admin-home-note color-text-001">봇이 사용할 Google·X 계정으로 서비스에 먼저 로그인한 뒤 UID 또는 이메일로 조회하세요.</p>
+                            <form id="admin-accounts-form"><fieldset id="admin-accounts-fields" class="admin-account-fields"><label for="admin-accounts-query">조회할 계정</label><div class="admin-account-search"><select id="admin-accounts-kind" class="ui-input--filled color-surface-002 shape-capsule" aria-label="조회 기준"><option value="uid">UID</option><option value="email">이메일</option></select><input id="admin-accounts-query" type="text" class="ui-input--filled color-surface-002 shape-capsule" maxlength="320" required autocomplete="off" placeholder="UID 또는 이메일"><button type="submit" class="ui-button ui-control--disabled color-disabled color-theme shape-capsule admin-home-record-link">조회</button></div></fieldset></form>
+                            <div id="admin-accounts-detail" hidden><h3 id="admin-accounts-name"></h3><dl class="admin-account-details"><dt>UID</dt><dd id="admin-accounts-uid"></dd><dt>이메일</dt><dd id="admin-accounts-email"></dd><dt>현재 권한</dt><dd id="admin-accounts-role"></dd></dl><div class="admin-home-periods"><button id="admin-accounts-grant" type="button" class="ui-button ui-control--disabled color-disabled color-theme shape-capsule admin-home-record-link" disabled>관리자 지정</button><button id="admin-accounts-revoke" type="button" class="ui-button ui-control--disabled color-disabled color-type000 shape-capsule admin-home-record-link" disabled>관리자 해제</button></div></div>
+                            <p class="admin-home-note color-text-001">관리자는 멤버십 CSV 업로드와 공지 편집 등 관리자 기능을 사용할 수 있습니다. 소유자 지정·해제와 본인 권한 변경은 이 화면에서 지원하지 않습니다.</p>
+                            <a class="ui-button ui-button--text color-text-000" href="/admin#membership-csv-panel">멤버십 CSV 업로드로 이동</a>
+                        </section>
+                        <section class="admin-home-panel color-surface-001 shape-rounded-lg" aria-labelledby="admin-account-list-title"><div class="admin-home-section-heading"><h2 id="admin-account-list-title">관리자 계정</h2><button id="admin-accounts-refresh" type="button" class="ui-button ui-control--disabled color-disabled color-type000 shape-capsule admin-home-record-link">새로고침</button></div><ul id="admin-accounts-list" class="admin-account-list" aria-busy="true"></ul><p id="admin-accounts-empty" class="admin-home-note color-text-001" hidden>조회한 범위에 관리자 계정이 없습니다.</p><button id="admin-accounts-more" type="button" class="ui-button ui-control--disabled color-disabled color-type000 shape-capsule admin-home-record-link" hidden>더 불러오기</button></section>
+                    </div>
                 </main>
             </div>
             <nav class="app-navi--mobile admin-bottom-nav" aria-label="관리자 하단 메뉴">

@@ -1,30 +1,3 @@
-SHA256: 2088f55c6731498410b20c95ebd345ed4a4a800bf74c0fba4d282fd2a021daaa
-@emnapi/runtime@1.11.3: LICENSE
-
-MIT License
-
-Copyright (c) 2021-present Toyobayashi
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-
-
 SHA256: e2eaa4603c14cb26f301e88648c12a853fa3f0f5da6d4b0972958c666e7f2ab8
 @img/colour@1.1.0: LICENSE.md
 
@@ -113,9 +86,149 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 
 
+SHA256: b05efaa208519f349746a54ee195c433ab8e5c250847a257c984c7a9dc68df20
+@img/sharp-libvips-linux-arm64@1.3.3: README.md
+
+# `@img/sharp-libvips-linux-arm64`
+
+Prebuilt libvips and dependencies for use with sharp on Linux (glibc) 64-bit ARM.
+
+## Licensing
+
+This software contains third-party libraries
+used under the terms of the following licenses:
+
+| Library       | Used under the terms of                                                                                   |
+|---------------|-----------------------------------------------------------------------------------------------------------|
+| aom           | BSD 2-Clause + [Alliance for Open Media Patent License 1.0](https://aomedia.org/license/patent-license/)  |
+| cairo         | Mozilla Public License 2.0                                                                                |
+| cgif          | MIT License                                                                                               |
+| expat         | MIT License                                                                                               |
+| fontconfig    | [fontconfig License](https://gitlab.freedesktop.org/fontconfig/fontconfig/blob/main/COPYING) (BSD-like)   |
+| freetype      | [freetype License](https://git.savannah.gnu.org/cgit/freetype/freetype2.git/tree/docs/FTL.TXT) (BSD-like) |
+| fribidi       | LGPLv3                                                                                                    |
+| glib          | LGPLv3                                                                                                    |
+| harfbuzz      | MIT License                                                                                               |
+| highway       | BSD 3-Clause                                                                                              |
+| lcms          | MIT License                                                                                               |
+| libarchive    | BSD 2-Clause                                                                                              |
+| libexif       | LGPLv3                                                                                                    |
+| libffi        | MIT License                                                                                               |
+| libheif       | LGPLv3                                                                                                    |
+| libimagequant | [BSD 2-Clause](https://github.com/lovell/libimagequant/blob/main/COPYRIGHT)                               |
+| libnsgif      | MIT License                                                                                               |
+| libpng        | [libpng License](https://github.com/pnggroup/libpng/blob/master/LICENSE)                                  |
+| librsvg       | LGPLv3                                                                                                    |
+| libtiff       | [libtiff License](https://gitlab.com/libtiff/libtiff/blob/master/LICENSE.md) (BSD-like)                   |
+| libultrahdr   | MIT License                                                                                               |
+| libvips       | LGPLv3                                                                                                    |
+| libwebp       | New BSD License                                                                                           |
+| libxml2       | MIT License                                                                                               |
+| mozjpeg       | [zlib License, IJG License, BSD 3-Clause](https://github.com/mozilla/mozjpeg/blob/master/LICENSE.md)      |
+| pango         | LGPLv3                                                                                                    |
+| pixman        | MIT License                                                                                               |
+| proxy-libintl | LGPLv3                                                                                                    |
+| zlib-ng       | [zlib License](https://github.com/zlib-ng/zlib-ng/blob/develop/LICENSE.md)                                |
+
+Use of libraries under the terms of the LGPLv3 is via the
+"any later version" clause of the LGPLv2 or LGPLv2.1.
+
+Please report any errors or omissions via
+https://github.com/lovell/sharp-libvips/issues/new
+
+
+
+SHA256: adddf5e76ac1cc03b503a17c488b8591dd9eb5ec3faf689a3852d02d1b5fbb10
+@img/sharp-libvips-linux-arm64@1.3.3: versions.json
+@img/sharp-libvips-linuxmusl-arm64@1.3.3: versions.json
+
+{
+  "aom": "3.15.0",
+  "archive": "3.8.9",
+  "cairo": "1.18.4",
+  "cgif": "0.5.3",
+  "exif": "0.6.26",
+  "expat": "2.8.3",
+  "ffi": "3.8.0",
+  "fontconfig": "2.18.3",
+  "freetype": "2.14.3",
+  "fribidi": "1.0.16",
+  "glib": "2.89.4",
+  "harfbuzz": "14.3.1",
+  "heif": "1.23.2",
+  "highway": "1.4.0",
+  "imagequant": "2.4.1",
+  "lcms": "2.19.1",
+  "mozjpeg": "0826579",
+  "pango": "1.58.2",
+  "pixman": "0.46.4",
+  "png": "1.6.58",
+  "proxy-libintl": "0.5",
+  "rsvg": "2.62.91",
+  "tiff": "4.7.2",
+  "uhdr": "2.0.2",
+  "vips": "8.18.6",
+  "webp": "1.6.0",
+  "xml2": "2.15.3",
+  "zlib-ng": "2.3.3"
+}
+
+
+SHA256: 1a42557691426812906e98442b6575bd3fd509a3a0ea53d28e9ce52c2ccbb243
+@img/sharp-libvips-linuxmusl-arm64@1.3.3: README.md
+
+# `@img/sharp-libvips-linuxmusl-arm64`
+
+Prebuilt libvips and dependencies for use with sharp on Linux (musl) 64-bit ARM.
+
+## Licensing
+
+This software contains third-party libraries
+used under the terms of the following licenses:
+
+| Library       | Used under the terms of                                                                                   |
+|---------------|-----------------------------------------------------------------------------------------------------------|
+| aom           | BSD 2-Clause + [Alliance for Open Media Patent License 1.0](https://aomedia.org/license/patent-license/)  |
+| cairo         | Mozilla Public License 2.0                                                                                |
+| cgif          | MIT License                                                                                               |
+| expat         | MIT License                                                                                               |
+| fontconfig    | [fontconfig License](https://gitlab.freedesktop.org/fontconfig/fontconfig/blob/main/COPYING) (BSD-like)   |
+| freetype      | [freetype License](https://git.savannah.gnu.org/cgit/freetype/freetype2.git/tree/docs/FTL.TXT) (BSD-like) |
+| fribidi       | LGPLv3                                                                                                    |
+| glib          | LGPLv3                                                                                                    |
+| harfbuzz      | MIT License                                                                                               |
+| highway       | BSD 3-Clause                                                                                              |
+| lcms          | MIT License                                                                                               |
+| libarchive    | BSD 2-Clause                                                                                              |
+| libexif       | LGPLv3                                                                                                    |
+| libffi        | MIT License                                                                                               |
+| libheif       | LGPLv3                                                                                                    |
+| libimagequant | [BSD 2-Clause](https://github.com/lovell/libimagequant/blob/main/COPYRIGHT)                               |
+| libnsgif      | MIT License                                                                                               |
+| libpng        | [libpng License](https://github.com/pnggroup/libpng/blob/master/LICENSE)                                  |
+| librsvg       | LGPLv3                                                                                                    |
+| libtiff       | [libtiff License](https://gitlab.com/libtiff/libtiff/blob/master/LICENSE.md) (BSD-like)                   |
+| libultrahdr   | MIT License                                                                                               |
+| libvips       | LGPLv3                                                                                                    |
+| libwebp       | New BSD License                                                                                           |
+| libxml2       | MIT License                                                                                               |
+| mozjpeg       | [zlib License, IJG License, BSD 3-Clause](https://github.com/mozilla/mozjpeg/blob/master/LICENSE.md)      |
+| pango         | LGPLv3                                                                                                    |
+| pixman        | MIT License                                                                                               |
+| proxy-libintl | LGPLv3                                                                                                    |
+| zlib-ng       | [zlib License](https://github.com/zlib-ng/zlib-ng/blob/develop/LICENSE.md)                                |
+
+Use of libraries under the terms of the LGPLv3 is via the
+"any later version" clause of the LGPLv2 or LGPLv2.1.
+
+Please report any errors or omissions via
+https://github.com/lovell/sharp-libvips/issues/new
+
+
+
 SHA256: 73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68
-@img/sharp-darwin-arm64@0.35.4: LICENSE
-@img/sharp-wasm32@0.35.4: LICENSE
+@img/sharp-linux-arm64@0.35.4: LICENSE
+@img/sharp-linuxmusl-arm64@0.35.4: LICENSE
 sharp@0.35.4: LICENSE
 
 Apache License
@@ -310,93 +423,6 @@ third-party archives.
    See the License for the specific language governing permissions and
    limitations under the License.
 
-
-
-SHA256: 47083f1ae7e990f74a56f576bcb8434051cb84ed1982fa57932720869e5147fe
-@img/sharp-libvips-darwin-arm64@1.3.3: README.md
-
-# `@img/sharp-libvips-darwin-arm64`
-
-Prebuilt libvips and dependencies for use with sharp on macOS 64-bit ARM.
-
-## Licensing
-
-This software contains third-party libraries
-used under the terms of the following licenses:
-
-| Library       | Used under the terms of                                                                                   |
-|---------------|-----------------------------------------------------------------------------------------------------------|
-| aom           | BSD 2-Clause + [Alliance for Open Media Patent License 1.0](https://aomedia.org/license/patent-license/)  |
-| cairo         | Mozilla Public License 2.0                                                                                |
-| cgif          | MIT License                                                                                               |
-| expat         | MIT License                                                                                               |
-| fontconfig    | [fontconfig License](https://gitlab.freedesktop.org/fontconfig/fontconfig/blob/main/COPYING) (BSD-like)   |
-| freetype      | [freetype License](https://git.savannah.gnu.org/cgit/freetype/freetype2.git/tree/docs/FTL.TXT) (BSD-like) |
-| fribidi       | LGPLv3                                                                                                    |
-| glib          | LGPLv3                                                                                                    |
-| harfbuzz      | MIT License                                                                                               |
-| highway       | BSD 3-Clause                                                                                              |
-| lcms          | MIT License                                                                                               |
-| libarchive    | BSD 2-Clause                                                                                              |
-| libexif       | LGPLv3                                                                                                    |
-| libffi        | MIT License                                                                                               |
-| libheif       | LGPLv3                                                                                                    |
-| libimagequant | [BSD 2-Clause](https://github.com/lovell/libimagequant/blob/main/COPYRIGHT)                               |
-| libnsgif      | MIT License                                                                                               |
-| libpng        | [libpng License](https://github.com/pnggroup/libpng/blob/master/LICENSE)                                  |
-| librsvg       | LGPLv3                                                                                                    |
-| libtiff       | [libtiff License](https://gitlab.com/libtiff/libtiff/blob/master/LICENSE.md) (BSD-like)                   |
-| libultrahdr   | MIT License                                                                                               |
-| libvips       | LGPLv3                                                                                                    |
-| libwebp       | New BSD License                                                                                           |
-| libxml2       | MIT License                                                                                               |
-| mozjpeg       | [zlib License, IJG License, BSD 3-Clause](https://github.com/mozilla/mozjpeg/blob/master/LICENSE.md)      |
-| pango         | LGPLv3                                                                                                    |
-| pixman        | MIT License                                                                                               |
-| proxy-libintl | LGPLv3                                                                                                    |
-| zlib-ng       | [zlib License](https://github.com/zlib-ng/zlib-ng/blob/develop/LICENSE.md)                                |
-
-Use of libraries under the terms of the LGPLv3 is via the
-"any later version" clause of the LGPLv2 or LGPLv2.1.
-
-Please report any errors or omissions via
-https://github.com/lovell/sharp-libvips/issues/new
-
-
-
-SHA256: adddf5e76ac1cc03b503a17c488b8591dd9eb5ec3faf689a3852d02d1b5fbb10
-@img/sharp-libvips-darwin-arm64@1.3.3: versions.json
-
-{
-  "aom": "3.15.0",
-  "archive": "3.8.9",
-  "cairo": "1.18.4",
-  "cgif": "0.5.3",
-  "exif": "0.6.26",
-  "expat": "2.8.3",
-  "ffi": "3.8.0",
-  "fontconfig": "2.18.3",
-  "freetype": "2.14.3",
-  "fribidi": "1.0.16",
-  "glib": "2.89.4",
-  "harfbuzz": "14.3.1",
-  "heif": "1.23.2",
-  "highway": "1.4.0",
-  "imagequant": "2.4.1",
-  "lcms": "2.19.1",
-  "mozjpeg": "0826579",
-  "pango": "1.58.2",
-  "pixman": "0.46.4",
-  "png": "1.6.58",
-  "proxy-libintl": "0.5",
-  "rsvg": "2.62.91",
-  "tiff": "4.7.2",
-  "uhdr": "2.0.2",
-  "vips": "8.18.6",
-  "webp": "1.6.0",
-  "xml2": "2.15.3",
-  "zlib-ng": "2.3.3"
-}
 
 
 SHA256: a67b34a24a5daddcce46aea68c5004e4442bbfb63690329fa607bf4de4269794
@@ -1278,23 +1304,6 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-
-
-SHA256: 210b19e543130388c68654b7497e967119ce17145f66ab7d85688fbd70f08751
-tslib@2.8.1: LICENSE.txt
-
-Copyright (c) Microsoft Corporation.
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
 
 
 SHA256: a6db8096b2707bc0102d256917d4d33f298ba36d8c3f25de067a2b5bb379db27
@@ -5062,34 +5071,6 @@ the licensed code:
 
 
 
-SHA256: 2a8a5d6197bb97a018b8a190dd3ed853d750ca87c8e80c17aad41d6c6ff448e1
-fsevents@2.3.3: LICENSE
-
-MIT License
------------
-
-Copyright (C) 2010-2020 by Philipp Dunkel, Ben Noordhuis, Elan Shankar, Paul Miller
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-
-
 SHA256: 773e131a7684726005a7e4688a80b4620033bc08499bc1404dd1a1eb3bca725e
 function-bind@1.1.2: LICENSE
 
@@ -8710,6 +8691,23 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+
+
+SHA256: 210b19e543130388c68654b7497e967119ce17145f66ab7d85688fbd70f08751
+tslib@2.8.1: LICENSE.txt
+
+Copyright (c) Microsoft Corporation.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
 
 
 SHA256: e5aee0714b6ecc416454b968d1017570ef609f20d8722ab84b07acd550b78198

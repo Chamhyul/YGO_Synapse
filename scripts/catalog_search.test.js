@@ -260,8 +260,11 @@ function domFixture(mobile = false) {
         set textContent(value) { this._text = String(value); this.replaceChildren(); }
         get textContent() { return this._text + this.children.map(child => child.textContent).join(''); }
         get isConnected() { return this === body || !!this.parentNode?.isConnected; }
+        get lastElementChild() { return this.children.at(-1) || null; }
+        getBoundingClientRect() { return {left:0,top:0,bottom:100,width:100,height:100}; }
         appendChild(child) { return this.insertBefore(child, null); }
         append(...children) { children.forEach(child => this.appendChild(child)); }
+        prepend(...children) { [...children].reverse().forEach(child => this.insertBefore(child, this.children[0] || null)); }
         insertBefore(child, before) {
             child.remove(); const at = before ? this.children.indexOf(before) : -1;
             if (at >= 0) this.children.splice(at, 0, child); else this.children.push(child);
@@ -278,7 +281,7 @@ function domFixture(mobile = false) {
         contains(node) { return this === node || this.children.some(child => child.contains(node)); }
         querySelectorAll(selector) {
             const found = [];
-            const matches = node => selector.startsWith('.') ? node.classList.contains(selector.slice(1))
+            const matches = node => selector.startsWith('[data-') ? Object.hasOwn(node.dataset, selector.slice(6,-1).replace(/-([a-z])/g,(_,c)=>c.toUpperCase())) : selector.startsWith('.') ? node.classList.contains(selector.slice(1))
                 : selector.startsWith('#') ? node.id === selector.slice(1) : node.tagName === selector.toUpperCase();
             const visit = node => { for (const child of node.children) { if (matches(child)) found.push(child); visit(child); } };
             visit(this); return found;
@@ -289,12 +292,14 @@ function domFixture(mobile = false) {
     const body = new Element('body'), area = new Element('div'); area.id = 'result-area'; body.appendChild(area);
     const html = new Element('html'); if (mobile) html.classList.add('is-mobile-device');
     const document = { body, documentElement: html, activeElement: body,
-        createElement: tag => new Element(tag), getElementById: id => body.querySelector(`#${id}`), addEventListener() {} };
+        createElement: tag => new Element(tag), createElementNS: (_,tag) => new Element(tag), getElementById: id => body.querySelector(`#${id}`), addEventListener() {} };
     Object.assign(c, { document, requestAnimationFrame: callback => callback(), updateSearchHash() {}, closeDropdowns() {},
         openManagedSheet(root) { root.hidden = false; }, closeManagedSheet(root) { root.hidden = true; },
         saveRecentSearch() {}, renderTargetByCid() {}, startSearch() {} });
     const state = { type: 'broad', items: Array.from({ length: 65 }, (_, i) => ({ cid: String(i), name: `카드 ${i}`, nameMatch: i < 25, numberMatch: i >= 25 })),
         query: '카드', filter: 'auto', page: 2, pageSize: 20, pending: false };
+    c.matchKorean = (text,query) => norm(text).includes(norm(query));
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../public/filter-editor.js'),'utf8'),c);
     c.renderCatalogResults(state);
     return { c, area, body, state };
 }
@@ -389,76 +394,27 @@ for (const mobile of [false, true]) {
     });
 }
 
-test('더미 선택·초기화는 적용 전까지 격리하고 취소는 적용 상태를 유지한다', () => {
-    const { c, body, area, state } = domFixture();
-    const trigger = area.querySelector('.catalog-search-chip__edit');
-    trigger.click();
-    const editor = body.querySelector('#catalog-filter-editor');
-    const input = editor.querySelector('input'); input.checked = true; input.onchange();
-    editor.querySelector('.catalog-filter-editor__actions').children[1].click();
-    assert.deepEqual(state.filters.target, []);
-    trigger.click(); const chosen = editor.querySelector('input'); chosen.checked = true; chosen.onchange();
-    editor.querySelector('.catalog-filter-editor__actions').children[2].click();
-    assert.deepEqual(Array.from(state.filters.target), ['name']); assert.equal(state.page, 1);
-    trigger.click(); editor.querySelector('.catalog-filter-editor__actions').children[0].click();
-    assert.deepEqual(Array.from(state.filters.target), ['name']);
-    editor.querySelector('.catalog-filter-editor__actions').children[2].click();
-    assert.deepEqual(Array.from(state.filters.target), []);
-    assert.equal(area.querySelector('.catalog-search-filters').querySelectorAll('.catalog-search-chip').length, 1);
+test('필터 초안은 닫기로 버리고 적용으로만 확정하며 대상이 없으면 적용 불가', () => {
+    const {c,body,area,state}=domFixture(); const trigger=area.querySelector('.catalog-search-chip__edit');trigger.click();
+    const editor=body.querySelector('#catalog-filter-editor');let inputs=editor.querySelectorAll('input');
+    inputs[0].checked=false;inputs[0].onchange();c.closeCatalogFilterEditor();
+    assert.deepEqual(Array.from(state.filters.target),['name','number']);
+    trigger.click();inputs=editor.querySelectorAll('input');inputs[1].checked=false;inputs[1].onchange();
+    const apply=editor.querySelector('.ui-overlay__footer').children[0];apply.click();assert.deepEqual(Array.from(state.filters.target),['name']);
+    trigger.click();const header=editor.querySelector('.ui-overlay__header');header.children[1].children[0].click();
+    assert.deepEqual(Array.from(state.filters.target),['name']);assert.equal(apply.disabled,true);
+    assert.equal(editor.querySelector('.ui-overlay__footer').children.length,1);
 });
-
-test('모바일 특성 적용은 현재 세그먼트만 반영하고 비활성 칩 노드는 숨겨서 유지한다', () => {
-    const { c, body, area, state } = domFixture(true);
-    const chips = area.querySelector('.catalog-search-filters--mobile');
-    assert.equal(chips.children.length, 9);
-    c.openCatalogFilterEditor(state, 'traits', chips.children[2].children[0]);
-    const editor = body.querySelector('#catalog-filter-editor');
-    let options = editor.querySelector('.catalog-filter-editor__options');
-    options.children[0].children[0].checked = true; options.children[0].children[0].onchange();
-    let segments = editor.querySelectorAll('fieldset');
-    const spellRadio = segments[0].querySelectorAll('input')[1]; spellRadio.checked = true; spellRadio.onchange();
-    options = editor.querySelector('.catalog-filter-editor__options');
-    options.children[3].children[0].checked = true; options.children[3].children[0].onchange();
-    editor.querySelector('.catalog-filter-editor__actions').children[2].click();
-    assert.deepEqual(Array.from(state.filters.monster.values), []);
-    assert.deepEqual(Array.from(state.filters.spell.values), ['quick']);
-    c.closeCatalogFilterEditor();
-    c.applyCatalogFilter(state, 'kind', ['spell']);
-    assert.equal(chips.children.length, 9);
-    assert.equal(chips.children[3].children[0].disabled, true);
-    assert.ok(chips.children.slice(3).every(chip => chip.hidden));
-    assert.ok(chips.children.slice(0, 3).every(chip => !chip.hidden));
-    assert.equal(chips.querySelectorAll('.catalog-search-chip__remove').length, 0);
-    c.openCatalogFilterEditor(state, 'traits', chips.children[2].children[0]);
-    segments = editor.querySelectorAll('fieldset');
-    assert.equal(segments[0].querySelectorAll('input')[0].disabled, true);
-    assert.equal(segments[0].querySelectorAll('input')[1].checked, true);
-});
-
-test('모바일 종류 복원 시 숨겼던 몬스터 칩과 적용값·특성 연산자를 그대로 복원한다', () => {
-    const { c, area, state } = domFixture(true);
-    const chips = area.querySelector('.catalog-search-filters--mobile');
-    const originalChips = [...chips.children];
-    const monsterFilters = {
-        monster: { values: ['effect', 'fusion'], operator: 'and' },
-        attribute: ['light'], race: ['dragon'], level: 8, pendulum: 4,
-        attack: { from: 2000, to: 3000 }, defense: { from: 0, to: 2500 }
-    };
-    for (const [key, value] of Object.entries(monsterFilters)) assert.equal(c.applyCatalogFilter(state, key, value), null);
-    const stored = JSON.stringify(Object.fromEntries(Object.keys(monsterFilters).map(key => [key, state.filters[key]])));
-    for (const kinds of [['spell'], ['spell', 'trap']]) {
-        c.applyCatalogFilter(state, 'kind', kinds);
-        assert.ok(chips.children.slice(3).every(chip => chip.hidden));
-        assert.ok(chips.children.slice(0, 3).every(chip => !chip.hidden));
-        assert.equal(JSON.stringify(Object.fromEntries(Object.keys(monsterFilters).map(key => [key, state.filters[key]]))), stored);
-    }
-    for (const kinds of [['monster'], []]) {
-        c.applyCatalogFilter(state, 'kind', kinds);
-        assert.ok(chips.children.every(chip => !chip.hidden));
-        assert.ok(chips.children.every((chip, index) => chip === originalChips[index]));
-        assert.ok(chips.children.every(chip => !chip.children[0].disabled));
-        assert.equal(JSON.stringify(Object.fromEntries(Object.keys(monsterFilters).map(key => [key, state.filters[key]]))), stored);
-    }
+test('모바일 특성은 별도 편집창이며 다른 종류의 적용값을 유지한다',()=>{
+ const {c,body,area,state}=domFixture(true);const chips=area.querySelector('.catalog-search-filters--mobile');
+ assert.equal(chips.children.length,11);
+ c.applyCatalogFilter(state,'monster',{values:['effect'],operator:'and'});
+ const trigger=chips.children.find(node=>node.dataset.filterKey==='spell').children[0];c.openCatalogFilterEditor(state,'spell',trigger);
+ const editor=body.querySelector('#catalog-filter-editor');const inputs=editor.querySelectorAll('input');const quick=inputs.find(input=>input.value==='quick');quick.checked=true;quick.onchange();
+ editor.querySelector('.ui-overlay__footer').children[0].click();
+ assert.deepEqual(Array.from(state.filters.spell.values),['quick']);assert.deepEqual(Array.from(state.filters.monster.values),['effect']);
+ c.applyCatalogFilter(state,'kind',['spell']);assert.deepEqual(chips.children.map(node=>node.dataset.filterKey),['target','kind','spell']);
+ c.applyCatalogFilter(state,'kind',['monster']);assert.ok(chips.children.some(node=>node.dataset.filterKey==='monster'));assert.deepEqual(Array.from(state.filters.monster.values),['effect']);
 });
 
 test('데스크톱 칩 삭제와 기본 대상 초기화는 즉시 적용하고 수정키 링크 클릭은 그대로 둔다', () => {
@@ -467,7 +423,7 @@ test('데스크톱 칩 삭제와 기본 대상 초기화는 즉시 적용하고 
     c.applyCatalogFilter(state, 'attribute', ['dark']);
     c.applyCatalogFilter(state, 'kind', ['spell']);
     const chips = area.querySelector('.catalog-search-filters').querySelectorAll('.catalog-search-chip');
-    const attribute = chips.find(chip => chip.textContent.startsWith('속성:'));
+    const attribute = chips.find(chip => chip.dataset.filterKey === 'attribute');
     assert.equal(attribute.children[0].disabled, true);
     assert.equal(!!attribute.hidden, false, '데스크톱은 비활성 필터를 숨기지 않는다');
     attribute.children[1].click();
@@ -574,23 +530,97 @@ test('정상 확정 총수의 live 상태는 시각적으로 중복하지 않고
 });
 
 
-test('모바일 특성 종류 전환은 새 라디오로 초점을 복원하고 AND/OR는 기존 라디오를 유지한다', () => {
-    const { c, area, body, state } = domFixture(true);
-    const frames = []; c.requestAnimationFrame = callback => frames.push(callback);
-    const trigger = area.querySelector('.catalog-search-filters--mobile').children[2].children[0];
-    c.openCatalogFilterEditor(state, 'traits', trigger);
+test('특성 OR/AND 스위치는 적용 전 초안에만 반영하고 기존 입력 노드를 유지한다',()=>{
+ const {c,body,area,state}=domFixture(true);c.openCatalogFilterEditor(state,'monster',area.querySelector('.catalog-search-chip__edit'));
+ const editor=body.querySelector('#catalog-filter-editor');const toggle=editor.querySelectorAll('input').find(input=>input.getAttribute('role')==='switch');
+ toggle.focus();toggle.checked=true;toggle.onchange();assert.equal(c.document.activeElement,toggle);assert.equal(state.filters.monster.operator,'or');
+});
+
+function inventoryFixture(mobile=false) {
+ const {c,body}=domFixture(mobile);
+ for (const id of ['inventory-filter-popup','mobile-grid-filter-sheet','grid-filter-sheet-overlay']) {const root=c.document.createElement('section');root.id=id;body.append(root);}
+ c.inventoryGridState={allData:[['백룡','SDK-001','UR',1,'A','기본'],['흑룡','SDK-002','SR',10,'B','2nd'],['백룡','SDK-001','UR',2,'B','기본']],filters:{},sort:{colIndex:1,dir:'asc'}};
+ c.getLocalizedRarity=value=>value;c.startGridRendering=()=>{c.renderCount=(c.renderCount||0)+1;};
+ c.AppOverlays={openPopup(root){root.hidden=false;},closePopup(root){root.hidden=true;}};
+ const start=appSource.indexOf('let inventoryFilterEditor = null;'),end=appSource.indexOf('function switchToMode(',start);
+ vm.runInContext(appSource.slice(start,end),c);
+ const filterStart=appSource.indexOf('function applyGridFiltersAndSort()'),filterEnd=appSource.indexOf('function renderInventoryListTable()',filterStart);
+ vm.runInContext(appSource.slice(filterStart,filterEnd),c);return {c,body};
+}
+test('보유 이름 체크박스는 닫기에 미반영하고 빈 선택과 전체 선택을 구분한다',()=>{
+ const {c,body}=inventoryFixture();c.openGridFilter(null,0);
+ let root=body.querySelector('#inventory-filter-popup');let inputs=root.querySelectorAll('input');
+ inputs.forEach(input=>{input.checked=false;input.onchange?.();});c.closeGridFilter();assert.deepEqual(c.inventoryGridState.filters,{});
+ c.openGridFilter(null,0);root=body.querySelector('#inventory-filter-popup');inputs=root.querySelectorAll('input');
+ inputs.filter(input=>input.type==='checkbox').forEach(input=>{input.checked=false;input.onchange();});
+ root.querySelector('#inventory-filter-apply').click();assert.equal(c.inventoryGridState.filters[0].size,0);
+ c.applyGridFiltersAndSort();assert.equal(c.inventoryGridState.filteredData.length,0);
+ c.openGridFilter(null,0);root=body.querySelector('#inventory-filter-popup');root.querySelector('header').children[1].children[1].click();root.querySelector('#inventory-filter-apply').click();assert.equal(c.inventoryGridState.filters[0],undefined);
+});
+test('보유 필터 정렬 버튼은 후보의 숫자 순서를 바꾸고 적용 때만 목록 정렬을 확정한다',()=>{
+ const {c,body}=inventoryFixture();c.openGridFilter(null,3);const root=body.querySelector('#inventory-filter-popup'),sort=root.querySelector('header').children[1].children[0];
+ sort.click();sort.click();assert.deepEqual(root.querySelectorAll('.filter-option-item').map(row=>row.textContent),['10','2','1']);
+ assert.equal(c.inventoryGridState.sort.colIndex,1);root.querySelector('#inventory-filter-apply').click();assert.equal(c.inventoryGridState.sort.colIndex,3);assert.equal(c.inventoryGridState.sort.dir,'desc');
+ c.applyGridFiltersAndSort();assert.deepEqual(Array.from(c.inventoryGridState.filteredData,row=>row[3]),[10,2,1]);
+});
+
+test('모바일 보유 필터는 검색란을 목록 아래에 놓고 수량은 정렬만 제공한다',()=>{
+ const {c,body}=inventoryFixture(true);c.openGridFilterMobile(0);
+ let root=body.querySelector('#mobile-grid-filter-sheet');const group=root.querySelector('[data-selection-group]');
+ assert.equal(group.lastElementChild.type,'text');assert.equal(root.querySelectorAll('[role="switch"]').length,0);
+ c.closeGridFilterSheet();c.openGridFilterMobile(3);root=body.querySelector('#mobile-grid-filter-sheet');
+ assert.equal(root.querySelectorAll('.filter-option-item').length,0);assert.match(root.querySelector('header').textContent,/수량/);
+ c.closeGridFilterSheet();c.openGridFilterMobile(5);root=body.querySelector('#mobile-grid-filter-sheet');
+ assert.equal(root.querySelector('header').children[1].children.length,2);
+});
+
+test('데스크톱 추가 칩은 즉시 표시하고 미적용 상태로 닫으면 제거한다', () => {
+    const { c, area, body, state } = domFixture();
+    let updates = 0;
+    c.AppOverlays = { openPopup() {}, closePopup() {}, updatePopup(panel, update) { updates++; update(); } };
+    area.querySelector('.catalog-search-add').click();
     const editor = body.querySelector('#catalog-filter-editor');
-    const oldSpell = editor.querySelector('#catalog-trait-kind-spell');
-    oldSpell.focus(); oldSpell.checked = true; oldSpell.onchange();
-    const newSpell = editor.querySelector('#catalog-trait-kind-spell');
-    assert.notEqual(newSpell, oldSpell);
-    assert.equal(c.document.activeElement, newSpell);
-    // 네이티브 Space 이벤트의 후처리가 body로 초점을 보냈다는 상황도 복원한다.
-    body.focus(); frames.shift()();
-    assert.equal(c.document.activeElement, newSpell);
-    const operator = editor.querySelector('#catalog-trait-operator-and');
-    operator.focus(); operator.checked = true; operator.onchange();
-    assert.equal(editor.querySelector('#catalog-trait-operator-and'), operator);
-    assert.equal(c.document.activeElement, operator);
-    assert.equal(state.filters.spell.operator, 'or', '연산자 편집도 적용 전까지 초안이다');
+    const options = editor.querySelector('.catalog-search-filters');
+    assert.ok(options);
+    options.querySelectorAll('button').find(button => button.textContent === '몬스터 유형').click();
+    assert.equal(updates, 1);
+    assert.equal(state.addedFilters.includes('monster'), true);
+    assert.deepEqual(Array.from(state.filters.monster.values), []);
+    const chip = area.querySelectorAll('.catalog-search-chip').find(node => node.dataset.filterKey === 'monster');
+    assert.ok(chip);
+    assert.equal(chip.classList.contains('color-tint-neutral'), true);
+    const input = editor.querySelector('.filter-option-list').querySelector('input');
+    input.checked = true; input.onchange();
+    editor.querySelectorAll('button').find(button => button.getAttribute('aria-label') === '필터 편집 닫기').click();
+    assert.deepEqual(Array.from(state.filters.monster.values), []);
+    assert.equal(state.addedFilters.includes('monster'), false);
+    assert.equal(chip.isConnected, false);
+});
+
+test('필터 편집 취소는 기존 적용 조건과 칩을 유지하며 숫자 0도 설정으로 취급한다', () => {
+    const { c, area, body, state } = domFixture();
+    c.applyCatalogFilter(state, 'monster', { values: ['effect'], operator: 'or' });
+    c.openCatalogFilterEditor(state, 'monster', area.querySelector('.catalog-search-add'));
+    const editor = body.querySelector('#catalog-filter-editor');
+    editor.querySelectorAll('button').find(button => button.getAttribute('aria-label') === '초기화').click();
+    c.closeCatalogFilterEditor();
+    assert.deepEqual(Array.from(state.filters.monster.values), ['effect']);
+    assert.equal(state.addedFilters.includes('monster'), true);
+    c.applyCatalogFilter(state, 'level', 0);
+    c.openCatalogFilterEditor(state, 'level', area.querySelector('.catalog-search-add'));
+    c.closeCatalogFilterEditor();
+    assert.equal(state.filters.level, 0);
+    assert.equal(state.addedFilters.includes('level'), true);
+    c.openCatalogFilterEditor(state, 'target', area.querySelector('.catalog-search-add'));
+    c.closeCatalogFilterEditor();
+    assert.equal(state.addedFilters.includes('target'), true);
+});
+
+test('모바일 미설정 필터 종료는 상시 칩과 데스크톱 추가 상태를 제거하지 않는다', () => {
+    const { c, area, state } = domFixture(true);
+    state.addedFilters.push('monster');
+    c.openCatalogFilterEditor(state, 'monster', area.querySelector('.catalog-search-add'));
+    c.closeCatalogFilterEditor();
+    assert.equal(state.addedFilters.includes('monster'), true);
+    assert.equal(area.querySelectorAll('.catalog-search-chip').some(node => node.dataset.filterKey === 'monster' && !node.hidden), true);
 });

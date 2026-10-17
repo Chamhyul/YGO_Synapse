@@ -1,9 +1,10 @@
+const { readSourceFile } = require('./sourceFile');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const source = fs.readFileSync(require('node:path').join(__dirname, '../routes/card.js'), 'utf8');
-const handlerSource = source.slice(source.indexOf('exports.resolveCardNames ='), source.indexOf('\nasync function applyInventoryGuard'));
+const source = readSourceFile(require('node:path').join(__dirname, '../routes/cardCatalog.js'), 'utf8');
+const handlerSource = source.slice(source.indexOf('exports.resolveCardNames ='), source.indexOf('exports.suggestCardNames'));
 function fixture() {
     const calls = [];
     const c = vm.createContext({ exports: {}, onRequest: (_, handler) => handler, setCors() {},

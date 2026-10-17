@@ -9,7 +9,8 @@ function load(file, mocks) {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
     module, exports: module.exports, console: { error() {} }, Buffer, Date,
-    require(name) {
+    require(name) { if (['../services/inventoryRequestTiming', './inventoryRequestTiming'].includes(name)) return require('../services/inventoryRequestTiming'); 
+      if (name === '../services/userStorageRequestGuard') return { withUserStorageRequestGuard: handler => handler };
       if (name === '../services/publicReadTransport' || name === './publicReadTransport') return { isLocal: () => false, withPublicReadRequest: handler => handler }; if (!Object.hasOwn(mocks, name)) throw Error(`격리되지 않은 의존성: ${name}`); return mocks[name]; }
   });
   return module.exports;
@@ -29,8 +30,8 @@ function fixture() {
     }
   }) }) }) };
   const storage = load('utils/inventoryStorage.js', { '../config/firebase': { admin }, '../services/inventoryMigrationService': migration });
-  const routes = load('routes/card.js', {
-    '../services/cardService': { resolveCardNumber: async number => number }, 'firebase-functions/v2/https': { onRequest: (_, fn) => fn },
+  const routes = load('routes/inventory.js', {
+    '../services/inventoryCardLookup': { resolveCardNumber: async number => number }, 'firebase-functions/v2/https': { onRequest: (_, fn) => fn },
     '../config/firebase': { admin }, '../utils/common': {}, '../utils/auth': { setCors() {}, verifyRegisteredUser: async () => 'synthetic-user' },
     '../scrapers/cardScraper': {}, '../utils/inventoryStorage': storage, '../services/cardQueryService': {},
     '../services/inventoryMigrationService': { ...migration, resolveGroupCids: async groups => { for (const group of Object.values(groups)) group.cid = '42'; } },

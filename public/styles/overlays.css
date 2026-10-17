@@ -1,5 +1,11 @@
 /* 공통 오버레이의 배치·스크롤·조작부. 색상·곡률·그림자는 직접 조합한다.
  * Materialize의 모달 요소 자체를 panel로 사용하여 외곽 래퍼를 중복하지 않는다. */
+/* 이동·투명도는 JS가 담당하고 CSS는 색상만 전환한다. */
+.modal, .modal-overlay { transition: var(--transition-colors); }
+
+/* 중첩 창과 닫힘 전환이 끝날 때까지 공통 수명주기가 잠금을 유지한다. */
+html.overlay-scroll-locked { overflow-y: hidden; }
+
 .ui-overlay__panel {
   box-sizing: border-box;
   display: flex;
@@ -152,17 +158,19 @@
 
 
 /* 정비된 본문의 흐름 배치. 중앙 정렬은 지정된 인증창에만 적용한다. */
-:is(#auth-modal, #signup-modal, #membership-auth-modal,
+:where(#auth-modal, #signup-modal, #membership-auth-modal,
     #migration-modal, #export-modal,
-    #data-clear-confirm-modal, #data-clear-success-modal, #legacy-migration-modal) > .ui-overlay__body {
+    #data-clear-confirm-modal, #data-clear-success-modal, #legacy-migration-modal,
+    [data-result-operation]) > .ui-overlay__body {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 :is(#auth-modal, #signup-modal, #membership-auth-modal) > .ui-overlay__body { text-align: center; }
-:is(#auth-modal, #signup-modal, #membership-auth-modal,
+:where(#auth-modal, #signup-modal, #membership-auth-modal,
     #migration-modal, #export-modal,
-    #data-clear-confirm-modal, #data-clear-success-modal, #legacy-migration-modal) > .ui-overlay__body > p {
+    #data-clear-confirm-modal, #data-clear-success-modal, #legacy-migration-modal,
+    [data-result-operation]) > .ui-overlay__body > p {
   margin: 0;
   font-size: 0.9rem;
   line-height: 1.6;
@@ -303,8 +311,6 @@
 html.is-mobile-device #migration-sheet-url { font-size: 16px; }
 
 /* 가져오기·등록·이동·제거 결과창의 공통 기능 배치. */
-[data-result-operation] > .ui-overlay__body { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
-[data-result-operation] > .ui-overlay__body > p { margin: 0; font-size: .9rem; line-height: 1.6; word-break: keep-all; }
 [data-result-operation] > .ui-overlay__body > [data-result-status] { text-align: center; font-size: 1.25rem; font-weight: 700; }
 [data-result-operation] [data-result-icon] { align-self: center; font-size: 4rem; line-height: 1; }
 [data-result-operation] .ui-segment { align-self: center; }

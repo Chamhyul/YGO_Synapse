@@ -3,17 +3,6 @@ touch-action: manipulation;
   box-sizing: border-box;
 }
 
-/* 모달의 이동·투명도는 JS가 담당하고 CSS는 색상만 전환한다. */
-.modal,
-.modal-overlay {
-  transition: var(--transition-colors);
-}
-
-/* 닫힘 애니메이션과 중첩 창이 모두 끝날 때까지 배경 스크롤을 잠근다. */
-html.overlay-scroll-locked {
-  overflow-y: hidden;
-}
-
 
 
 
@@ -1082,7 +1071,7 @@ html.dark-mode .guide-content {
   font-weight: 600;
 }
 
-table {
+table:where(:not(.ui-table, .search-card__table)) {
   background-color: var(--bg-surface);
   font-size: 0.85rem;
   table-layout: fixed;
@@ -1091,7 +1080,7 @@ table {
   color: var(--text-000);
 }
 
-th {
+:where(table:not(.ui-table, .search-card__table)) th {
   background-color: var(--bg-header);
   color: var(--text-001);
   font-weight: 700;
@@ -1103,7 +1092,7 @@ th {
   border-radius: 0px !important;
 }
 
-td {
+:where(table:not(.ui-table, .search-card__table)) td {
   border: 1px solid var(--border-color);
   text-align: center;
   padding: 6px 4px;
@@ -2509,37 +2498,6 @@ html.route-add-deck #general-mode-wrapper {
 
 
 
-.standard-modal-footer {
-  display: flex !important;
-  justify-content: flex-end !important;
-  /* 우측 정렬로 복구 (레이아웃 파손 방지) */
-  align-items: center !important;
-  padding: 0px 24px 15px 24px !important;
-  gap: 8px !important;
-  border-top: none !important;
-  background-color: transparent !important;
-}
-
-/* 모달 푸터 좌측 텍스트 버튼 스타일 */
-.modal-footer-btn-left {
-  margin-right: auto !important;
-  /* 좌측 버튼만 왼쪽 끝으로 밀기 */
-  background: none !important;
-  border: none !important;
-  padding: 0 !important;
-  color: var(--theme-000) !important;
-  font-weight: 700 !important;
-  cursor: pointer;
-  font-size: 0.95rem;
-  transition: all 0.3s ease, var(--transition-colors);
-  box-shadow: none !important;
-}
-
-.modal-footer-btn-left:hover {
-  opacity: 0.8;
-  text-decoration: underline;
-}
-
 /* 테이블 전환 페이드인 애니메이션 */
 .fade-in {
   animation: fadeIn 0.3s ease forwards;
@@ -2555,15 +2513,6 @@ html.route-add-deck #general-mode-wrapper {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-.legal-modal-footer {
-  display: flex !important;
-  justify-content: flex-end !important;
-  padding: 20px 24px !important;
-  /* 표준 패딩으로 일치 */
-  gap: 8px;
-  border-top: none !important;
 }
 
 /* --- AD Units Layout --- */
@@ -2583,22 +2532,6 @@ html.route-add-deck #general-mode-wrapper {
   transition: height 0.3s ease, margin 0.3s ease, opacity 0.3s ease, var(--transition-colors);
   min-height: 50px;
   /* CLS 방지 */
-}
-
-.filter-popup {
-  position: fixed;
-  z-index: 1000;
-  background-color: var(--popup-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
-  box-shadow: 0 15px 45px var(--dropdown-shadow);
-  width: 280px;
-  padding: 16px;
-  display: none;
-  flex-direction: column;
-  gap: 12px;
-  animation: popupScale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  backdrop-filter: blur(15px);
 }
 
 /* PC 환경: 90px 높이 권장 */
@@ -3306,197 +3239,6 @@ html.is-mobile-device .filter-trigger-btn {
 .grid-ready-text {
   margin-top: 0;
   margin-bottom: 20px;
-}
-
-/* 팝업 필터 */
-/* 팝업 필터 */
-.filter-popup {
-  position: fixed;
-  z-index: 1000;
-  background-color: var(--popup-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
-  box-shadow: 0 15px 45px var(--dropdown-shadow);
-  width: 280px;
-  max-width: 90vw;
-  padding: 16px;
-  display: none;
-  flex-direction: column;
-  gap: 12px;
-  animation: popupScale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  backdrop-filter: blur(25px);
-  -webkit-backdrop-filter: blur(25px);
-  box-sizing: border-box;
-}
-
-html.dark-mode .filter-popup {
-  background-color: rgba(30, 30, 30, 0.85);
-}
-
-.filter-input-field {
-  width: 100% !important;
-  background-color: var(--input-bg) !important;
-  border: 1px solid var(--border-color) !important;
-  border-radius: 8px !important;
-  padding: 0 12px !important;
-  height: 36px !important;
-  color: var(--text-000) !important;
-  font-size: 0.9rem !important;
-  box-sizing: border-box !important;
-  margin: 0 !important;
-}
-
-.filter-input-field:focus {
-  outline: none !important;
-  border-color: var(--border-color) !important;
-  box-shadow: none !important;
-}
-
-.filter-popup-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
-  flex-shrink: 0;
-}
-
-.filter-btn {
-  border: none;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s, var(--transition-colors);
-}
-
-
-
-.filter-btn-close {
-  background: transparent !important;
-  color: var(--text-001);
-}
-
-.filter-btn-close:hover {
-  background-color: rgba(0, 0, 0, 0.05) !important;
-  color: var(--text-000);
-}
-
-.filter-btn-apply {
-  background-color: var(--theme-000);
-  color: #fff;
-}
-
-.filter-btn-apply:hover {
-  filter: brightness(1.1);
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--theme-000) 30%, transparent);
-}
-
-.filter-option-list {
-  max-height: 200px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-  box-sizing: border-box;
-  background-color: var(--surface-000) !important;
-  border-radius: 8px;
-  padding: 4px 0;
-  margin-top: 4px;
-}
-
-/* 스크롤바 커스텀 */
-.filter-option-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.filter-option-list::-webkit-scrollbar-thumb {
-  background-color: var(--border-color);
-  border-radius: 2px;
-}
-
-.filter-option-item {
-  display: flex;
-  align-items: center;
-  padding: 0;
-  cursor: pointer;
-  width: 100%;
-  box-sizing: border-box;
-  overflow: visible;
-  border-radius: 8px;
-  transition: background 0.2s ease, var(--transition-colors);
-}
-
-.filter-option-item:hover {
-  background-color: var(--region-hover-bg);
-}
-
-/* [최종 복구] 표준 Materialize CSS 방식 준수 */
-.filter-option-item {
-  width: 100%;
-}
-
-.filter-option-item label {
-  display: flex !important;
-  align-items: center !important;
-  padding: 0 12px !important;
-  width: 100% !important;
-  height: 38px !important;
-  /* 클릭 영역 확보 */
-  margin: 0 !important;
-  cursor: pointer !important;
-  transition: background 0.2s, var(--transition-colors);
-  box-sizing: border-box !important;
-}
-
-.filter-option-item:hover {
-  background-color: var(--region-hover-bg);
-}
-
-/* Materialize 표준: span에 패딩을 주어 체크박스 공간 확보 */
-.filter-option-item label span {
-  padding-left: 30px !important;
-  color: var(--text-000) !important;
-  font-size: 0.92rem !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  display: inline-block !important;
-  line-height: 20px !important;
-  height: 20px !important;
-}
-
-/* 가상 요소 위치 강제 보정 제거 (Materialize 기본값 존중) */
-.filter-option-item label input[type="checkbox"].filled-in+span:not(.lever):before,
-.filter-option-item label input[type="checkbox"].filled-in+span:not(.lever):after {
-  /* left 위치만 팝업 패딩에 맞춰 미세 조정 */
-  left: 8px !important;
-  /* top, transform 등을 절대 덮어쓰지 않음! */
-}
-
-.filter-select-toggle {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--theme-000);
-  cursor: pointer;
-  text-align: right;
-  margin-bottom: -4px;
-  transition: opacity 0.2s, var(--transition-colors);
-  padding: 0 4px;
-}
-
-
-
-
-.filter-select-toggle:hover {
-  opacity: 0.7;
-}
-
-/* 다시 표시하지 않음 링크 스타일 */
-#never-show-membership-verify:hover {
-  text-decoration: underline !important;
 }
 
 @keyframes popupScale {

@@ -1,0 +1,15 @@
+name: ygo-card-service
+services:
+  api:
+    build: .
+    image: ygo-card-service:local
+    environment:
+      CARD_READ_BACKEND: firestore
+      CARD_PROJECT_ID: ${CARD_PROJECT_ID:?카드 프로젝트를 명시하세요}
+      CARD_STORAGE_BUCKET: ${CARD_STORAGE_BUCKET:?카드 버킷을 명시하세요}
+      CARD_DATABASE_ID: ${CARD_DATABASE_ID:-(default)}
+      CARD_SERVICE_AUTH: oidc
+      CARD_SERVICE_AUDIENCE: ${CARD_SERVICE_AUDIENCE:?카드 서비스 audience를 명시하세요}
+      CARD_SERVICE_CALLERS: ${CARD_SERVICE_CALLERS:?허용 호출 계정을 명시하세요}
+    ports: ["127.0.0.1:5091:8080"]
+    restart: "no"

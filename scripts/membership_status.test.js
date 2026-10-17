@@ -3,7 +3,7 @@ const source=fs.readFileSync(require('node:path').join(__dirname,'../public/scri
 function extract(name,next) {return source.slice(source.indexOf(name),source.indexOf(next,source.indexOf(name)));}
 function fixture({fail=false,switchUser=false,errorCode='ACCOUNT_ROLE_UNAVAILABLE'}={}) {
  const applied=[],toasts=[],elements=new Map();
- const ctx={UserStore:{user:{uid:'user-a'},settings:{membership:{status:'active',type:'account',levelName:'관리자'}}},UIStore:{},
+ const ctx={authStateRevision:1,UserStore:{user:{uid:'user-a'},settings:{membership:{status:'active',type:'account',levelName:'관리자'}}},UIStore:{},
   callApi:async()=>{if(switchUser)ctx.UserStore.user={uid:'user-b'};if(fail)throw Object.assign(Error('현재 권한 확인 실패'),{code:errorCode});return{success:true,settings:{membership:{status:'active',type:'account',levelName:'소유자'}},sourceMembership:{status:'none',type:'discord'}};},
   applyMembershipStatus:mem=>applied.push(mem),showToast:msg=>toasts.push(msg),
   showLoading(){},updateAuthUI(){},updateUserInfoCard(){},applyUserData(){},loadUserTheme(){},checkAndHideInitialLoading(){},

@@ -49,6 +49,31 @@ test('CID/이름/번호 조회와 언어 필터: 카드 쓰기·내부 필드·�
   assert.equal((await f.call({ cid: '99' })).body.code, 'CARD_NOT_FOUND');
   assert.ok(f.writes.every(p => !p.startsWith('cards/')));
 });
+test('원격 카드 읽기 주입 후에도 키·쿼터·언어·미발견·장애 계약을 유지한다', async () => {
+  const f = await fixture({ minuteLimit: 'unlimited', dayLimit: 'unlimited' });
+  let seen, mode = 'ok';
+  const handler = createCardInfoHandler({ db: { collection() { throw Error('카드 DB 직접 접근 금지'); } }, access: f.access,
+    read: async input => {
+      seen = input;
+      if (mode === 'absent') return null;
+      if (mode === 'failed') throw Object.assign(Error('원격 장애'), { status: 503 });
+      return { id: '42', data: () => f.rows.get('cards/42') };
+    } });
+  const call = async headers => {
+    const res = response();
+    await handler({ method: 'GET', ip: 'remote-fixture', query: { number: 'test-kr001', locale: 'ko', langOnly: 'true' }, headers }, res);
+    return res;
+  };
+  assert.equal((await call({})).statusCode, 401); assert.equal(seen, undefined);
+  const headers = { 'x-api-key': f.key.token, origin: 'https://example.org' };
+  const ok = await call(headers);
+  assert.equal(ok.statusCode, 200); assert.equal(ok.body.stats, undefined);
+  assert.deepEqual(Object.keys(ok.body.locales), ['ko']); assert.equal(seen.value, 'TEST-KR001');
+  assert.equal(ok.headers['X-RateLimit-Limit-Minute'], 'unlimited');
+  assert.equal(ok.headers['Access-Control-Allow-Origin'], 'https://example.org');
+  mode = 'absent'; assert.equal((await call(headers)).body.code, 'CARD_NOT_FOUND');
+  mode = 'failed'; assert.deepEqual((await call(headers)).body, { success: false, code: 'API_UNAVAILABLE' });
+});
 test('잘못된 조건·중복 파라미터·부분 검색·모호한 일치', async () => {
   const f = await fixture();
   for (const query of [{}, { cid: '42', name: '테스트' }, { cid: ['42', '43'] }, { cid: '042' }, { name: ' ' }, { cid: '42', locale: 'xx' }, { cid: '42', langOnly: '1' }, { cardNo: 'A' }, { cid: '42', apiKey: 'dummy' }]) assert.equal((await f.call(query)).statusCode, 400);

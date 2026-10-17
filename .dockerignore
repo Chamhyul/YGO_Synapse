@@ -3,6 +3,7 @@
 !package.json
 !package-lock.json
 !firebase.json
+!compose.yaml
 !.firebaserc
 !.gitignore
 !firestore.rules
@@ -19,6 +20,36 @@
 !.github/workflows/**
 !docker/
 !docker/**
+
+# 카드 서비스 원본 (자격증명·개인 데이터는 기존 제외 규칙 적용)
+!card-service/
+!card-service/manifest.json
+!card-service/package.json
+!card-service/tools/
+!card-service/tools/*.cjs
+!card-service/src/
+!card-service/src/**/
+!card-service/src/**/*.js
+
+!integration/
+!integration/read/
+!integration/read/*
+!integration/user-storage/
+!integration/user-storage/*
+!integration/user-migration/
+!integration/user-migration/*
+!LICENSE
+!legal/
+!legal/**
+
+# 비밀값 없는 운영 준비 양식. 실제 설정/산출물은 이 폴더에 넣지 않는다.
+!operations/
+!operations/user-storage/
+!operations/user-storage/production.example.json
+!operations/user-storage/database.rules.json
+!operations/user-storage/Dockerfile
+!operations/user-storage/Dockerfile.dockerignore
+
 **/node_modules
 **/.git
 **/.firebase
@@ -35,3 +66,6 @@
 **/private
 **/docs
 **/previews
+
+# 운영 준비본은 상위 operations 허용 규칙과 별개로 탐색·전송에서 제외한다.
+operations/user-storage/local/

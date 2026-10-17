@@ -1,4 +1,5 @@
 'use strict';
+const { readSourceFile } = require('./sourceFile');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -10,7 +11,7 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const account = 'card-worker@ygo-synapse.iam.gserviceaccount.com';
 function load(file, mocks = {}, env = {}) {
   const module = { exports: {} };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
+  vm.runInNewContext(readSourceFile(path.join(__dirname, '..', file), 'utf8'), {
     module, exports: module.exports, process: { env }, Buffer,
     console: { log() {} },
     require(name) {
@@ -37,7 +38,8 @@ test('CLI의 프로젝트 ID만으로 운영 계정을 선택하고 입력 환�
 
 test('운영 프로젝트 ID를 사용해도 로컬 에뮬레이터에는 실행 계정을 지정하지 않는다', () => {
   for (const flags of [{ FUNCTIONS_EMULATOR: 'true' }, { FIREBASE_EMULATOR_HUB: 'localhost:4400' },
-    { FIRESTORE_EMULATOR_HOST: 'localhost:5003' }, { FIREBASE_STORAGE_EMULATOR_HOST: 'localhost:5004' }]) {
+    { FIRESTORE_EMULATOR_HOST: 'localhost:5003' }, { FIREBASE_STORAGE_EMULATOR_HOST: 'localhost:5004' },
+    { FIREBASE_DATABASE_EMULATOR_HOST: 'localhost:9000' }]) {
     assert.deepEqual(plain(load('config/serviceAccounts.js', {}, { GCLOUD_PROJECT: 'ygo-synapse', ...flags }).CARD_WORKER_OPTIONS), {});
   }
 });

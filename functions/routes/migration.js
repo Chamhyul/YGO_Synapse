@@ -1,12 +1,13 @@
 const { onRequest: firebaseOnRequest } = require("firebase-functions/v2/https");
 const { withPublicReadRequest } = require("../services/publicReadTransport");
-const onRequest = (options, handler) => firebaseOnRequest(options, withPublicReadRequest(handler));
+const { withUserStorageRequestGuard } = require('../services/userStorageRequestGuard');
+const onRequest = (options, handler) => firebaseOnRequest(options, withUserStorageRequestGuard(withPublicReadRequest(handler)));
 const { setCors, verifyRegisteredUser } = require("../utils/auth");
 const { migrationFetchPublicMyCardData, validateImportData } = require("../services/migrationService");
 const { sheetsIsValidSpreadsheetId } = require('../integrations/googleSheets');
-const { resolveCardNumber } = require("../services/cardService");
+const { resolveCardNumber } = require("../services/inventoryCardLookup");
 const { updateInventoryWithRetry, processAddCards } = require("../utils/inventoryStorage");
-const { findCard } = require('../services/cardQueryService');
+const { findCard } = require('../services/inventoryCardLookup');
 const { resolveGroupCids, inventoryMigrationStatus, normalizeIllustrationId } = require('../services/inventoryMigrationService');
 
 /**
@@ -33,7 +34,7 @@ async function buildJpCardCache(items, noExtractor) {
 
     for (const cardNo of jpCardNos) {
       const card = await findCard({ number: cardNo });
-      const entry = card && require('../services/cardService').buildSearchResponse(card.cid, card.info, true, { cardNo });
+      const entry = card && require('../services/inventoryCardLookup').buildSearchResponse(card.cid, card.info, true, { cardNo });
       if (entry) {
         cacheMap[cardNo] = { exists: true, name: entry.name };
       } else {

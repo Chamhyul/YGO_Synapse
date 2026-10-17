@@ -1,0 +1,72 @@
+name: ygo-read-boundary-test
+services:
+  emulators:
+    image: ${MAIN_IMAGE:-ygo-synapse:local}
+    init: true
+    command: [firebase, emulators:start, --config, integration/read/firebase.json, --project, demo-main-read, --only, "firestore,storage", --non-interactive]
+    networks: [isolated]
+    healthcheck:
+      test: [CMD, node, -e, "Promise.all([8085,9199].map(port=>fetch('http://127.0.0.1:'+port))).then(()=>process.exit(0)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 40
+  card:
+    image: ${CARD_IMAGE:-ygo-card-service:local}
+    command: [node, test/emulator-server.cjs]
+    environment:
+      NODE_ENV: test
+      CARD_READ_BACKEND: firestore
+      CARD_PROJECT_ID: demo-card-read
+      CARD_STORAGE_BUCKET: demo-card-read-assets
+      FIRESTORE_EMULATOR_HOST: emulators:8085
+      FIREBASE_STORAGE_EMULATOR_HOST: emulators:9199
+    depends_on:
+      emulators: {condition: service_healthy}
+    networks: [isolated]
+    healthcheck: &http-health
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  main:
+    image: ${MAIN_IMAGE:-ygo-synapse:local}
+    command: [node, functions/test/read-integration-server.cjs]
+    environment: &main-env
+      NODE_ENV: test
+      CARD_READ_BACKEND: fixture
+      CARD_SERVICE_AUTH: fixture
+      CARD_SERVICE_URL: http://card:8080
+      GCLOUD_PROJECT: demo-main-read
+      STORAGE_BUCKET: demo-main-read-assets
+      FIRESTORE_EMULATOR_HOST: emulators:8085
+      FIREBASE_STORAGE_EMULATOR_HOST: emulators:9199
+    depends_on:
+      emulators: {condition: service_healthy}
+    networks: [isolated]
+    healthcheck: *http-health
+  main-unavailable:
+    image: ${MAIN_IMAGE:-ygo-synapse:local}
+    command: [node, functions/test/read-integration-server.cjs]
+    environment:
+      <<: *main-env
+      CARD_SERVICE_URL: http://card:1
+    depends_on:
+      emulators: {condition: service_healthy}
+    networks: [isolated]
+    healthcheck: *http-health
+  tests:
+    image: ${MAIN_IMAGE:-ygo-synapse:local}
+    command: [node, --test, scripts/card_read_e2e.cjs]
+    environment:
+      <<: *main-env
+      MAIN_READ_TEST_URL: http://main:8080
+      CARD_READ_TEST_URL: http://card:8080
+      MAIN_READ_UNAVAILABLE_URL: http://main-unavailable:8080
+    depends_on:
+      card: {condition: service_healthy}
+      main: {condition: service_healthy}
+      main-unavailable: {condition: service_healthy}
+    networks: [isolated]
+networks:
+  isolated:
+    internal: true

@@ -1,3 +1,4 @@
+const { readSourceFile } = require('./sourceFile');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -11,7 +12,7 @@ function loadModule(file, mocks) {
   const module = { exports: {} };
   const sandbox = { module, exports: module.exports, console, Date, Buffer, process,
     require: name => Object.hasOwn(mocks, name) ? mocks[name] : require(name) };
-  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), sandbox, { filename });
+  vm.runInNewContext(readSourceFile(filename, 'utf8'), sandbox, { filename });
   return module.exports;
 }
 const card = (name, number) => ({ names: [name], numbers: [number], info: { 0: [name, 1, { [number]: ['팩', 'N'] }] } });
@@ -61,13 +62,15 @@ function fixture() {
       generation++;
     },
   };
-  const service = loadModule('services/cardIndexService.js', {
+  const loaded = loadModule('services/cardIndexService.js', {
     '../config/firebase': { db, FieldPath: { documentId: () => '__name__' } },
     './cardWriteService': { PENDING_COLLECTION: 'pendingCardIndexUpdates' },
     './cardIndexDispatchService': { requestCardIndexWork: async () => ({ scheduled: true }) },
     './cardIndexBuilder': { createCardManifest, addCardToManifest },
     '../utils/indexStorage': storage,
   });
+  const service = loaded.createCardIndexService({ db, FieldPath: { documentId: () => '__name__' },
+    requestCardIndexWork: async () => ({ scheduled: true }), files: storage });
   const queue = (id, version, value) => { data.set(`cards/${id}`, value); data.set(`pendingCardIndexUpdates/${id}`, { version, queuedAt: Date.now() }); };
   return { service, data, queue, get manifest() { return manifest; },
     set fail(value) { failType = value; }, set hook(value) { hook = value; } };
@@ -146,7 +149,7 @@ test('원본과 대기 기록은 하나의 배치로 저장하며 실패를 전�
 });
 
 test('운영·로컬 주소 목록이 서버 등록과 일치하고 레거시 호출이 없다',async()=>{
-  const source=fs.readFileSync(path.join(__dirname,'../../public/script.js'),'utf8');
+  const source=readSourceFile(path.join(__dirname,'../../public/script.js'),'utf8');
   const configEnd=source.indexOf('const FIREBASE_CONFIG =');
   assert.ok(configEnd>0,'API 설정과 토큰 준비 코드의 경계를 확인해야 합니다.');
   const configBlockEnd=source.indexOf('\n};',configEnd)+3;
@@ -157,25 +160,32 @@ test('운영·로컬 주소 목록이 서버 등록과 일치하고 레거시 �
   assert.equal(require.cache[require.resolve('../services/draw2CardClassifierService')],undefined,
     '공통 함수 진입점은 이미지 분석 서비스를 미리 로드하지 않아야 합니다.');
   for(const name of ['rebuildAllCardIndexes','buildIndex','syncCardManifestToStorage'])assert.equal(functions[name],undefined);
-  for(const hostname of ['localhost','ch97-macbookair.local','ygo-synapse.web.app']){
-    const sandbox={location:{hostname}};vm.createContext(sandbox);
-    vm.runInContext(config+'\nthis.endpoints=FIREBASE_CONFIG.ENDPOINTS;',sandbox);
-    for(const [name,url] of Object.entries(sandbox.endpoints)){
-      assert.equal(typeof functions[name],'function',name);assert.ok(url.endsWith('/'+name));
+  for(const hostname of ['localhost','127.0.0.1','192.168.0.22','ch97-macbookair.local','ygo-synapse.web.app']){
+    for(const port of ['', '5005', '5105']){
+      const sandbox={location:{hostname,port}};vm.createContext(sandbox);
+      vm.runInContext(config+'\nthis.endpoints=FIREBASE_CONFIG.ENDPOINTS;',sandbox);
+      for(const [name,url] of Object.entries(sandbox.endpoints)){
+        assert.equal(typeof functions[name],'function',name);assert.ok(url.endsWith('/'+name));
+      }
+      assert.ok(sandbox.endpoints.updateNickname);
+      if(['localhost','127.0.0.1','192.168.0.22'].includes(hostname) || hostname.endsWith('.local')){
+        assert.ok(sandbox.endpoints.searchCard.startsWith('https://asia-northeast3-ygo-synapse.cloudfunctions.net/'));
+        assert.ok(sandbox.endpoints.getPackCids.startsWith('https://asia-northeast3-ygo-synapse.cloudfunctions.net/'));
+        const localHost = hostname === 'localhost' ? '127.0.0.1' : hostname;
+        const functionsPort = port === '5105' ? '5101' : '5001';
+        assert.equal(sandbox.endpoints.getRegistrationStatus, `http://${localHost}:${functionsPort}/ygo-synapse/asia-northeast3/getRegistrationStatus`);
+        assert.ok(sandbox.endpoints.addCards.startsWith(`http://${localHost}:${functionsPort}/`));
+        // 사진 검색은 모델·인덱스 운영 키 없이 고정 운영 API를 사용한다.
+        assert.equal(sandbox.endpoints.searchCardByImage, 'https://asia-northeast3-ygo-synapse.cloudfunctions.net/searchCardByImage');
+        assert.ok(sandbox.endpoints.crawlPackCardsBatch.startsWith(`http://${localHost}:${functionsPort}/`));
+        assert.match(source,/callApi\('crawlPackCardsBatch',[\s\S]*?\{ cids \}\)/);
+      }
+      if(hostname==='ygo-synapse.web.app') {
+        assert.ok(Object.values(sandbox.endpoints).every(url => url.startsWith('https://asia-northeast3-ygo-synapse.cloudfunctions.net/')));
+      }
+      for(const match of source.matchAll(/callApi\(['"]([^'"]+)['"]/g))assert.ok(sandbox.endpoints[match[1]],match[1]);
+      for(const name of ['keepAlivePing','checkMembership','cleanNumbersCollection','buildIndex'])assert.equal(sandbox.endpoints[name],undefined);
     }
-    assert.ok(sandbox.endpoints.updateNickname);
-    if(hostname==='localhost' || hostname.endsWith('.local')){
-      assert.ok(sandbox.endpoints.searchCard.startsWith('https://asia-northeast3-ygo-synapse.cloudfunctions.net/'));
-      assert.ok(sandbox.endpoints.getPackCids.startsWith('https://asia-northeast3-ygo-synapse.cloudfunctions.net/'));
-      const localHost = hostname === 'localhost' ? '127.0.0.1' : hostname;
-      assert.ok(sandbox.endpoints.addCards.startsWith(`http://${localHost}:5001/`));
-      // 사진 검색은 모델·인덱스 운영 키 없이 고정 운영 API를 사용한다.
-      assert.equal(sandbox.endpoints.searchCardByImage, 'https://asia-northeast3-ygo-synapse.cloudfunctions.net/searchCardByImage');
-      assert.ok(sandbox.endpoints.crawlPackCardsBatch.startsWith(`http://${localHost}:5001/`));
-      assert.match(source,/callApi\('crawlPackCardsBatch',[\s\S]*?\{ cids \}\)/);
-    }
-    for(const match of source.matchAll(/callApi\(['"]([^'"]+)['"]/g))assert.ok(sandbox.endpoints[match[1]],match[1]);
-    for(const name of ['keepAlivePing','checkMembership','cleanNumbersCollection','buildIndex'])assert.equal(sandbox.endpoints[name],undefined);
   }
   const helper=source.slice(source.indexOf('const cardResponseCache ='),source.indexOf('// 검색 시 최신 공통 목록'));
   const sandbox={location:{hostname:'localhost'}};vm.createContext(sandbox);vm.runInContext(config+helper,sandbox);
@@ -188,12 +198,13 @@ test('초기 데이터는 본문 중복 없이 Storage 링크와 generation만 �
     'public/packs.json':{updated:'2026-09-05T00:00:01.000Z',generation:'102'},
     'public/rarityMapping.json':{updated:'2026-09-05T00:00:02.000Z',generation:'103'},
   };
-  const routes=loadModule('routes/user.js',{
+  const routes=loadModule('routes/initialData.js',{
     'firebase-functions/v2/https':{onRequest:(_,fn)=>fn},
     '../config/firebase':{
       db:{collection:()=>({doc:()=>({})})},admin:{},FieldValue:{},
       getBucket:()=>({name:'test.appspot.com',file:name=>({getMetadata:async()=>[metadata[name]]})}),
     },
+    '../services/cardResources':require('../services/cardResources'),
     '../utils/inventoryStorage':{},'../services/inventoryMigrationService':{},
     '../utils/auth':{setCors(){},verifyAppCheck:async()=>true,verifyRegisteredUser:async()=>null},
   });
@@ -210,9 +221,13 @@ test('초기 데이터는 본문 중복 없이 Storage 링크와 generation만 �
 
 test('닉네임 라우트는 인증된 사용자만 저장하고 잘못된 입력을 거절한다',async()=>{
   const writes=[];let uid='user-1';
+  const repository=require('../services/userProfileRepository').createFirestoreUserProfileRepository({
+    db:{collection:name=>({doc:id=>({set:async value=>writes.push({name,id,value})})})},FieldValue:{serverTimestamp:()=> 'time'}
+  });
   const routes=loadModule('routes/user.js',{
     'firebase-functions/v2/https':{onRequest:(_,fn)=>fn},
-    '../config/firebase':{db:{collection:name=>({doc:id=>({set:async value=>writes.push({name,id,value})})})},FieldValue:{serverTimestamp:()=> 'time'}},
+    '../services/userStorageRequestGuard':{withUserStorageRequestGuard:fn=>fn},
+    '../services/userProfileRepository':{getUserProfileRepository:()=>repository},
     '../utils/common':{},'../utils/packsStorage':{},'../utils/inventoryStorage':{},
     '../services/cardQueryService':{},'../services/inventoryMigrationService':{},
     '../utils/auth':{setCors(){},verifyRegisteredUser:async()=>uid},
@@ -225,4 +240,23 @@ test('닉네임 라우트는 인증된 사용자만 저장하고 잘못된 입�
   await routes.updateNickname({method:'GET'},res);assert.equal(status,405);
   uid=null;await routes.updateNickname({method:'POST',body:{nickname:'저장불가'}},res);
   assert.equal(writes.length,1);
+});
+
+
+test('분리된 파일 게시를 기다리는 동안 완료하지 않고 대기 기록을 보존한다', async () => {
+  const f = fixture(); f.queue('1', 'v1', card('시험', 'TEST'));
+  let release, entered;
+  const publishing = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  f.hook = async () => { entered(); await gate; };
+  let completed = false;
+  const work = f.service.processPendingCardIndexes().then(result => { completed = true; return result; });
+  await publishing;
+  assert.equal(completed, false);
+  assert.equal(f.data.get('pendingCardIndexUpdates/1').version, 'v1');
+  release();
+  const result = await work;
+  assert.equal(result.success, true);
+  assert.equal(completed, true);
+  assert.equal(f.data.has('pendingCardIndexUpdates/1'), false);
 });

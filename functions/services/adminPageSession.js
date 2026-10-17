@@ -89,12 +89,12 @@ function createAdminPageHandler({ auth, store, template, getErrorSummary, getTra
     }
     const key = hash(cookie); const value = await store.get(key); const time = now();
     if (!value || value.uid !== decoded.uid || value.expiresAt <= time || time - value.lastActivity >= IDLE_MS) {
-      if (value) await store.remove(key);
+      if (value) await store.remove(key, value);
       return null;
     }
     if (!currentClaims) return { uid: decoded.uid, key };
     const user = await auth.getUser(decoded.uid); const role = roleOf(user);
-    if (user.disabled || !role) { await store.remove(key); return null; }
+    if (user.disabled || !role) { await store.remove(key, value); return null; }
     return { uid: decoded.uid, role, key };
   }
   async function render(req, res, pathname, access, code = 200, expired = false) {
@@ -126,6 +126,7 @@ function createAdminPageHandler({ auth, store, template, getErrorSummary, getTra
     } else if (!errorApi && !noticeApi && !membershipApi && !PAGES.has(pathname)) return res.status(404).send('페이지를 찾을 수 없습니다.');
     else if (!['GET', 'HEAD'].includes(req.method)) return res.status(405).send('허용되지 않는 요청입니다.');
     try {
+      const processRequest = async () => {
       if (membershipApi) {
         const access = await checkedSession(req);
         if (!access) return res.status(401).json({success:false});
@@ -169,7 +170,9 @@ function createAdminPageHandler({ auth, store, template, getErrorSummary, getTra
         const user = await auth.getUser(decoded.uid); const role = roleOf(user);
         if (user.disabled) return res.status(401).json({ success: false });
         if (!role) return res.status(403).json({ success: false });
-        const old = cookieOf(req); if (old) await store.remove(hash(old));
+        const old = cookieOf(req);
+        if (store.beginLogin) await store.beginLogin(decoded.uid, old ? hash(old) : undefined);
+        if (old) await store.remove(hash(old));
         const cookie = await auth.createSessionCookie(header.slice(7), { expiresIn: ABSOLUTE_MS });
         const time = now();
         await store.set(hash(cookie), { uid: decoded.uid, lastActivity: time, expiresAt: time + ABSOLUTE_MS });
@@ -189,6 +192,18 @@ function createAdminPageHandler({ auth, store, template, getErrorSummary, getTra
       }
       if (pathname === '/admin/settings' && access.role !== 'owner') return render(req, res, pathname, null, 403);
       return render(req, res, pathname, access);
+      };
+      if (!store.withRequest) return await processRequest();
+      const originalResponse = res, replies = [];
+      const buffered = new Proxy(originalResponse, { get(target, property) {
+        if (['set', 'status', 'type', 'json', 'send'].includes(property)) return (...args) => { replies.push([property, args]); return buffered; };
+        const value = target[property]; return typeof value === 'function' ? value.bind(target) : value;
+      } });
+      res = buffered;
+      try { await store.withRequest(req, processRequest); }
+      finally { res = originalResponse; }
+      for (const [method, args] of replies) originalResponse[method](...args);
+      return originalResponse;
     } catch (error) {
       // 오류 원문이나 계정·쿠키·토큰은 출력하지 않는다.
       if (noticeApi && [400,404,409].includes(error.status)) return res.status(error.status).json({success:false,message:error.message});

@@ -2,12 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const policy = require('../services/membershipPolicy');
+const { createFirestoreUserProfileRepository } = require('../services/userProfileRepository');
 const response = () => ({ code:200, set(){}, status(code){this.code=code;return this;}, json(body){this.body=body;return this;}, send(){} });
 function load(file, mocks, env={}) {
   const module={exports:{}};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'), {
     module,exports:module.exports,process:{env},console:{log(){},warn(){},error(){}},
-    require(name){assert.ok(Object.hasOwn(mocks,name),name);return mocks[name];}
+    require(name){ if (['../services/inventoryRequestTiming', './inventoryRequestTiming'].includes(name)) return require('../services/inventoryRequestTiming'); assert.ok(Object.hasOwn(mocks,name),name);return mocks[name];}
   });
   return module.exports;
 }
@@ -32,11 +33,15 @@ test('과거 관리자 덮어쓰기·버전1·다른 제공자 표시를 외부 
 });
 function userFixture({role='none',source=null,fail=false}={}) {
   let reads=0, inventoryReads=0, writes=0;
+  const repository=createFirestoreUserProfileRepository({
+    db:{collection:()=>({doc:()=>({get:async()=>{reads++;return{exists:true,data:()=>({settings:{theme:'dark',membership:source}})};}})})}
+  });
   const routes=load('routes/user.js',{
     '../services/membershipPolicy':policy,
     'firebase-functions/v2/https':{onRequest:(_,fn)=>fn},
     '../services/publicReadTransport':{withPublicReadRequest:fn=>fn},
-    '../config/firebase':{db:{collection:()=>({doc:()=>({get:async()=>{reads++;return{exists:true,data:()=>({settings:{theme:'dark',membership:source}})};}})})}},
+    '../services/userStorageRequestGuard':{withUserStorageRequestGuard:fn=>fn},
+    '../services/userProfileRepository':{getUserProfileRepository:()=>repository},
     '../utils/auth':{setCors(){},verifyRegisteredUser:async(_req,_res,options)=>{assert.equal(options.includeAccountRole,true);return'user-a';},getVerifiedAccountRole:async()=>{if(fail)throw Object.assign(Error('현재 계정 권한을 확인하지 못했습니다.'),{code:'ACCOUNT_ROLE_UNAVAILABLE'});return role;}},
     '../utils/inventoryStorage':{updateInventoryWithRetry:async()=>{writes++;}},
     '../services/inventoryMigrationService':{inventoryMigrationStatus:()=>({status:'ready'}),ensureInventoryV2:async()=>{inventoryReads++;return{cards:{},locations:{},rarities:{}};}}

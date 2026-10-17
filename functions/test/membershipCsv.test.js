@@ -121,8 +121,9 @@ test('기존 업로드 HTTP 함수도 같은 활성 목록을 전환하고 잘�
     'firebase-functions/v2/https':{onRequest:(_,handler)=>handler},'../config/firebase':{db:f.db},
     '../utils/auth':{setCors(){},verifyAdmin:async()=>({uid:'admin-a',role:'admin'})},
     '../utils/safeError':{safeErrorSummary:()=>({code:'UNAVAILABLE'})},'../integrations/googleSheets':{},
-    'node:crypto':require('node:crypto'),'../services/membershipCsvService':require('../services/membershipCsvService')};
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../routes/integration.js'),'utf8'),{exports,console:{error(){}},require:name=>{
+    'node:crypto':require('node:crypto'),'../services/membershipCsvService':require('../services/membershipCsvService'),
+    '../services/membershipCsvRepository':{getMembershipCsvStore:()=>f.store}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../routes/integration.js'),'utf8'),{exports,process:{env:{}},console:{error(){}},require:name=>{
     assert.ok(Object.hasOwn(dependencies,name));return dependencies[name];}});
   const call=async body=>{const res={code:200,set(){},status(code){this.code=code;return this;},json(data){this.body=data;return this;}};
     await exports.uploadMembershipCsv({method:'POST',body},res);return res;};
@@ -141,15 +142,48 @@ test('중단된 작업은 2분 뒤 결과 조회에서 실패로 확정하고 �
 test('CLI도 같은 목록을 사용하고 DB 적용 성공 뒤에만 원본 CSV를 보관한다',async()=>{
   const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
   for(const fail of [false,true]) {
-    const f=database();if(fail)f.failStage();const files=[];let finish;
-    const done=new Promise(resolve=>finish=resolve);
+    const f=database();if(fail)f.failStage();const files=[];
     const dependencies={fs:{existsSync:()=>true,readFileSync:()=>Buffer.from(csv),copyFileSync:()=>files.push('copy'),unlinkSync:()=>files.push('unlink')},
       path,'./cloud_credentials':{initializeDataToolFirebaseApp(){}},'../functions/node_modules/firebase-admin':{firestore:()=>f.db},
-      'node:crypto':require('node:crypto'),'../functions/services/membershipCsvService':require('../services/membershipCsvService')};
+      'node:crypto':require('node:crypto'),'../functions/services/membershipCsvService':require('../services/membershipCsvService'),
+      '../functions/services/membershipCsvRepository':{getMembershipCsvStore:()=>f.store}};
+    const loaded={exports:{}};
     vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../../scripts/upload_membership_csv.js'),'utf8'),{
-      TextDecoder,console:{log(){},error(){},warn(){}},process:{argv:['node','script','/synthetic/2026.10.9 12_1.csv'],exit:finish},
-      require:name=>{assert.ok(Object.hasOwn(dependencies,name));return dependencies[name];}});
-    assert.equal(await done,fail?1:0);assert.deepEqual(files,fail?[]:['copy','unlink']);
+      module:loaded, TextDecoder,console:{log(){},error(){},warn(){}},process:{env:{}},
+      require:name=>{assert.ok(Object.hasOwn(dependencies,name),name);return dependencies[name];}});
+    const task=loaded.exports.main(['/synthetic/2026.10.9 12_1.csv'],{});
+    if(fail)await assert.rejects(task);else await task;
+    assert.deepEqual(files,fail?[]:['copy','unlink']);
     assert.equal((await f.service.summary()).count,1);assert.equal(f.records.has('membership_csv_state/current'),!fail);
+  }
+});
+test('CSV 업로드는 알 수 없는 backend·잘못된 RTDB·시험 RTDB를 운영 proxy와 Auth보다 먼저 차단한다', async () => {
+  const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+  for (const target of ['unknown', 'invalid-rtdb', 'emulator-rtdb', 'writer-storage', 'writer-rtdb']) {
+    const calls = [], exports = {};
+    const env = { USER_STORAGE_BACKEND: target === 'unknown' ? 'unknown' : 'rtdb' };
+    if (target.startsWith('writer-')) { env.USER_PROFILE_WRITER_MODE = 'emulator'; env.USER_STORAGE_BACKEND = target === 'writer-storage' ? 'storage' : 'rtdb'; }
+    const dependencies = {
+      '../services/adminActionTransport': { forwardAdminRequest: async () => { calls.push('proxy'); throw Error('forbidden'); } },
+      'firebase-functions/v2/https': { onRequest: (_, handler) => handler },
+      '../config/firebase': { db: {} },
+      '../utils/auth': { setCors() {}, verifyAdmin: async () => { calls.push('auth'); throw Error('forbidden'); } },
+      '../utils/safeError': { safeErrorSummary: () => ({ code: 'UNAVAILABLE' }) },
+      '../integrations/googleSheets': {},
+      '../config/userStorage': { resolveUserStorageConfig() {
+        calls.push('config');
+        if (target === 'invalid-rtdb') throw Error('synthetic-private-config');
+        return { mode: 'emulator' };
+      } },
+    };
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../routes/integration.js'), 'utf8'), {
+      exports, process: { env }, console: { error() {} }, require(name) {
+        assert.ok(Object.hasOwn(dependencies, name), name); return dependencies[name];
+      },
+    });
+    const res = { code: 200, set() {}, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
+    await exports.uploadMembershipCsv({ method: 'POST', body: { members: [] } }, res);
+    assert.equal(res.code, 503); assert.equal(JSON.stringify(res.body), JSON.stringify({ success: false }));
+    assert.deepEqual(calls, target === 'unknown' || target.startsWith('writer-') ? [] : ['config']);
   }
 });

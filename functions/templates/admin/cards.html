@@ -24,10 +24,14 @@
     <link rel="stylesheet" href="/styles/admin.css?v=3">
     <script defer src="/__/firebase/10.12.0/firebase-app-compat.js"></script>
     <script defer src="/__/firebase/10.12.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/10.12.0/firebase-app-check-compat.js"></script>
     <script defer src="/__/firebase/init.js"></script>
     <script defer src="/auth-session.js?v=2"></script>
     <script defer src="/admin-session.js?v=2"></script>
     <script defer src="/admin.js?v=6"></script>
+    <link rel="stylesheet" href="/styles/admin-home.css?v=2">
+    <link rel="stylesheet" href="/styles/admin-cards.css?v=1">
+    <script defer src="/admin-cards.js?v=1"></script>
 </head>
 <body>
         <section id="admin-login" class="admin-login" aria-labelledby="admin-title">
@@ -57,9 +61,44 @@
                     <span class="admin-header-title color-text-000">YGO Synapse · 관리자</span>
                     <div class="admin-header-account"><span id="admin-account" class="color-text-001">관리자 계정</span><a id="admin-settings" href="/admin/settings" class="ui-button color-type000 shape-capsule" hidden>관리자 설정</a><button id="admin-logout" type="button" class="ui-button color-type000 shape-capsule">로그아웃</button></div>
                 </header>
-                <main id="admin-main" class="admin-main" tabindex="-1" aria-labelledby="admin-page-title">
+                <main id="admin-main" class="admin-main admin-home" tabindex="-1" aria-labelledby="admin-page-title">
                     <h1 id="admin-page-title">카드 데이터 편집</h1>
-                    <p class="admin-placeholder color-text-001">관리 기능을 준비 중입니다.</p>
+                    <p class="admin-home-intro color-text-001">카드를 검색하고 언어별 내용을 편집해 보세요. 변경 사항은 이 화면에서만 유지되며 운영 데이터에는 저장되지 않습니다.</p>
+                    <section class="admin-home-panel color-surface-001 shape-rounded-lg" aria-labelledby="cards-search-title">
+                        <div class="admin-home-section-heading"><h2 id="cards-search-title">카드 찾기</h2><span class="color-text-001">등록된 데이터만 조회</span></div>
+                        <form id="cards-search"><fieldset id="cards-search-fields" class="admin-cards-fieldset">
+                            <div class="admin-cards-search">
+                                <label>검색 기준<select id="cards-kind" class="ui-input--filled color-surface-002 shape-capsule"><option value="cid">CID</option><option value="names">카드명</option><option value="numbers">수록 번호</option></select></label>
+                                <label class="admin-cards-query">검색어<input id="cards-query" class="ui-input--filled color-surface-002 shape-capsule" type="text" maxlength="200" autocomplete="off" required placeholder="CID 입력" aria-describedby="cards-search-help"></label>
+                                <button type="submit" class="ui-button ui-control--disabled color-disabled color-theme shape-capsule admin-home-record-link">검색</button>
+                            </div>
+                        </fieldset></form>
+                        <p id="cards-search-help" class="admin-home-note color-text-001">카드명과 수록 번호는 정확하게 입력해 주세요. 조회 결과가 없어도 새로 수집하지 않습니다.</p>
+                        <p id="cards-status" class="admin-home-note color-text-001" role="status" aria-live="polite">검색할 카드를 입력해 주세요.</p>
+                    </section>
+                    <div class="admin-cards-layout">
+                        <section class="admin-home-panel color-surface-001 shape-rounded-lg" aria-labelledby="cards-results-title">
+                            <div class="admin-home-section-heading"><h2 id="cards-results-title">검색 결과</h2><span id="cards-count" class="color-text-001">0개</span></div>
+                            <p id="cards-empty" class="admin-home-note color-text-001">검색 결과가 여기에 표시됩니다.</p>
+                            <ul id="cards-results" class="admin-cards-results"></ul>
+                        </section>
+                        <section class="admin-home-panel color-surface-001 shape-rounded-lg" aria-labelledby="cards-detail-title">
+                            <div class="admin-home-section-heading"><h2 id="cards-detail-title">카드 상세</h2><span id="cards-dirty" class="color-text-001">선택 대기</span></div>
+                            <p id="cards-select-help" class="admin-home-note color-text-001">검색 결과에서 편집할 카드를 선택해 주세요.</p>
+                            <fieldset id="cards-editor" class="admin-cards-fieldset" hidden disabled>
+                                <p id="cards-identity" class="admin-home-note color-text-001"></p>
+                                <h3>공통 정보</h3><div id="cards-common" class="admin-cards-fields"></div>
+                                <h3>언어별 정보</h3>
+                                <label class="admin-cards-language">표시 언어<select id="cards-locale" class="ui-input--filled color-surface-002 shape-capsule"></select></label>
+                                <div id="cards-localized" class="admin-cards-fields"></div>
+                                <details class="admin-cards-printings"><summary>수록 정보 · 일러스트 식별자 (읽기 전용)</summary><pre id="cards-printings" class="color-text-001"></pre></details>
+                                <h3>변경 사항 <span id="cards-change-count">0개</span></h3>
+                                <p id="cards-no-changes" class="admin-home-note color-text-001">수정한 내용이 없습니다.</p><ul id="cards-changes" class="admin-cards-changes"></ul>
+                                <div class="admin-cards-actions"><button id="cards-reset" type="button" class="ui-button ui-control--disabled color-disabled color-type000 shape-capsule admin-home-record-link" disabled>변경 취소</button><button type="button" class="ui-button ui-control--disabled color-disabled color-theme shape-capsule admin-home-record-link" disabled aria-describedby="cards-save-help">운영 저장</button></div>
+                                <p id="cards-save-help" class="admin-home-note color-text-001">운영 저장은 아직 연결하지 않았습니다. 다른 페이지로 이동하면 수정 내용이 사라집니다.</p>
+                            </fieldset>
+                        </section>
+                    </div>
                 </main>
             </div>
             <nav class="app-navi--mobile admin-bottom-nav" aria-label="관리자 하단 메뉴">

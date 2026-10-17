@@ -1,12 +1,13 @@
 # 제3자 소프트웨어 및 모델 고지
 
-기준일: 2026-09-08. 제3자 구성요소는 각 원래 라이선스와 저작권 고지를 따릅니다.
+준비 소스·npm 고지 갱신일: 2026-10-15. CDN 수집·모델 출처의 기존 확인 기준일은 2026-09-08이며 이번에 원격 응답을 재확인하지 않았습니다. 제3자 구성요소는 각 원래 라이선스와 저작권 고지를 따릅니다.
 
 ## 직접 사용 및 브라우저 배포 구성요소
 
 | 구성요소 | 확인된 버전/출처 | 라이선스 및 고지 |
 | --- | --- | --- |
 | ONNX Runtime Web | npm 1.21.0, public/vendor의 ort JS·WASM | MIT 및 포함 구성요소별 조건. [원문](ONNX-Runtime-LICENSE.txt), [제3자 원문](ONNX-Runtime-ThirdPartyNotices.txt), [소스](https://github.com/microsoft/onnxruntime/tree/v1.21.0) |
+| Tiptap·ProseMirror 공지 편집기 | @tiptap/core·@tiptap/pm·@tiptap/starter-kit 3.31.3, public/vendor/notice-editor.js | MIT. 하위 ProseMirror 패키지별 버전·저작권·[원문 모음](npm-license-texts.txt)은 [npm 목록](npm-inventory.json) 참조. 편집 원본은 scripts/admin_notice_editor.js이며 esbuild로 묶음 |
 | DRAW2 카드 검출 모델 및 참고 코드 | HichTala/draw2, 아래 상세 참조 | AGPL-3.0. [프로젝트](https://github.com/HichTala/draw2), [모델](https://huggingface.co/HichTala/draw2), [전문](AGPL-3.0-only.txt) |
 | OpenCV.js | 4.13.0, public/vendor/opencv.js의 내장 WASM 빌드 정보로 확인 | Apache-2.0, [원문](OpenCV-LICENSE.txt), [소스](https://github.com/opencv/opencv/tree/4.13.0). 포함 라이브러리는 아래 참조 |
 | Pretendard | CDN v1.3.9 | SIL OFL-1.1. Kil Hyung-jin 및 기반 폰트 권리자 고지는 [원문](Pretendard-LICENSE.txt) 참조 |
@@ -43,7 +44,9 @@ CDN 자료의 수집된 원문은 검토 시점의 고지입니다. 버전 미�
 
 두 package-lock.json의 직접·전이 의존성을 [기계 판독 목록](npm-inventory.json)에 기록했습니다. 버전, 라이선스 메타데이터, 설치 여부, 원문 파일 해시를 포함합니다. [원문 모음](npm-license-texts.txt)은 로컬에 설치된 일치 버전에서 수집했습니다. metadata가 라이선스 원문을 대체하지 않으며, 원문 누락이 무제한 이용을 뜻하지 않습니다.
 
-직접 의존성은 ONNX Runtime Web(MIT), sharp(Apache-2.0), axios(MIT), cheerio(MIT), firebase-admin·firebase-functions·firebase-functions-test·googleapis(Apache-2.0)입니다. 실제 고정 버전과 전이 패키지의 다른 조건은 목록을 기준으로 확인하십시오.
+직접 의존성은 Tiptap·ProseMirror, ONNX Runtime Web/Node, axios, cheerio, express, firebase-functions, firebase-functions-test(MIT), sharp, firebase-admin, googleapis(Apache-2.0)입니다. 공지 편집기의 빌드 도구 esbuild는 MIT입니다. 각 설치 패키지의 메타데이터·원문에 따라 구분하며 실제 고정 버전과 전이 패키지의 다른 조건은 목록을 기준으로 확인하십시오.
+
+현재 원문 수집 환경은 두 lockfile을 설치한 Linux arm64 Docker입니다. 목록의 installed·legalFiles는 이 수집 환경의 상태이며, 별도 linux/amd64 Job이나 운영 Functions의 실제 설치 목록을 뜻하지 않습니다. 플랫폼별 optional 패키지의 미설치와 설치된 패키지의 원문 미수집을 구분합니다.
 
 **sharp와 함께 제공되는 libvips는 sharp와 동일한 Apache 라이선스가 아닙니다.** 로컬 @img/sharp-libvips 패키지는 LGPL-3.0-or-later이며 네이티브 구성요소에 LGPL·MPL·BSD·MIT 등 여러 조건이 포함됩니다. 목록 생성기는 이 패키지의 README 및 versions.json도 고지에 포함합니다. 바이너리를 재배포하면 실제 대상 플랫폼의 고지, 해당 소스 및 교체/재링크 관련 의무를 별도로 확인해야 합니다. 서버에서만 실행하는 LGPL 라이브러리의 의무와 브라우저로 배포하는 바이너리의 의무를 혼동하지 마십시오. [libvips](https://github.com/libvips/libvips), [패키징 소스](https://github.com/lovell/sharp-libvips).
 

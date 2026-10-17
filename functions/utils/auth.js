@@ -1,3 +1,4 @@
+const { measure } = require('../services/inventoryRequestTiming');
 const { admin } = require("../config/firebase");
 const { safeErrorSummary } = require("./safeError");
 const { requestProduction, isLocal } = require("../services/publicReadTransport");
@@ -21,7 +22,7 @@ async function verifyAppCheck(req, res) {
     if (typeof admin.appCheck !== "function") throw new Error("App Check 검증을 사용할 수 없습니다.");
 
     try {
-      await admin.appCheck().verifyToken(appCheckToken);
+      await measure('auth.app_check', () => admin.appCheck().verifyToken(appCheckToken));
       return true;
     } catch (tokenErr) {
       console.warn("AppCheck token verification failed:", safeErrorSummary(tokenErr));
@@ -66,7 +67,7 @@ async function verifyUser(req, res, { includeAccountRole = false } = {}) {
     }
     const auth = admin.auth();
     // SDK가 서명·유효기간·발급 프로젝트 및 철회·비활성 상태를 확인한다.
-    const decodedToken = await auth.verifyIdToken(idToken, true);
+    const decodedToken = await measure('auth.id_token', () => auth.verifyIdToken(idToken, true));
     if (typeof decodedToken.uid !== 'string' || !decodedToken.uid) throw Object.assign(new Error('유효한 사용자가 없습니다.'), { code: 'AUTH_INVALID' });
     return decodedToken.uid;
   } catch (err) {
@@ -106,7 +107,7 @@ async function getVerifiedAccountRole(req, uid) {
 async function verifyAdmin(req, res, { ownerOnly = false } = {}) {
   if (process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_EMULATOR_HUB
       || process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_STORAGE_EMULATOR_HOST
-      || process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+      || process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
     res.status(503).json({ success: false, message: '운영 관리자 서버에서 처리해야 합니다.' });
     return null;
   }
@@ -132,11 +133,11 @@ async function verifyAdmin(req, res, { ownerOnly = false } = {}) {
 
 // CORS 허용 헤더
 async function verifyRegisteredUser(req, res, options) {
-  const uid = await verifyUser(req, res, options);
+  const uid = await measure('auth.verify', () => verifyUser(req, res, options));
   if (!uid) return null;
   try {
     const { isRegisteredUser } = require('../services/registrationService');
-    if (await isRegisteredUser(uid)) return uid;
+    if (await measure('registration.check', () => isRegisteredUser(uid))) return uid;
     res.status(403).json({ success: false, code: 'REGISTRATION_REQUIRED', message: '서비스 가입을 완료해 주세요.' });
   } catch (error) {
     console.error('Registration verification failed:', safeErrorSummary(error));

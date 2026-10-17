@@ -1,9 +1,13 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const { db } = require('../config/firebase');
 const { isLocal } = require('../services/publicReadTransport');
-const { verifyAppCheck, verifyUser, getVerifiedAccountRole, setCors } = require('../utils/auth');
-const { createPublicReadHandlers } = require('../services/publicReadApi');
-const handlers = createPublicReadHandlers({ db, isLocal, verifyAppCheck, verifyUser, getVerifiedAccountRole, setCors });
+const { verifyAppCheck, setCors } = require('../utils/auth');
+const { createPublicCardReadHandler } = require('../services/publicCardReadApi');
+const handler = createPublicCardReadHandler({ db, isLocal, verifyAppCheck, setCors,
+  ...(globalThis.process?.env?.CARD_SERVICE_URL ? {
+    readCards: body => require('../services/cardReadClient').getCardReadClient().readCards(body),
+  } : {}),
+});
 const options = { invoker: 'public', memory: '256MiB', timeoutSeconds: 30, maxInstances: 5, concurrency: 20 };
-exports.getPublicCardData = onRequest(options, handlers.getPublicCardData);
-exports.verifyUserIdentity = onRequest(options, handlers.verifyUserIdentity);
+exports.getPublicCardData = onRequest(options, handler);
+Object.defineProperty(exports, 'verifyUserIdentity', { enumerable: true, get: () => require('./userIdentity').verifyUserIdentity });

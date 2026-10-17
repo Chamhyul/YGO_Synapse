@@ -41,7 +41,9 @@ const HTTP_FUNCTION_NAMES = [
 const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '192.168.0.22']);
 const IS_LOCAL_DEV = LOCAL_DEV_HOSTS.has(location.hostname) || location.hostname.toLowerCase().endsWith('.local');
 const LOCAL_EMULATOR_HOST = location.hostname === 'localhost' ? '127.0.0.1' : location.hostname;
-const LOCAL_FUNCTION_BASE_URL = `http://${LOCAL_EMULATOR_HOST}:5001/ygo-synapse/asia-northeast3`;
+// 기본 로컬 주소(5005 → 5001)와 분리 개발 주소(5105 → 5101)를 모두 지원합니다.
+const LOCAL_FUNCTION_PORT = location.port === '5105' ? '5101' : '5001';
+const LOCAL_FUNCTION_BASE_URL = `http://${LOCAL_EMULATOR_HOST}:${LOCAL_FUNCTION_PORT}/ygo-synapse/asia-northeast3`;
 const PRODUCTION_FUNCTION_BASE_URL = 'https://asia-northeast3-ygo-synapse.cloudfunctions.net';
 // 로컬 UI에서도 공용 카드 카탈로그는 운영 데이터를 사용합니다. 사용자 데이터 변경,
 // 크롤링/마이그레이션/관리 기능은 에뮬레이터에 남겨 운영 데이터의 변경을 막습니다.
@@ -2386,9 +2388,7 @@ function applyGridFiltersAndSort() {
 
         if (filter instanceof Set) {
             // 선택형 필터 (Type 2)
-            if (filter.size > 0) {
-                data = data.filter(row => filter.has(String(row[idx])));
-            }
+            data = data.filter(row => filter.has(String(row[idx] ?? '')));
         } else if (typeof filter === 'string' && filter.trim() !== '') {
             // 입력형 필터 (Type 1)
             const keyword = filter.toLowerCase();
@@ -2398,7 +2398,7 @@ function applyGridFiltersAndSort() {
 
     // 2. 정렬 적용
     const { colIndex, dir } = inventoryGridState.sort;
-    data.sort((a, b) => {
+    if (dir && colIndex >= 0) data.sort((a, b) => {
         let valA = a[colIndex];
         let valB = b[colIndex];
 
@@ -2408,9 +2408,10 @@ function applyGridFiltersAndSort() {
             valB = parseInt(valB) || 0;
         }
 
-        if (valA < valB) return dir === 'asc' ? -1 : 1;
-        if (valA > valB) return dir === 'asc' ? 1 : -1;
-        return 0;
+        const comparison = colIndex === 3 ? valA - valB :
+            String(colIndex === 2 ? getLocalizedRarity(valA) : valA).localeCompare(
+                String(colIndex === 2 ? getLocalizedRarity(valB) : valB), 'ko', { numeric:true, sensitivity:'base' });
+        return dir === 'asc' ? comparison : -comparison;
     });
 
     // 모바일 기기인 경우 카드 이름, 번호, 위치가 동일한 항목들을 합산 처리
@@ -2488,7 +2489,7 @@ function updateGridHeaderUI() {
         const filterBtn = th.querySelector('.filter-trigger-btn');
         if (filterBtn) {
             const hasFilter = inventoryGridState.filters[idx] &&
-                (inventoryGridState.filters[idx] instanceof Set ? inventoryGridState.filters[idx].size > 0 : inventoryGridState.filters[idx] !== "");
+                (inventoryGridState.filters[idx] instanceof Set ? true : inventoryGridState.filters[idx] !== "");
             filterBtn.classList.toggle('active-filter', !!hasFilter);
         }
     });
@@ -2580,462 +2581,69 @@ function handleGridSort(colIdx) {
 /**
  * 필터 팝업 열기
  */
-function openGridFilter(event, colIdx, type) {
-    if (event && typeof event.stopPropagation === 'function') {
-        event.stopPropagation(); // 헤더 정렬 이벤트 방지
+let inventoryFilterEditor = null;
+function openGridFilter(event, colIdx) {
+    event?.stopPropagation?.();
+    openInventoryFilter(colIdx, event?.currentTarget || event?.target?.closest?.('.filter-trigger-btn'));
+}
+function openGridFilterMobile(colIdx) { openInventoryFilter(colIdx, document.activeElement); }
+function openInventoryFilter(colIdx, trigger) {
+    if (inventoryFilterEditor) closeInventoryFilter({restoreFocus:false});
+    const mobile = document.documentElement.classList.contains('is-mobile-device');
+    const root = document.getElementById(mobile ? 'mobile-grid-filter-sheet' : 'inventory-filter-popup');
+    const backdrop = document.getElementById('grid-filter-sheet-overlay');
+    const label = ['카드 이름','카드 번호','레어도','수량','보관 위치','일러스트'][colIdx];
+    const key = ['name','number','rarity','quantity','location','illustration'][colIdx];
+    const options = [...new Set(inventoryGridState.allData.map(row=>String(row[colIdx] ?? '')))].map(value=>({value,label:colIdx === 2 ? getLocalizedRarity(value) : value}));
+    const current=inventoryGridState.filters[colIdx];
+    const values = current instanceof Set ? [...current] : typeof current === 'string' && current ? options.filter(option=>matchKorean(option.label,current)).map(option=>option.value) : options.map(option=>option.value);
+    const editor={ root,backdrop,mobile,trigger,colIdx,key,options,drafts:{[key]:values},sort:inventoryGridState.sort.colIndex === colIdx ? inventoryGridState.sort.dir || '' : '' };
+    inventoryFilterEditor=editor;
+    const makeButton=(icon,name,action)=>{const button=document.createElement('button');button.type='button';button.className='ui-button ui-button--text color-text-001';button.setAttribute('aria-label',name);const i=document.createElement('i');i.className='material-icons';i.textContent=icon;i.setAttribute('aria-hidden','true');button.append(i);button.onclick=action;return button;};
+    const header=document.createElement('header');header.className='ui-overlay__header';
+    const title=document.createElement('h2');title.id=mobile ? 'grid-filter-sheet-title' : 'inventory-filter-title';title.className='color-text-000';title.textContent=label;root.setAttribute('aria-labelledby',title.id);
+    const tools=document.createElement('div');tools.className='ui-overlay__header';
+    const content=document.createElement('div');content.className='ui-overlay__body';
+    const body=document.createElement('div');body.className='catalog-filter-editor__body';body.id=mobile ? 'grid-filter-sheet-body' : 'inventory-filter-body';content.append(body);
+    function render() {
+        body.replaceChildren();
+        if (!(mobile && colIdx === 3)) editor.view=FilterEditor.render({form:body,key,definition:{label,options},drafts:editor.drafts,mobile,scope:'inventory',sort:editor.sort,errorId:root.id,changed:()=>{}});
+        tools.replaceChildren();
+        if (colIdx !== 5) tools.append(FilterEditor.sortButton(editor.sort, direction=>{editor.sort=direction;editor.view?.sort(direction);}));
+        tools.append(makeButton('refresh','초기화',()=>{editor.drafts[key]=options.map(option=>option.value);editor.sort='';render();}),makeButton('close','닫기',closeInventoryFilter));
     }
-    const isMobile = document.documentElement.classList.contains('is-mobile-device');
-    if (isMobile) {
-        openGridFilterMobile(colIdx);
-        return;
-    }
-
-    let btn = (event && event.currentTarget) ? event.currentTarget : null;
-    if (btn && !(btn.classList && btn.classList.contains('filter-trigger-btn'))) {
-        btn = null;
-    }
-    if (!btn && event && event.target && typeof event.target.closest === 'function') {
-        btn = event.target.closest('.filter-trigger-btn');
-    }
-    if (!btn || !(btn instanceof HTMLElement) || (btn.getBoundingClientRect && btn.getBoundingClientRect().left === 0)) {
-        btn = document.querySelector(`.inventory-table thead th:nth-child(${colIdx + 1}) .filter-trigger-btn`) || 
-              document.querySelector('.inventory-table thead th.col-card-no .filter-trigger-btn');
-    }
-    if (!btn || !(btn instanceof HTMLElement)) return;
-
-    const popup = document.getElementById('inventory-filter-popup');
-
-    // 팝업 표시 및 내용 생성 (너비 측정을 위해 먼저 표시)
-    popup.style.display = 'flex';
-    if (type === 'type1') renderFilterType1(colIdx);
-    else renderFilterType2(colIdx);
-
-    const th = document.querySelector(`.inventory-table thead th:nth-child(${colIdx + 1})`) || 
-               document.querySelector('.inventory-table thead th.col-card-no');
-    let rect = th ? th.getBoundingClientRect() : btn.getBoundingClientRect();
-
-    // 강제 리플로우를 통해 정확한 팝업 너비 획득
-    const popupWidth = popup.getBoundingClientRect().width || 280;
-
-    // th 셀의 중앙 X 좌표에서 팝업의 절반을 뺌
-    let left = rect.left + (rect.width / 2) - (popupWidth / 2);
-
-    // 화면 우측 경계 보정
-    if (left + popupWidth > window.innerWidth - 10) {
-        left = window.innerWidth - popupWidth - 10;
-    }
-    // 화면 좌측 경계 보정
-    if (left < 10) left = 10;
-
-    popup.style.left = Math.round(left) + 'px';
-    popup.style.top = Math.round(rect.bottom + 8) + 'px';
-
-    if (typeof OnboardingManager !== 'undefined' && OnboardingManager.isActive()) {
-        OnboardingManager.updateHighlight();
-    }
-
-    // 외부 클릭 시 닫기
-    const closeHandler = (e) => {
-        if (!popup.contains(e.target) && !btn.contains(e.target)) {
-            popup.style.display = 'none';
-            document.removeEventListener('click', closeHandler);
+    header.append(title,tools);
+    const footer=document.createElement('footer');footer.className='ui-overlay__footer';
+    const apply=document.createElement('button');apply.type='button';apply.className='ui-button color-theme shape-capsule';apply.textContent='적용';apply.id=mobile ? 'grid-filter-sheet-apply-btn' : 'inventory-filter-apply';
+    apply.onclick=()=>{
+        if (!(mobile && colIdx === 3)) {
+            const selected=new Set(editor.drafts[key]);
+            if (selected.size === options.length) delete inventoryGridState.filters[colIdx]; else inventoryGridState.filters[colIdx]=selected;
         }
+        if (colIdx !== 5) {
+            if (editor.sort) inventoryGridState.sort={colIndex:colIdx,dir:editor.sort};
+            else if (inventoryGridState.sort.colIndex === colIdx) inventoryGridState.sort={colIndex:-1,dir:''};
+        }
+        closeInventoryFilter();startGridRendering();
     };
-    setTimeout(() => document.addEventListener('click', closeHandler), 10);
+    footer.append(apply);root.replaceChildren(header,content,footer);render();root.hidden=false;root.inert=false;
+    if (mobile) {
+        backdrop.hidden=false;root.style.removeProperty('display');root.classList.remove('active');backdrop.classList.remove('active');root.getBoundingClientRect();backdrop.getBoundingClientRect();
+        openManagedSheet(root,{backdrop,trigger,initialFocus:tools.lastElementChild,onDismiss:closeInventoryFilter});
+    } else { root.style.removeProperty('display'); AppOverlays.openPopup(root,trigger);tools.lastElementChild.focus({preventScroll:true}); }
 }
-
-/**
- * 통합 필터 렌더링 래퍼 함수
- */
-function renderFilter(colIdx, type) {
-    if (type === 'type1') renderFilterType1(colIdx);
-    else renderFilterType2(colIdx);
+function closeInventoryFilter({restoreFocus=true} = {}) {
+    const editor=inventoryFilterEditor;if (!editor) return;inventoryFilterEditor=null;
+    if (editor.mobile) closeManagedSheet(editor.root,{backdrop:editor.backdrop});
+    else AppOverlays.closePopup(editor.root,()=>{if (restoreFocus && editor.trigger?.isConnected) editor.trigger.focus({preventScroll:true});});
 }
-
-/**
- * 통합 필터 적용 래퍼 함수
- */
-function applyGridFilter(colIdx, type) {
-    if (type === 'type1') applyGridFilterType1(colIdx);
-    else applyGridFilterType2(colIdx);
-}
-
-/**
- * 필터 Type 1: 입력형 (이름, 카드 번호)
- */
-function renderFilterType1(colIdx) {
-    const popup = DOM.inventoryFilterPopup;
-    if (!popup) return;
-    const currentVal = inventoryGridState.filters[colIdx] || "";
-
-    popup.innerHTML = `
-        <input type="text" id="grid-filter-input" class="filter-input-field" placeholder="검색어 입력..." value="${currentVal}">
-        <div class="filter-popup-footer">
-            <button class="filter-btn filter-btn-close" onclick="closeGridFilter()">닫기</button>
-            <button class="filter-btn filter-btn-apply" onclick="applyGridFilterType1(${colIdx})">적용</button>
-        </div>
-    `;
-
-    const input = document.getElementById('grid-filter-input');
-    if (input) {
-        input.focus();
-        input.onkeydown = (e) => { if (e.key === 'Enter') applyGridFilterType1(colIdx); };
-    }
-}
-
-function applyGridFilterType1(colIdx) {
-    const input = document.getElementById('grid-filter-input');
-    const val = input ? input.value.trim() : "";
-    if (val === "") delete inventoryGridState.filters[colIdx];
-    else inventoryGridState.filters[colIdx] = val;
-
-    closeGridFilter();
-    startGridRendering();
-}
-
-/**
- * 필터 Type 2: 선택형 (레어도, 수량, 보관 위치, 일러스트)
- */
-function renderFilterType2(colIdx) {
-    const popup = DOM.inventoryFilterPopup;
-    if (!popup) return;
-
-    // 현재 열의 유니크한 값들 추출
-    const allValues = [...new Set(inventoryGridState.allData.map(row => String(row[colIdx])))];
-    allValues.sort((a, b) => {
-        if (colIdx === 3) return parseInt(a) - parseInt(b); // 수량은 숫자 정렬
-        return a.localeCompare(b);
-    });
-
-    const currentFilters = inventoryGridState.filters[colIdx] || new Set();
-    const isAllSelected = currentFilters.size === 0; // 아무것도 없으면 "모두 선택" 상태로 간주 (필터링 안 함)
-
-    let optionsHtml = '';
-    allValues.forEach(val => {
-        const displayVal = (colIdx === 2) ? getLocalizedRarity(val) : val;
-        const checked = currentFilters.has(val) || isAllSelected ? 'checked' : '';
-        optionsHtml += `
-            <div class="filter-option-item">
-                <label>
-                    <input type="checkbox" class="filled-in grid-filter-checkbox" value="${val}" ${checked} onchange="handleFilterCheckboxChange(this)" />
-                    <span>${displayVal}</span>
-                </label>
-            </div>
-        `;
-    });
-
-    popup.innerHTML = `
-        <input type="text" class="filter-input-field filter-search-box" placeholder="내부 검색..." oninput="searchFilterOptions(this)">
-        <div class="filter-select-toggle" onclick="toggleAllFilterCheckboxes(this)">모두 해제</div>
-        <div class="filter-option-list">
-            ${optionsHtml}
-        </div>
-        <div class="filter-popup-footer">
-            <button class="filter-btn filter-btn-close" onclick="closeGridFilter()">닫기</button>
-            <button class="filter-btn filter-btn-apply" onclick="applyGridFilterType2(${colIdx})">적용</button>
-        </div>
-    `;
-    updateSelectToggleLabel(popup.querySelector('.filter-select-toggle'));
-}
-
-function searchFilterOptions(input) {
-    const keyword = input.value.toLowerCase();
-    const items = input.parentNode.querySelectorAll('.filter-option-item');
-    items.forEach(item => {
-        const text = item.querySelector('span').textContent.toLowerCase();
-        item.style.display = text.includes(keyword) ? 'flex' : 'none';
-    });
-}
-
-function handleFilterCheckboxChange(cb) {
-    updateSelectToggleLabel(cb.closest('.filter-popup').querySelector('.filter-select-toggle'));
-}
-
-function toggleAllFilterCheckboxes(btn) {
-    const popup = btn.closest('.filter-popup');
-    const cbs = Array.from(popup.querySelectorAll('.grid-filter-checkbox')).filter(cb => cb.closest('.filter-option-item').style.display !== 'none');
-    const isAnyChecked = cbs.some(cb => cb.checked);
-
-    cbs.forEach(cb => cb.checked = !isAnyChecked);
-    updateSelectToggleLabel(btn);
-}
-
-function updateSelectToggleLabel(btn) {
-    const popup = btn.closest('.filter-popup');
-    const cbs = Array.from(popup.querySelectorAll('.grid-filter-checkbox')).filter(cb => cb.closest('.filter-option-item').style.display !== 'none');
-    const isAnyChecked = cbs.some(cb => cb.checked);
-    btn.textContent = isAnyChecked ? "모두 해제" : "모두 선택";
-}
-
-function applyGridFilterType2(colIdx) {
-    const popup = DOM.inventoryFilterPopup;
-    if (!popup) return;
-    const cbs = popup.querySelectorAll('.grid-filter-checkbox');
-    const selected = new Set();
-    let allCount = 0;
-
-    cbs.forEach(cb => {
-        allCount++;
-        if (cb.checked) selected.add(cb.value);
-    });
-
-    // 모두 선택된 경우 필터 해제
-    if (selected.size === allCount || selected.size === 0) {
-        delete inventoryGridState.filters[colIdx];
-    } else {
-        inventoryGridState.filters[colIdx] = selected;
-    }
-
-    closeGridFilter();
-    startGridRendering();
-}
-
-function closeGridFilter() {
-    const popup = DOM.inventoryFilterPopup;
-    if (popup) popup.style.display = 'none';
-}
-
-/* ==========================================================================
-   [모바일 개편] 보유현황 목록 정렬 및 필터 바텀시트 동작 구현
-   ========================================================================== */
-
-let mobileFilterSheetState = {
-    colIndex: -1,
-    sortDir: 'asc',
-    filterValue: null
-};
-
-function openGridFilterMobile(colIdx) {
-    const ths = document.querySelectorAll('.inventory-table th');
-    const th = ths[colIdx];
-    const headerText = th ? th.querySelector('.header-text').textContent.trim() : '';
-
-    mobileFilterSheetState.colIndex = colIdx;
-    
-    // 현재 적용된 정렬 상태 가져오기
-    if (inventoryGridState.sort.colIndex === colIdx) {
-        mobileFilterSheetState.sortDir = inventoryGridState.sort.dir || 'asc';
-    } else {
-        mobileFilterSheetState.sortDir = null; // 정렬 미적용 상태
-    }
-
-    // 현재 적용된 필터 상태 복제
-    const currentFilter = inventoryGridState.filters[colIdx];
-    if (currentFilter instanceof Set) {
-        mobileFilterSheetState.filterValue = new Set(currentFilter);
-    } else if (typeof currentFilter === 'string') {
-        mobileFilterSheetState.filterValue = currentFilter;
-    } else {
-        if (colIdx === 0 || colIdx === 1) {
-            mobileFilterSheetState.filterValue = '';
-        } else {
-            mobileFilterSheetState.filterValue = new Set();
-        }
-    }
-
-    // 타이틀 지정
-    document.getElementById('grid-filter-sheet-title').textContent = `${headerText} 정렬 및 필터`;
-
-    // 바디 영역 UI 렌더링
-    renderMobileFilterSheetBody(colIdx);
-
-    // 바텀시트 표시 애니메이션
-    const overlay = document.getElementById('grid-filter-sheet-overlay');
-    const sheet = document.getElementById('mobile-grid-filter-sheet');
-    overlay.style.display = 'block';
-    sheet.style.display = 'flex';
-    document.documentElement.classList.add('nav-hidden');
-    requestAnimationFrame(() => {
-        overlay.classList.add('active');
-        sheet.classList.add('active');
-    });
-}
-
-function renderMobileFilterSheetBody(colIdx) {
-    const container = document.getElementById('grid-filter-sheet-body');
-    let html = '';
-
-    // 1. 정렬 영역 (colIdx 5: 일러스트는 정렬 제외)
-    if (colIdx !== 5) {
-        const sortDir = mobileFilterSheetState.sortDir;
-        const isAscActive = sortDir === 'asc';
-        const isDescActive = sortDir === 'desc';
-        html += `
-            <div class="mobile-sheet-section">
-                <div class="section-title">정렬</div>
-                <div class="capsule-button-group">
-                    <button type="button" class="capsule-btn ${isAscActive ? 'active' : ''}" onclick="setMobileSortDir('asc')">오름차순</button>
-                    <button type="button" class="capsule-btn ${isDescActive ? 'active' : ''}" onclick="setMobileSortDir('desc')">내림차순</button>
-                </div>
-            </div>
-        `;
-    }
-
-    // 2. 필터 영역 (수량 colIdx: 3 은 필터링 기능 없이 정렬만 존재)
-    if (colIdx !== 3) {
-        const isType1 = (colIdx === 0 || colIdx === 1);
-        html += `
-            <div class="mobile-sheet-section" style="margin-top: 20px;">
-                <div class="section-title">필터</div>
-        `;
-
-        if (isType1) {
-            // type1: 검색어 입력
-            const val = mobileFilterSheetState.filterValue || '';
-            html += `
-                <input type="text" id="mobile-grid-filter-input" class="filter-input-field" placeholder="검색어 입력..." value="${val}" style="width: 100%; box-sizing: border-box;">
-            `;
-        } else {
-            // type2: 체크박스형 필터 목록
-            const allValues = [...new Set(inventoryGridState.allData.map(row => String(row[colIdx])))];
-            allValues.sort((a, b) => {
-                return a.localeCompare(b);
-            });
-
-            const currentFilters = mobileFilterSheetState.filterValue || new Set();
-            const isAllSelected = currentFilters.size === 0;
-
-            let optionsHtml = '';
-            allValues.forEach(val => {
-                const displayVal = (colIdx === 2) ? getLocalizedRarity(val) : val;
-                const checked = currentFilters.has(val) || isAllSelected ? 'checked' : '';
-                optionsHtml += `
-                    <div class="filter-option-item">
-                        <label>
-                            <input type="checkbox" class="filled-in mobile-grid-filter-checkbox" value="${val}" ${checked} onchange="handleMobileFilterCheckboxChange(this)" />
-                            <span>${displayVal}</span>
-                        </label>
-                    </div>
-                `;
-            });
-
-            // 모두 해제/선택 라벨 결정
-            const isAnyChecked = Array.from(currentFilters).length > 0;
-            const toggleLabel = (isAnyChecked && !isAllSelected) ? '모두 해제' : '모두 선택';
-
-            html += `
-                <input type="text" class="filter-input-field filter-search-box" placeholder="내부 검색..." oninput="searchMobileFilterOptions(this)" style="width: 100%; box-sizing: border-box; margin-bottom: 8px;">
-                <div class="filter-select-toggle" onclick="toggleAllMobileFilterCheckboxes(this)" style="margin-bottom: 12px; font-weight: 600; color: var(--theme-000); cursor: pointer; text-align: right; font-size: 0.9rem;">${toggleLabel}</div>
-                <div class="filter-option-list" style="max-height: 200px; overflow-y: auto;">
-                    ${optionsHtml}
-                </div>
-            `;
-        }
-        html += `</div>`;
-    }
-
-    html += ``;
-    container.innerHTML = html;
-
-    // 적용 버튼 이벤트 연동
-    const applyBtn = document.getElementById('grid-filter-sheet-apply-btn');
-    applyBtn.onclick = () => applyMobileGridFilterAndSort(colIdx);
-}
-
-function setMobileSortDir(dir) {
-    mobileFilterSheetState.sortDir = dir;
-    const btns = document.querySelectorAll('.capsule-button-group .capsule-btn');
-    btns.forEach(btn => {
-        if ((dir === 'asc' && btn.textContent === '오름차순') || (dir === 'desc' && btn.textContent === '내림차순')) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
-    });
-}
-
-function handleMobileFilterCheckboxChange(cb) {
-    const parent = cb.closest('.mobile-bottom-sheet');
-    if (parent) {
-        updateMobileSelectToggleLabel(parent.querySelector('.filter-select-toggle'));
-    }
-}
-
-function searchMobileFilterOptions(input) {
-    const keyword = input.value.toLowerCase();
-    const items = input.parentNode.querySelectorAll('.filter-option-item');
-    items.forEach(item => {
-        const text = item.querySelector('span').textContent.toLowerCase();
-        item.style.display = text.includes(keyword) ? 'flex' : 'none';
-    });
-}
-
-function toggleAllMobileFilterCheckboxes(btn) {
-    const sheet = btn.closest('.mobile-bottom-sheet');
-    if (!sheet) return;
-    const cbs = Array.from(sheet.querySelectorAll('.mobile-grid-filter-checkbox')).filter(cb => cb.closest('.filter-option-item').style.display !== 'none');
-    const isAnyChecked = cbs.some(cb => cb.checked);
-
-    cbs.forEach(cb => cb.checked = !isAnyChecked);
-    updateMobileSelectToggleLabel(btn);
-}
-
-function updateMobileSelectToggleLabel(btn) {
-    if (!btn) return;
-    const sheet = btn.closest('.mobile-bottom-sheet');
-    if (!sheet) return;
-    const cbs = Array.from(sheet.querySelectorAll('.mobile-grid-filter-checkbox')).filter(cb => cb.closest('.filter-option-item').style.display !== 'none');
-    const isAnyChecked = cbs.some(cb => cb.checked);
-    btn.textContent = isAnyChecked ? "모두 해제" : "모두 선택";
-}
-
-function applyMobileGridFilterAndSort(colIdx) {
-    // 1. 정렬 임시 상태를 원본 상태에 저장 (선택된 값이 있는 경우에만)
-    if (colIdx !== 5 && mobileFilterSheetState.sortDir !== null) {
-        inventoryGridState.sort.colIndex = colIdx;
-        inventoryGridState.sort.dir = mobileFilterSheetState.sortDir;
-    }
-
-    // 2. 필터 임시 상태를 원본 상태에 저장 (수량 colIdx: 3 은 필터 적용 없음)
-    if (colIdx === 3) {
-        delete inventoryGridState.filters[colIdx];
-    } else {
-        const isType1 = (colIdx === 0 || colIdx === 1);
-        if (isType1) {
-            const input = document.getElementById('mobile-grid-filter-input');
-            const val = input ? input.value.trim() : '';
-            if (val === "") {
-                delete inventoryGridState.filters[colIdx];
-            } else {
-                inventoryGridState.filters[colIdx] = val;
-            }
-        } else {
-            const sheet = document.getElementById('mobile-grid-filter-sheet');
-            const cbs = sheet.querySelectorAll('.mobile-grid-filter-checkbox');
-            const selected = new Set();
-            let allCount = 0;
-
-            cbs.forEach(cb => {
-                allCount++;
-                if (cb.checked) selected.add(cb.value);
-            });
-
-            if (selected.size === allCount || selected.size === 0) {
-                delete inventoryGridState.filters[colIdx];
-            } else {
-                inventoryGridState.filters[colIdx] = selected;
-            }
-        }
-    }
-
-    closeGridFilterSheet();
-    startGridRendering();
-}
-
-function closeGridFilterSheet() {
-    const overlay = document.getElementById('grid-filter-sheet-overlay');
-    const sheet = document.getElementById('mobile-grid-filter-sheet');
-    document.documentElement.classList.remove('nav-hidden');
-
-    if (overlay && sheet) {
-        overlay.classList.remove('active');
-        sheet.classList.remove('active');
-        setTimeout(() => {
-            overlay.style.display = 'none';
-            sheet.style.display = 'none';
-        }, 350);
-    }
-}
+function closeGridFilter() { closeInventoryFilter(); }
+function closeGridFilterSheet() { closeInventoryFilter(); }
+document.addEventListener('pointerdown',event=>{
+    const editor=inventoryFilterEditor;
+    if (editor && !editor.mobile && !editor.root.contains(event.target) && !editor.trigger?.contains?.(event.target)) closeInventoryFilter({restoreFocus:false});
+});
+document.addEventListener('keydown',event=>{if (event.key==='Escape' && inventoryFilterEditor) {event.preventDefault();closeInventoryFilter();}});
 
 function switchToMode(mode, isInstant = false, subMode = null, params = null, skipAutomation = false) {
     if (mode !== 'search' && UIStore.mode === 'search' && typeof SearchNavigation !== 'undefined') SearchNavigation.leave();
@@ -6761,7 +6369,7 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
                 spellTrapText = (kind === 2 ? "일반 함정" : "일반 마법");
             }
             const stTable = document.createElement('table');
-            stTable.className = 'search-card__table';
+            stTable.className = 'search-card__table color-text-000';
             stTable.setAttribute('aria-label', '카드 정보');
             const stTbody = document.createElement('tbody');
             const stTr = document.createElement('tr');
@@ -6783,7 +6391,7 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
             const scaleDisplay = etcList.includes(6) && scaleVal !== null && scaleVal !== undefined && scaleVal !== '' ? String(scaleVal) : "-";
 
             const mTable = document.createElement('table');
-            mTable.className = 'search-card__table search-card__table--monster';
+            mTable.className = 'search-card__table search-card__table--monster color-text-000';
             mTable.setAttribute('aria-label', '카드 정보');
             const mTbody = document.createElement('tbody');
 
@@ -7003,17 +6611,38 @@ function getOwnedCardDisplayContext(card = {}) {
     return { cid, locale: source?.locale || '' };
 }
 
+// 서버가 확정한 요약과 토큰이 다를 때만 갱신한다. 화면의 멤버십은 기존 API 응답으로 표시한다.
+async function refreshMembershipClaims(user, result) {
+    if (result?.membershipClaims?.status !== 'synced' || !result.membershipClaims.version
+        || typeof user?.getIdTokenResult !== 'function' || typeof user?.getIdToken !== 'function') return false;
+    const revision = authStateRevision;
+    const current = () => authStateRevision === revision && UserStore.user?.uid === user.uid
+        && firebase.auth().currentUser?.uid === user.uid;
+    try {
+        if (!current()) return false;
+        const token = await user.getIdTokenResult();
+        if (!current()) return false;
+        if (token.claims?.ygoMembership?.version !== result.membershipClaims.version) await user.getIdToken(true);
+        return current();
+    } catch (_) { return false; }
+}
+
 async function loadUserData() {
     if (!UserStore.user) {
         UserStore.isUserDataSyncDone = true;
         return;
     }
-    const ownerUid = UserStore.user.uid;
+    const ownerUid = UserStore.user.uid, ownerRevision = authStateRevision;
+    const current = () => UserStore.user?.uid === ownerUid && authStateRevision === ownerRevision;
     UserStore.isUserDataSyncDone = false; // [추가] 동기화 시작 시 플래그 초기화
     showLoading(true, "내 인벤토리 로딩 중...");
     try {
         const res = await callApi('getUserData');
-        if (UserStore.user?.uid !== ownerUid) return;
+        if (!current()) return;
+        if (res?.membershipClaims) {
+            await refreshMembershipClaims(UserStore.user, res);
+            if (!current()) return;
+        }
         showLoading(false);
 
         // 멤버십 정보가 없더라도 기본 UI 렌더링을 위해 초기화 호출
@@ -7047,7 +6676,7 @@ async function loadUserData() {
             loadUserTheme(undefined, true);
         }
     } catch (e) {
-        if (UserStore.user?.uid !== ownerUid) return;
+        if (!current()) return;
         // 현재 권한을 확인하지 못했을 때 과거 관리자 표시를 계속 인정하지 않는다.
         if (!UserStore.settings) UserStore.settings = {};
         UserStore.settings.membership = { status: 'unknown', type: 'none', levelName: '확인 필요' };
@@ -7059,7 +6688,7 @@ async function loadUserData() {
         console.error("[Sync] getUserData Error:", e);
         showLoading(false);
     } finally {
-        if (UserStore.user?.uid !== ownerUid) return;
+        if (!current()) return;
         UserStore.isUserDataSyncDone = true; // 사용자 동기화 완료 플래그 설정
         checkAndHideInitialLoading();
 
@@ -10587,6 +10216,30 @@ function setServiceLoginPending(pending) {
     showLoading(pending, '로그인 중...');
 }
 
+function reportAuthFailure(stage, error) {
+    if (!['sign-in-popup', 'sign-in-redirect', 'redirect-result'].includes(stage)) return;
+    // OAuth 오류의 message/customData에는 계정·인증 정보가 포함될 수 있어 고정 분류만 남긴다.
+    const codes = ['auth/operation-not-supported-in-this-environment', 'auth/web-storage-unsupported',
+        'auth/network-request-failed', 'auth/unauthorized-domain', 'auth/auth-domain-config-required',
+        'auth/invalid-api-key', 'auth/app-not-authorized', 'auth/operation-not-allowed',
+        'auth/account-exists-with-different-credential', 'auth/credential-already-in-use',
+        'auth/invalid-credential', 'auth/invalid-oauth-provider', 'auth/invalid-auth-event',
+        'auth/cancelled-popup-request', 'auth/popup-blocked', 'auth/popup-closed-by-user',
+        'auth/redirect-cancelled-by-user', 'auth/redirect-operation-pending', 'auth/timeout',
+        'auth/internal-error', 'auth/too-many-requests', 'auth/user-disabled', 'auth/argument-error'];
+    const names = ['FirebaseError', 'Error', 'TypeError', 'SecurityError', 'QuotaExceededError',
+        'InvalidStateError', 'NotSupportedError', 'AbortError', 'NetworkError', 'DOMException'];
+    let code = 'unknown', name = 'unknown';
+    try {
+        const candidateCode = error?.code, candidateName = error?.name;
+        if (codes.includes(candidateCode)) code = candidateCode;
+        if (names.includes(candidateName)) name = candidateName;
+    } catch (_) { /* 오류 분류 실패가 기존 로그인 실패 처리를 막지 않는다. */ }
+    try {
+        console.warn(`[Firebase Auth] stage=${stage} code=${code} name=${name}`);
+    } catch (_) { /* 콘솔을 사용할 수 없어도 사용자 안내와 버튼 복원을 유지한다. */ }
+}
+
 async function getServiceRegistrationStatus(user, revision) {
     for (let attempt = 0; attempt < 3; attempt++) {
         if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return null;
@@ -10746,6 +10399,7 @@ function initFirebaseAuth() {
 
     // 리다이렉트 로그인 복귀 시 발생하는 예외 처리
     firebase.auth().getRedirectResult().catch(function (error) {
+        reportAuthFailure('redirect-result', error);
         if (!registrationCheckPending && serviceLoginPending) setServiceLoginPending(false);
         showToast('로그인하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
     });
@@ -11084,6 +10738,10 @@ async function startYoutubeMembershipVerify() {
         if (!res?.success || res.uid !== user.uid) {
             showToast(res?.message || '멤버십을 확인하지 못했습니다. 다시 인증해 주세요.', 'toast-error');
             return;
+        }
+        if (res.membershipClaims) {
+            await refreshMembershipClaims(user, res);
+            if (!current()) return;
         }
         showToast(res.isMemberActive ? '유튜브 멤버십 인증에 성공했습니다!'
             : '유튜브 채널이 멤버십 회원 목록에 등록되어 있지 않습니다.', res.isMemberActive ? 'toast-success' : 'toast-warn');
@@ -11447,7 +11105,8 @@ async function signInWithProvider(providerName) {
         if (IS_LOCAL_DEV) await firebase.auth().signInWithPopup(provider);
         else await firebase.auth().signInWithRedirect(provider);
         // 인증 결과 반환만으로 로딩을 닫지 않는다. 최종 결과는 onAuthStateChanged에서 처리한다.
-    } catch (_) {
+    } catch (error) {
+        reportAuthFailure(IS_LOCAL_DEV ? 'sign-in-popup' : 'sign-in-redirect', error);
         if (!registrationCheckPending) setServiceLoginPending(false);
         showToast('로그인하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
     } finally {
@@ -11539,6 +11198,10 @@ async function handleDiscordOAuthCallback() {
         if (revision !== authStateRevision || UserStore.user?.uid !== user.uid || firebase.auth().currentUser?.uid !== user.uid) throw new Error();
         if (!res?.success || res.uid !== user.uid) throw new Error();
         if (!UserStore.settings) UserStore.settings = {};
+        if (res.membershipClaims) {
+            await refreshMembershipClaims(user, res);
+            if (revision !== authStateRevision || UserStore.user?.uid !== user.uid || firebase.auth().currentUser?.uid !== user.uid) return;
+        }
         UserStore.sourceMembership = res.sourceMembership || null;
         UserStore.settings.membership = res.membership;
         applyMembershipStatus(res.membership);

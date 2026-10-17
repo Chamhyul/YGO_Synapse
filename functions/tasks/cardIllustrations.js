@@ -1,12 +1,2 @@
-const { onTaskDispatched } = require('firebase-functions/v2/tasks');
-const { CARD_WORKER_OPTIONS } = require('../config/serviceAccounts');
-const { processCardIllustrationsMigration } = require('../services/cardIllustrationsMigrationService');
-
-exports.migrateCardIllustrationsTask = onTaskDispatched({
-  ...CARD_WORKER_OPTIONS,
-  retryConfig: { maxAttempts: 3, minBackoffSeconds: 60 },
-  rateLimits: { maxConcurrentDispatches: 1 },
-  region: 'asia-northeast3',
-  memory: '256MiB',
-  timeoutSeconds: 540,
-}, req => processCardIllustrationsMigration(req.data));
+// 카드 원본: card-service/src/tasks/cardIllustrations.js (호환 패키지는 sync-card-service.cjs로 생성)
+module.exports = require("../services/card-service/tasks/cardIllustrations.js");

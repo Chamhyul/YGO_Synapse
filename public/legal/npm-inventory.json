@@ -9,13 +9,8 @@
       "license": "MIT",
       "dev": true,
       "optional": true,
-      "installed": true,
-      "legalFiles": [
-        {
-          "file": "LICENSE",
-          "sha256": "2088f55c6731498410b20c95ebd345ed4a4a800bf74c0fba4d282fd2a021daaa"
-        }
-      ],
+      "installed": false,
+      "legalFiles": [],
       "registry": "https://www.npmjs.com/package/@emnapi/runtime/v/1.11.3"
     },
     {
@@ -74,7 +69,7 @@
       "license": "MIT",
       "dev": true,
       "optional": true,
-      "installed": true,
+      "installed": false,
       "legalFiles": [],
       "registry": "https://www.npmjs.com/package/@esbuild/darwin-arm64/v/0.25.12"
     },
@@ -134,7 +129,7 @@
       "license": "MIT",
       "dev": true,
       "optional": true,
-      "installed": false,
+      "installed": true,
       "legalFiles": [],
       "registry": "https://www.npmjs.com/package/@esbuild/linux-arm64/v/0.25.12"
     },
@@ -355,13 +350,8 @@
       "license": "Apache-2.0",
       "dev": true,
       "optional": true,
-      "installed": true,
-      "legalFiles": [
-        {
-          "file": "LICENSE",
-          "sha256": "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68"
-        }
-      ],
+      "installed": false,
+      "legalFiles": [],
       "registry": "https://www.npmjs.com/package/@img/sharp-darwin-arm64/v/0.35.4"
     },
     {
@@ -396,17 +386,8 @@
       "license": "LGPL-3.0-or-later",
       "dev": true,
       "optional": true,
-      "installed": true,
-      "legalFiles": [
-        {
-          "file": "README.md",
-          "sha256": "47083f1ae7e990f74a56f576bcb8434051cb84ed1982fa57932720869e5147fe"
-        },
-        {
-          "file": "versions.json",
-          "sha256": "adddf5e76ac1cc03b503a17c488b8591dd9eb5ec3faf689a3852d02d1b5fbb10"
-        }
-      ],
+      "installed": false,
+      "legalFiles": [],
       "registry": "https://www.npmjs.com/package/@img/sharp-libvips-darwin-arm64/v/1.3.3"
     },
     {
@@ -441,8 +422,17 @@
       "license": "LGPL-3.0-or-later",
       "dev": true,
       "optional": true,
-      "installed": false,
-      "legalFiles": [],
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "README.md",
+          "sha256": "b05efaa208519f349746a54ee195c433ab8e5c250847a257c984c7a9dc68df20"
+        },
+        {
+          "file": "versions.json",
+          "sha256": "adddf5e76ac1cc03b503a17c488b8591dd9eb5ec3faf689a3852d02d1b5fbb10"
+        }
+      ],
       "registry": "https://www.npmjs.com/package/@img/sharp-libvips-linux-arm64/v/1.3.3"
     },
     {
@@ -501,8 +491,17 @@
       "license": "LGPL-3.0-or-later",
       "dev": true,
       "optional": true,
-      "installed": false,
-      "legalFiles": [],
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "README.md",
+          "sha256": "1a42557691426812906e98442b6575bd3fd509a3a0ea53d28e9ce52c2ccbb243"
+        },
+        {
+          "file": "versions.json",
+          "sha256": "adddf5e76ac1cc03b503a17c488b8591dd9eb5ec3faf689a3852d02d1b5fbb10"
+        }
+      ],
       "registry": "https://www.npmjs.com/package/@img/sharp-libvips-linuxmusl-arm64/v/1.3.3"
     },
     {
@@ -537,8 +536,13 @@
       "license": "Apache-2.0",
       "dev": true,
       "optional": true,
-      "installed": false,
-      "legalFiles": [],
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68"
+        }
+      ],
       "registry": "https://www.npmjs.com/package/@img/sharp-linux-arm64/v/0.35.4"
     },
     {
@@ -597,8 +601,13 @@
       "license": "Apache-2.0",
       "dev": true,
       "optional": true,
-      "installed": false,
-      "legalFiles": [],
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68"
+        }
+      ],
       "registry": "https://www.npmjs.com/package/@img/sharp-linuxmusl-arm64/v/0.35.4"
     },
     {
@@ -621,13 +630,8 @@
       "license": "Apache-2.0 AND LGPL-3.0-or-later AND MIT",
       "dev": true,
       "optional": true,
-      "installed": true,
-      "legalFiles": [
-        {
-          "file": "LICENSE",
-          "sha256": "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68"
-        }
-      ],
+      "installed": false,
+      "legalFiles": [],
       "registry": "https://www.npmjs.com/package/@img/sharp-wasm32/v/0.35.4"
     },
     {
@@ -1725,13 +1729,8 @@
       "license": "0BSD",
       "dev": true,
       "optional": true,
-      "installed": true,
-      "legalFiles": [
-        {
-          "file": "LICENSE.txt",
-          "sha256": "210b19e543130388c68654b7497e967119ce17145f66ab7d85688fbd70f08751"
-        }
-      ],
+      "installed": false,
+      "legalFiles": [],
       "registry": "https://www.npmjs.com/package/tslib/v/2.8.1"
     },
     {
@@ -2387,13 +2386,8 @@
       "license": "MIT",
       "dev": false,
       "optional": true,
-      "installed": true,
-      "legalFiles": [
-        {
-          "file": "LICENSE",
-          "sha256": "2088f55c6731498410b20c95ebd345ed4a4a800bf74c0fba4d282fd2a021daaa"
-        }
-      ],
+      "installed": false,
+      "legalFiles": [],
       "registry": "https://www.npmjs.com/package/@emnapi/runtime/v/1.11.3"
     },
     {
@@ -2762,13 +2756,8 @@
       "license": "Apache-2.0",
       "dev": false,
       "optional": true,
-      "installed": true,
-      "legalFiles": [
-        {
-          "file": "LICENSE",
-          "sha256": "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68"
-        }
-      ],
+      "installed": false,
+      "legalFiles": [],
       "registry": "https://www.npmjs.com/package/@img/sharp-darwin-arm64/v/0.35.4"
     },
     {
@@ -2803,17 +2792,8 @@
       "license": "LGPL-3.0-or-later",
       "dev": false,
       "optional": true,
-      "installed": true,
-      "legalFiles": [
-        {
-          "file": "README.md",
-          "sha256": "47083f1ae7e990f74a56f576bcb8434051cb84ed1982fa57932720869e5147fe"
-        },
-        {
-          "file": "versions.json",
-          "sha256": "adddf5e76ac1cc03b503a17c488b8591dd9eb5ec3faf689a3852d02d1b5fbb10"
-        }
-      ],
+      "installed": false,
+      "legalFiles": [],
       "registry": "https://www.npmjs.com/package/@img/sharp-libvips-darwin-arm64/v/1.3.3"
     },
     {
@@ -2848,8 +2828,17 @@
       "license": "LGPL-3.0-or-later",
       "dev": false,
       "optional": true,
-      "installed": false,
-      "legalFiles": [],
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "README.md",
+          "sha256": "b05efaa208519f349746a54ee195c433ab8e5c250847a257c984c7a9dc68df20"
+        },
+        {
+          "file": "versions.json",
+          "sha256": "adddf5e76ac1cc03b503a17c488b8591dd9eb5ec3faf689a3852d02d1b5fbb10"
+        }
+      ],
       "registry": "https://www.npmjs.com/package/@img/sharp-libvips-linux-arm64/v/1.3.3"
     },
     {
@@ -2908,8 +2897,17 @@
       "license": "LGPL-3.0-or-later",
       "dev": false,
       "optional": true,
-      "installed": false,
-      "legalFiles": [],
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "README.md",
+          "sha256": "1a42557691426812906e98442b6575bd3fd509a3a0ea53d28e9ce52c2ccbb243"
+        },
+        {
+          "file": "versions.json",
+          "sha256": "adddf5e76ac1cc03b503a17c488b8591dd9eb5ec3faf689a3852d02d1b5fbb10"
+        }
+      ],
       "registry": "https://www.npmjs.com/package/@img/sharp-libvips-linuxmusl-arm64/v/1.3.3"
     },
     {
@@ -2944,8 +2942,13 @@
       "license": "Apache-2.0",
       "dev": false,
       "optional": true,
-      "installed": false,
-      "legalFiles": [],
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68"
+        }
+      ],
       "registry": "https://www.npmjs.com/package/@img/sharp-linux-arm64/v/0.35.4"
     },
     {
@@ -3004,8 +3007,13 @@
       "license": "Apache-2.0",
       "dev": false,
       "optional": true,
-      "installed": false,
-      "legalFiles": [],
+      "installed": true,
+      "legalFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68"
+        }
+      ],
       "registry": "https://www.npmjs.com/package/@img/sharp-linuxmusl-arm64/v/0.35.4"
     },
     {
@@ -3028,13 +3036,8 @@
       "license": "Apache-2.0 AND LGPL-3.0-or-later AND MIT",
       "dev": false,
       "optional": true,
-      "installed": true,
-      "legalFiles": [
-        {
-          "file": "LICENSE",
-          "sha256": "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68"
-        }
-      ],
+      "installed": false,
+      "legalFiles": [],
       "registry": "https://www.npmjs.com/package/@img/sharp-wasm32/v/0.35.4"
     },
     {
@@ -4377,7 +4380,7 @@
       "license": "MIT",
       "dev": true,
       "optional": true,
-      "installed": true,
+      "installed": false,
       "legalFiles": [],
       "registry": "https://www.npmjs.com/package/@unrs/resolver-binding-darwin-arm64/v/1.11.1"
     },
@@ -4437,7 +4440,7 @@
       "license": "MIT",
       "dev": true,
       "optional": true,
-      "installed": false,
+      "installed": true,
       "legalFiles": [],
       "registry": "https://www.npmjs.com/package/@unrs/resolver-binding-linux-arm64-gnu/v/1.11.1"
     },
@@ -4449,7 +4452,7 @@
       "license": "MIT",
       "dev": true,
       "optional": true,
-      "installed": false,
+      "installed": true,
       "legalFiles": [],
       "registry": "https://www.npmjs.com/package/@unrs/resolver-binding-linux-arm64-musl/v/1.11.1"
     },
@@ -6868,13 +6871,8 @@
       "license": "MIT",
       "dev": true,
       "optional": true,
-      "installed": true,
-      "legalFiles": [
-        {
-          "file": "LICENSE",
-          "sha256": "2a8a5d6197bb97a018b8a190dd3ed853d750ca87c8e80c17aad41d6c6ff448e1"
-        }
-      ],
+      "installed": false,
+      "legalFiles": [],
       "registry": "https://www.npmjs.com/package/fsevents/v/2.3.3"
     },
     {

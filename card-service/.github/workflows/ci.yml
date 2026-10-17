@@ -1,0 +1,17 @@
+name: Docker validation
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+concurrency:
+  group: validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: docker build -t ygo-card-service:ci .
+      - run: docker run --rm --network none ygo-card-service:ci node --test test/read.test.js test/compat.test.js

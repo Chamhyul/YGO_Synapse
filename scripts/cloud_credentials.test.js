@@ -84,6 +84,14 @@ test('비밀키 설정은 SDK 초기화나 데이터 접근 전에 거부한다'
     initializeApp() { assert.fail('초기화 금지'); } }, { projectId: 'fixture' }), /비밀키/);
 });
 
+test('RTDB 에뮬레이터 환경에서는 운영 도구의 인증 읽기·SDK 초기화를 시작하지 않는다', () => {
+  const f = credentialFixture({ type: 'authorized_user' });
+  f.context.env.FIREBASE_DATABASE_EMULATOR_HOST = 'localhost:9000';
+  assert.throws(() => f.initializeDataToolFirebaseApp({ apps: [],
+    initializeApp() { assert.fail('초기화 금지'); } }, { projectId: 'ygo-synapse' }), /RTDB 에뮬레이터/);
+  assert.equal(f.reads, 0);
+});
+
 test('설치된 SDK가 WIF ADC로 Firebase 앱·Storage·Firestore를 구성한다', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ygo-wif-sdk-'));
   try {

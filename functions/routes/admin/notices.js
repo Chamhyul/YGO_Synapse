@@ -47,10 +47,15 @@ exports.manageAdminRole = onRequest(
     }
 
     const { action, targetUid, isAdmin } = req.body || {};
-    const caller = await verifyAdmin(req, res, { ownerOnly: action === 'setAdmin' || action === 'setOwner' });
+    const caller = await verifyAdmin(req, res, { ownerOnly: action === 'setAdmin' || action === 'setOwner' || ['settingsList','settingsLookup','settingsSetAdmin'].includes(action) });
     if (!caller) return;
 
     try {
+      if (['settingsList','settingsLookup','settingsSetAdmin'].includes(action)) {
+        const { createAdminAccounts } = require('../../services/adminAccounts');
+        const manage = createAdminAccounts({auth:admin.auth(), updateClaims:(uid,patch,validateCurrentClaims)=>require('../../services/membershipClaims').updateAccountClaims(uid,patch,{auth:admin.auth(),validateCurrentClaims})});
+        return res.json({success:true,...await manage(req.body,caller.uid)});
+      }
       // ── action: list (관리자 목록 조회) ───────────────────
       if (action === "list") {
         const adminList = [];
@@ -96,10 +101,10 @@ exports.manageAdminRole = onRequest(
         const newRole = targetIsOwner ? "owner" : (targetIsAdmin ? "admin" : "none");
 
         // 1. Firebase Auth Custom Claims 부여/해제
-        await admin.auth().setCustomUserClaims(targetUid, {
+        await require('../../services/membershipClaims').updateAccountClaims(targetUid, {
           role: newRole,
           admin: targetIsAdmin
-        });
+        }, { auth: admin.auth(), env: process.env });
 
         // 회원 혜택은 현재 Auth 권한에서 계산하며 외부 회원 기록은 덮어쓰지 않는다.
 
@@ -119,6 +124,7 @@ exports.manageAdminRole = onRequest(
       return res.status(400).json({ error: "알 수 없는 action입니다. list | setAdmin | setOwner" });
 
     } catch (e) {
+      if(e.code?.startsWith('ADMIN_ACCOUNTS_'))return res.status(e.status).json({success:false,code:e.code,message:e.message});
       console.error("[ManageAdminRole] failed:", safeErrorSummary(e));
       return res.status(500).json({ success: false, message: "관리자 권한 변경에 실패했습니다." });
     }

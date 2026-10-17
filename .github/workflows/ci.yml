@@ -1,0 +1,42 @@
+name: Docker validation
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+concurrency:
+  group: validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: docker build -t ygo-synapse:ci .
+      - run: docker run --rm --network none ygo-synapse:ci test
+      - run: docker run --rm --network none --shm-size=1g ygo-synapse:ci browser-test
+      - run: docker build -t ygo-card-service:ci card-service
+      - run: docker run --rm --network none -e NODE_ENV=test ygo-card-service:ci node --test test/read.test.js test/compat.test.js
+      - name: Read API integration
+        env:
+          MAIN_IMAGE: ygo-synapse:ci
+          CARD_IMAGE: ygo-card-service:ci
+        run: docker compose -f integration/read/compose.yaml up --abort-on-container-exit --exit-code-from tests
+      - name: User storage RTDB integration
+        env:
+          MAIN_IMAGE: ygo-synapse:ci
+        run: docker compose -f integration/user-storage/compose.yaml up --abort-on-container-exit --exit-code-from tests
+      - name: User data migration and writer rehearsal
+        env:
+          MAIN_IMAGE: ygo-synapse:ci
+        run: docker compose -f integration/user-migration/compose.yaml up --abort-on-container-exit --exit-code-from tests
+      - name: Clean integration containers
+        if: always()
+        run: docker compose -f integration/read/compose.yaml down
+      - name: Clean user storage integration containers
+        if: always()
+        run: docker compose -f integration/user-storage/compose.yaml down
+      - name: Clean migration rehearsal containers
+        if: always()
+        run: docker compose -f integration/user-migration/compose.yaml down

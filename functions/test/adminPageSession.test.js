@@ -27,7 +27,7 @@ function fixture(role = 'owner', getErrorSummary, getTrafficSummary, notices, me
     return res;
   }
   async function signIn(origin) { return request('/admin/session', { method: 'POST', origin, headers: { authorization: 'Bearer valid' } }); }
-  return { request, signIn, calls, cookie: '__session=test-signed-cookie', advance(ms) { time += ms; }, role(v) { role = v; },
+  return { request, signIn, calls, store, cookie: '__session=test-signed-cookie', advance(ms) { time += ms; }, role(v) { role = v; },
     disable() { disabled = true; }, revoke() { revoked = true; }, fail() { failure = true; } };
 }
 test('세션이 없으면 로그인 문서만 제공하고 관리자 본문은 응답에 포함하지 않는다', async () => {
@@ -227,4 +227,20 @@ test('회원 CSV API도 현재 관리자 세션·CSRF를 검사하고 조회/미
   assert.deepEqual(calls.slice(2),[['apply','test-owner'],['status','test-owner']]);
   assert.equal((await f.request('/admin/api/membership-csv?uid=owner',{cookie:f.cookie})).code,400);
   f.role('user');assert.equal((await f.request('/admin/api/membership-csv',{cookie:f.cookie,method:'POST'})).code,401);
+});
+
+
+test('공통 요청 종료가 실패하면 로그인 성공 본문과 쿠키를 전달하지 않는다', async () => {
+  const f = fixture();
+  f.store.withRequest = async (_req, work) => { await work(); throw new Error('synthetic journal end failure'); };
+  const result = await f.signIn();
+  assert.equal(result.code, 503); assert.deepEqual(result.body, { success: false });
+  assert.equal(result.headers['Set-Cookie'], undefined);
+});
+test('공통 요청이 끝난 뒤 기존 로그인 응답과 쿠키 속성을 한 번 전달한다', async () => {
+  const f = fixture(); let completed = false;
+  f.store.withRequest = async (_req, work) => { const result = await work(); completed = true; return result; };
+  const result = await f.signIn(); assert.equal(completed, true); assert.equal(result.code, 200);
+  assert.deepEqual(result.body, { success: true, role: 'owner' });
+  assert.match(result.headers['Set-Cookie'], /Path=\/admin; HttpOnly; SameSite=Strict/);
 });

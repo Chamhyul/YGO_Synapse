@@ -52,14 +52,29 @@ exports.uploadMembershipCsv = onRequest({ invoker: 'public', timeoutSeconds: 60 
   setCors(res, req);
   res.set('Cache-Control', 'no-store');
   if (req.method === 'OPTIONS') return res.status(204).send('');
+  // 명시적으로 허용한 legacy 경로 외에는 설정을 먼저 검사한다.
+  // 잘못된 backend·로컬 RTDB가 기존 운영 관리자 proxy로 전달되지 않게 한다.
+  if (process.env.USER_PROFILE_WRITER_MODE === 'production' || process.env.USER_STORAGE_MODE === 'production') {
+    if (await forwardAdminRequest(req, res, 'uploadMembershipCsv')) return;
+    return res.status(503).json({ success: false });
+  }
+  if (process.env.USER_PROFILE_WRITER_MODE) return res.status(503).json({ success: false });
+  const backend = process.env.USER_STORAGE_BACKEND;
+  if (![undefined, '', 'storage'].includes(backend)) {
+    if (backend !== 'rtdb') return res.status(503).json({ success: false });
+    try {
+      if (require('../config/userStorage').resolveUserStorageConfig().mode !== 'production') throw Error('isolated runtime');
+    } catch (_) { return res.status(503).json({ success: false }); }
+  }
   if (await forwardAdminRequest(req, res, 'uploadMembershipCsv')) return;
   if (req.method !== 'POST') return res.status(405).json({ success: false });
   const access = await verifyAdmin(req, res);
   if (!access) return;
   try {
     const { randomBytes } = require('node:crypto');
-    const { createMembershipCsvService, createFirestoreMembershipCsvStore } = require('../services/membershipCsvService');
-    const service = createMembershipCsvService({ store: createFirestoreMembershipCsvStore(db) });
+    const { createMembershipCsvService } = require('../services/membershipCsvService');
+    const { getMembershipCsvStore } = require('../services/membershipCsvRepository');
+    const service = createMembershipCsvService({ store: getMembershipCsvStore({ db }) });
     const preview = await service.preview(req.body);
     const result = await service.apply({ ...req.body, ...preview, operationId: req.body?.operationId || randomBytes(16).toString('hex') }, access.uid);
     return res.json({ success: true, ...result });

@@ -4,33 +4,37 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const crypto = require('node:crypto');
 const path = require('node:path');
+const { createFirestoreUserProfileRepository } = require('../services/userProfileRepository');
 
-function load(file, mocks) {
+function load(file, mocks, env = {}) {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
-    module, exports: module.exports, console: { error() {} }, process: { env: {} },
-    require(name) {
+    module, exports: module.exports, console: { error() {} }, process: { env },
+    require(name) { if (['../services/inventoryRequestTiming', './inventoryRequestTiming'].includes(name)) return require('../services/inventoryRequestTiming'); 
       if (name === '../services/publicReadTransport' || name === './publicReadTransport') return { isLocal: () => false, withPublicReadRequest: handler => handler }; assert.ok(name in mocks, name); return mocks[name]; },
   });
   return module.exports;
 }
-function fixture({ existing, inventory = false, auth = true, failure = false } = {}) {
-  let data = existing, reads = 0, writes = 0;
+function fixture({ existing, inventory = false, auth = true, failure = false, writerMode } = {}) {
+  let data = existing, reads = 0, writes = 0, authCalls = 0;
   const ref = { async get() { reads++; if (failure) throw Error('private'); return { exists: !!data, data: () => data }; } };
   const db = { collection: () => ({ doc: () => ref }),
     async runTransaction(fn) { return fn({ get: () => ref.get(), create(_, value) { assert.equal(data, undefined); writes++; data = value; } }); } };
   const config = { db, FieldValue: { serverTimestamp: () => 'server-time' },
     getBucket: () => ({ file: () => ({ exists: async () => [inventory] }) }) };
-  const service = load('services/registrationService.js', { '../config/firebase': config });
+  const repository = createFirestoreUserProfileRepository(config);
+  const service = load('services/registrationService.js', {
+    './userProfileRepository': { getUserProfileRepository: () => repository },
+  });
   const routes = load('routes/registration.js', {
-    'firebase-functions/v2/https': { onRequest: (_, fn) => fn }, '../config/firebase': config,
+    'firebase-functions/v2/https': { onRequest: (_, fn) => fn },
     '../services/registrationService': service, '../utils/safeError': { safeErrorSummary: () => ({ type: 'internal_error' }) },
     '../utils/auth': { setCors() {}, verifyAppCheck: async () => true,
-      verifyUser: async (_, res) => { if (auth) return 'fixture-user'; res.status(401).json({ success: false }); return null; } },
-  });
+      verifyUser: async (_, res) => { authCalls++; if (auth) return 'fixture-user'; res.status(401).json({ success: false }); return null; } },
+  }, { USER_PROFILE_WRITER_MODE: writerMode });
   const res = () => ({ code: 200, headers: {}, set(k, v) { this.headers[k] = v; return this; },
     status(n) { this.code = n; return this; }, json(body) { this.body = body; return this; }, send() { return this; } });
-  return { routes, res, service, stats: () => ({ data, reads, writes }) };
+  return { routes, res, service, stats: () => ({ data, reads, writes, authCalls }) };
 }
 async function status(f) { const r = f.res(); await f.routes.getRegistrationStatus({ method: 'GET', headers: {} }, r); return r; }
 async function complete(f, body) { const r = f.res(); await f.routes.completeRegistration({ method: 'POST', body }, r); return r; }
@@ -100,7 +104,7 @@ test('가입 전 보호 API 검증은 403, 장애는 503이며 기존 회원은 
 });
 
 test('사용자 데이터·관리·이식·개인 멤버십 라우트는 가입 완료 검증을 사용한다', async () => {
-  for (const file of ['user', 'card', 'migration']) {
+  for (const file of ['user', 'inventory', 'migration']) {
     const source = fs.readFileSync(path.join(__dirname, '../routes', file + '.js'), 'utf8');
     assert.match(source, /await verifyRegisteredUser\(req, res\)/);
     assert.doesNotMatch(source, /await verifyUser\(req, res\)/);
@@ -137,4 +141,9 @@ test('사용자 데이터·관리·이식·개인 멤버십 라우트는 가입 
     assert.equal(res.code, 403);
   }
   assert.equal(checked, 4);
+});
+test('프로필 writer 시험 플래그의 일반 가입 경로는 Auth/저장소 전에 거부한다', async () => {
+  const f = fixture({ writerMode: 'emulator' });
+  assert.equal((await status(f)).code, 503); assert.equal((await complete(f, {})).code, 503);
+  assert.equal(f.stats().authCalls, 0); assert.equal(f.stats().reads, 0); assert.equal(f.stats().writes, 0);
 });

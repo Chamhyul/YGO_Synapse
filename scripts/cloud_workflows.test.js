@@ -7,7 +7,10 @@ const vm = require('node:vm');
 const yaml = require('../functions/node_modules/js-yaml');
 const root = path.resolve(__dirname, '..');
 const files = ['firebase-hosting-merge.yml', 'firebase-hosting-pull-request.yml', 'sync-card-illustrations.yml'];
-const workflows = files.map(name => yaml.load(fs.readFileSync(path.join(root, '.github/workflows', name), 'utf8')));
+const workflows = files.map(name => {
+  const active = path.join(root, '.github/workflows', name);
+  return yaml.load(fs.readFileSync(fs.existsSync(active) ? active : path.join(root, 'operations/workflows', name + '.disabled'), 'utf8'));
+});
 
 test('각 자동 작업은 별도 단기 인증 설정을 사용하고 장기 키로 대체하지 않는다', () => {
   const providers = new Set(), accounts = new Set();

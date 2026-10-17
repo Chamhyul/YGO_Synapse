@@ -340,7 +340,7 @@ html.is-mobile-device .owned-card__illustration-group {
   min-width: 0;
   min-height: 32px;
   gap: 4px;
-  padding: 0 10px 0 14px;
+  padding: 0 0 0 14px;
   text-align: left;
 }
 
@@ -353,7 +353,7 @@ html.is-mobile-device .owned-card__illustration-group {
   flex: 0 0 auto;
   min-width: 28px;
   min-height: 32px;
-  padding: 0 6px;
+  padding: 0 10px 0 6px;
 }
 
 .catalog-search-chip__icon {
@@ -536,15 +536,13 @@ html.is-mobile-device .owned-card__illustration-group {
 
 .search-card__table {
   width: 100%;
+  table-layout: fixed;
   border: 0;
   border-collapse: collapse;
   border-spacing: 0;
   background-color: transparent;
   font-size: 0.9rem;
-}
-
-.search-card__table--monster {
-  table-layout: fixed;
+  color: var(--color-text, inherit);
 }
 
 .search-card__table tr {
@@ -554,8 +552,13 @@ html.is-mobile-device .owned-card__illustration-group {
 .search-card__table :is(th, td) {
   padding: 10px 12px;
   border-width: 0 1px 1px 0;
+  border-radius: 0;
   text-align: center;
   overflow-wrap: anywhere;
+}
+
+.search-card__table td {
+  word-break: break-all;
 }
 
 .search-card__table tr > :last-child {
@@ -572,6 +575,7 @@ html.is-mobile-device .owned-card__illustration-group {
 }
 
 .search-card__label {
+  font-size: 0.8rem;
   font-weight: 600;
   word-break: keep-all;
 }
@@ -797,49 +801,6 @@ html.is-mobile-device .owned-card__illustration-group {
   min-width: 0;
 }
 
-.catalog-filter-editor .ui-segment {
-  align-self: flex-start;
-}
-
-.catalog-filter-editor__options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-}
-
-.catalog-filter-editor__option {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  color: inherit;
-  font-size: 0.95rem;
-  cursor: pointer;
-}
-
-/* 더미도 네이티브 체크박스를 조작할 수 있도록 Materialize의 숨김만 해제. */
-.catalog-filter-editor input[type="checkbox"] {
-  position: static;
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  opacity: 1;
-  pointer-events: auto;
-  accent-color: var(--theme-000);
-}
-
-.catalog-filter-editor input[type="checkbox"] + span:not(.lever) {
-  height: auto;
-  padding: 0;
-  line-height: 1.5;
-  font-size: inherit;
-}
-
-.catalog-filter-editor input[type="checkbox"] + span:not(.lever)::before,
-.catalog-filter-editor input[type="checkbox"] + span:not(.lever)::after {
-  display: none;
-}
-
 .catalog-filter-editor__numbers {
   display: flex;
   align-items: center;
@@ -863,15 +824,10 @@ input[type="number"].catalog-filter-editor__number {
 }
 
 
-.catalog-filter-editor__hint,
 .catalog-filter-editor__error {
   margin: 0;
   font-size: 0.85rem;
   line-height: 1.5;
-}
-
-.catalog-filter-editor__error {
-  color: var(--red);
 }
 
 .catalog-filter-editor__add-option {
@@ -988,3 +944,41 @@ html.is-mobile-device .search-results__back-label {
 .search-results__focus-target:focus {
   outline: none;
 }
+
+/* 공통 후보 목록 도구·연산 스위치. 미리보기에서 확정한 배치. */
+.catalog-filter-editor [data-selection-tools] { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.catalog-filter-editor [data-selection-tools] span { font-size:.85rem; }
+.catalog-filter-editor [data-selection-group] { display:flex; flex-direction:column; gap:8px; }
+.catalog-filter-editor [data-empty-options] { margin:0; padding:12px; font-size:.9rem; }
+
+
+.catalog-filter-editor [data-operator-switch] { display:flex; margin:0; }
+.catalog-filter-editor [data-operator-switch] .theme-switch { --slider-height:max(22px, 1.4rem); width:calc(var(--slider-height) * 2.6); }
+/* Materialize 체크박스의 span 높이·들여쓰기를 스위치 내부에 적용하지 않는다. */
+.catalog-filter-editor [data-operator-switch] input[type="checkbox"] + .theme-switch__track {
+  height:100%; padding:0; line-height:1;
+}
+.catalog-filter-editor [data-operator-switch] input[type="checkbox"] + .theme-switch__track::before {
+  top:auto; bottom:var(--slider-inset); left:var(--slider-inset);
+  width:calc(var(--slider-height) - var(--slider-inset) * 2);
+  height:calc(var(--slider-height) - var(--slider-inset) * 2);
+  border:0; border-radius:50%; transform:none;
+}
+.catalog-filter-editor [data-operator-switch] input[type="checkbox"] + .theme-switch__track::after {
+  content:attr(data-operator);
+  position:absolute; top:0; bottom:0;
+  left:var(--slider-height); right:var(--slider-inset);
+  width:auto; height:auto; border:0; transform:none;
+  display:flex; align-items:center; justify-content:center;
+  font-size:0.7rem; line-height:1; font-weight:600; color:var(--color-text);
+}
+.catalog-filter-editor [data-operator-switch] input[type="checkbox"]:checked + .theme-switch__track::before {
+  transform:translateX(calc(var(--slider-height) * 1.6));
+}
+.catalog-filter-editor [data-operator-switch] input[type="checkbox"]:checked + .theme-switch__track::after {
+  left:var(--slider-inset); right:var(--slider-height);
+  color:var(--color-selected-text);
+}
+
+.catalog-filter-editor [hidden] { display:none; }
+#inventory-filter-popup[hidden], #mobile-grid-filter-sheet[hidden], #grid-filter-sheet-overlay[hidden] { display:none; }

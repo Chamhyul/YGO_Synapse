@@ -1,5 +1,6 @@
-const { resolveInventoryCid, getCardByCid, normalizeNumber, mapLimited } = require('./cardQueryService');
-const { normalizeText } = require('../utils/common');
+function createInventoryMigrationService({ lookup, normalizeText: suppliedNormalizeText, updateInventoryWithRetry: suppliedUpdate } = {}) {
+const { resolveInventoryCid, getCardByCid, normalizeNumber, mapLimited } = lookup || require('./inventoryCardLookup');
+const normalizeText = suppliedNormalizeText || (value => require('../utils/common').normalizeText(value));
 const { setTimeout, clearTimeout } = require('node:timers');
 const RETRY_MS = 24 * 60 * 60 * 1000;
 const BATCH_SIZE = 40;
@@ -41,6 +42,10 @@ async function resolveBeforeDeadline(number, name, remainingMs) {
 }
 
 function inventoryMigrationStatus(inventory) {
+  // 부분 저장 결과에 붙인 서버 내부 전역 요약. JSON 입력/저장/HTTP에는
+  // Symbol이 전달되지 않으며 선택 카드만으로 전체 CID 상태를 계산하지 않는다.
+  const apiStatus = Object.getOwnPropertyDescriptor(inventory, Symbol.for('ygo.inventory.apiMigrationStatus'))?.value;
+  if (apiStatus) return { ...apiStatus };
   const entries = Object.values(inventory.cards || {});
   const pendingCount = entries.filter(entry => !validCid(entry.cid) &&
     !(entry.cid === null && entry.cidCheckedAt)).length;
@@ -83,7 +88,7 @@ async function prepareInventoryV2(inventory, memo = new Map()) {
 }
 
 async function ensureInventoryV2(uid) {
-  const { updateInventoryWithRetry } = require('../utils/inventoryStorage');
+  const updateInventoryWithRetry = suppliedUpdate || require('../utils/inventoryStorage').updateInventoryWithRetry;
   return updateInventoryWithRetry(uid, () => {});
 }
 
@@ -101,5 +106,8 @@ async function resolveGroupCids(groups) {
   });
 }
 
-module.exports = { prepareInventoryV2, ensureInventoryV2, resolveGroupCids, inventoryMigrationStatus,
+return { prepareInventoryV2, ensureInventoryV2, resolveGroupCids, inventoryMigrationStatus,
   normalizeIllustrationId, migrateIllustrations, CURRENT_INVENTORY_VERSION };
+
+}
+module.exports = { ...createInventoryMigrationService(), createInventoryMigrationService };

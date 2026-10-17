@@ -1,3 +1,4 @@
+const { readSourceFile } = require('./sourceFile');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -36,6 +37,8 @@ function fixture(options = {}) {
     }
   }; } };
   const mocks = {
+    './cardPresentation': require('../services/cardPresentation'),
+    './cardNumberResolver': require('../services/cardNumberResolver'),
     './cardIndexDispatchService': {},
     '../config/firebase': { getBucket: () => bucket },
     './cardQueryService': {},
@@ -45,7 +48,7 @@ function fixture(options = {}) {
   };
   const filename = path.join(__dirname, '../services/cardService.js');
   const module = { exports: {} };
-  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
+  vm.runInNewContext(readSourceFile(filename, 'utf8'), {
     module, exports: module.exports, console, Buffer,
     require(name) {
       if (!Object.hasOwn(mocks, name)) throw new Error(`격리되지 않은 의존성: ${name}`);

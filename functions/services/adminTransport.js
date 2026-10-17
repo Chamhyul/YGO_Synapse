@@ -21,7 +21,8 @@ function unavailable(res, pathname) {
 }
 function emulatorConfigured(env) {
   return env.FUNCTIONS_EMULATOR === 'true' || !!env.FIREBASE_EMULATOR_HUB
-    || !!env.FIRESTORE_EMULATOR_HOST || !!env.FIREBASE_STORAGE_EMULATOR_HOST || !!env.FIREBASE_AUTH_EMULATOR_HOST;
+    || !!env.FIRESTORE_EMULATOR_HOST || !!env.FIREBASE_STORAGE_EMULATOR_HOST || !!env.FIREBASE_AUTH_EMULATOR_HOST
+    || !!env.FIREBASE_DATABASE_EMULATOR_HOST;
 }
 function createAdminBackendHandler({ handler, env = process.env }) {
   return async (req, res) => {

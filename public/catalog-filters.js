@@ -17,9 +17,9 @@ const CatalogFilters = (() => {
     const definitions = {
         target: { label: '검색 대상', options: choices(['name', 'number'], ['이름', '번호']) },
         kind: { label: '종류', options: kinds },
-        monster: { label: '몬스터 특성', options: properties.monster, characteristic: true, kind: 'monster' },
-        spell: { label: '마법 특성', options: properties.spell, characteristic: true, kind: 'spell' },
-        trap: { label: '함정 특성', options: properties.trap, characteristic: true, kind: 'trap' },
+        monster: { label: '몬스터 유형', options: properties.monster, characteristic: true, kind: 'monster' },
+        spell: { label: '마법 유형', options: properties.spell, characteristic: true, kind: 'spell' },
+        trap: { label: '함정 유형', options: properties.trap, characteristic: true, kind: 'trap' },
         attribute: { label: '속성', options: attributes, kind: 'monster' },
         race: { label: '종족', options: races, kind: 'monster' },
         level: { label: '레벨 / 랭크 / 링크', numeric: 'exact', kind: 'monster' },
@@ -34,7 +34,7 @@ const CatalogFilters = (() => {
         : definitions[key].numeric ? null : [];
     function create(searchTarget = 'auto') {
         const result = Object.fromEntries(keys.map(key => [key, emptyValue(key)]));
-        result.target = ['name', 'number'].includes(searchTarget) ? [searchTarget] : [];
+        result.target = ['name', 'number'].includes(searchTarget) ? [searchTarget] : ['name', 'number'];
         return result;
     }
     const selectedKinds = filters => filters.kind.length ? filters.kind : kinds.map(item => item.value);

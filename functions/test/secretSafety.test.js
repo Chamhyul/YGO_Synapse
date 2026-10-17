@@ -23,7 +23,7 @@ function load(relative, mocks) {
     module, exports: module.exports, URLSearchParams, Buffer, process: { env: {} },
     console: Object.fromEntries(['log', 'warn', 'error'].map(level =>
       [level, (...args) => logs.push([level, ...args])])),
-    require(name) {
+    require(name) { if (['../services/inventoryRequestTiming', './inventoryRequestTiming'].includes(name)) return require('../services/inventoryRequestTiming'); 
       if (name === '../services/publicReadTransport' || name === './publicReadTransport') return { isLocal: () => false, withPublicReadRequest: handler => handler };
       if (!Object.hasOwn(mocks, name)) throw new Error(`격리되지 않은 의존성: ${name}`);
       return mocks[name];

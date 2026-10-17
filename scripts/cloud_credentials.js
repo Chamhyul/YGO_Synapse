@@ -30,6 +30,10 @@ function assertKeylessApplicationCredentials({ env = process.env, homeDirectory 
 }
 
 function initializeDataToolFirebaseApp(admin, options) {
+  // 이 공통 도구는 운영 Firestore/Storage용이다. RTDB 검사 환경을 운영으로 오인하지 않는다.
+  if (process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
+    throw new Error('운영 데이터 도구에서는 RTDB 에뮬레이터 환경변수를 제거하세요.');
+  }
   assertKeylessApplicationCredentials();
   if (!admin.apps.length) {
     admin.initializeApp({ ...options, credential: admin.credential.applicationDefault() });

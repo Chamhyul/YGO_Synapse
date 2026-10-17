@@ -84,7 +84,7 @@ test('운영 검사를 통과한 쓰기만 실행하며 다른 출처의 로컬 
   assert.equal(f.sent.length, before);
 });
 test('운영 API의 에뮬레이터 실행은 권한 처리나 직접 데이터 접근 전에 차단한다', async () => {
-  for (const env of [{ FUNCTIONS_EMULATOR: 'true' }, { FIREBASE_AUTH_EMULATOR_HOST: 'localhost:9099' }, { FIREBASE_STORAGE_EMULATOR_HOST: 'localhost:5004' }, { FIRESTORE_EMULATOR_HOST: 'localhost:5003' }]) {
+  for (const env of [{ FUNCTIONS_EMULATOR: 'true' }, { FIREBASE_AUTH_EMULATOR_HOST: 'localhost:9099' }, { FIREBASE_STORAGE_EMULATOR_HOST: 'localhost:5004' }, { FIRESTORE_EMULATOR_HOST: 'localhost:5003' }, { FIREBASE_DATABASE_EMULATOR_HOST: 'localhost:9000' }]) {
     let calls = 0;
     const backend = createAdminBackendHandler({ env, handler: () => { calls++; } });
     const res = response(); await backend(request('/adminBackend?route=%2Fadmin%2Fapi%2Fnotices'), res);

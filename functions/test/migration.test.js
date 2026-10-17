@@ -9,6 +9,7 @@ function load(file, mocks) {
   const filename = path.join(__dirname, '..', file), module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { module, exports: module.exports,
     console: { error() {} }, require(name) {
+      if (name === '../services/userStorageRequestGuard') return { withUserStorageRequestGuard: handler => handler };
       if (name === '../services/publicReadTransport' || name === './publicReadTransport') return { isLocal: () => false, withPublicReadRequest: handler => handler };
       if (!(name in mocks)) throw Error(`격리되지 않은 의존성: ${name}`);
       return mocks[name];
@@ -34,8 +35,7 @@ function fixture({ values = [headers, ['테스트 카드', 'AB-KR001', 'SE', 4, 
     '../utils/safeError': { safeErrorSummary: () => ({ type: 'internal_error' }) },
     '../services/migrationService': service,
     '../integrations/googleSheets': publicSheets,
-    '../services/cardService': { resolveCardNumber: async no => { resolves++; return no; } },
-    '../services/cardQueryService': { findCard: async () => null },
+    '../services/inventoryCardLookup': { resolveCardNumber: async no => { resolves++; return no; }, findCard: async () => null },
     '../services/inventoryMigrationService': {
       resolveGroupCids: async groups => Object.values(groups).forEach(group => { group.cid = '42'; }),
       inventoryMigrationStatus: () => ({ status: 'complete' }), normalizeIllustrationId: value => String(value || '1').replace(/nd$/, '')

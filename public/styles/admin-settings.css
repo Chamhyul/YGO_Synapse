@@ -1,0 +1,15 @@
+/* 관리자 설정의 조회 폼·계정 정보 배치. 버튼/색상/곡률은 공통 조합 사용. */
+.admin-settings-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; margin-top: 24px; }
+.admin-settings-grid > section { min-width: 0; }
+.admin-account-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+.admin-account-search { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 20px; }
+.admin-account-search :is(input,select) { min-height: 44px; padding: 12px 16px; border: 0; font: inherit; box-sizing: border-box; background: var(--color-bg); color: var(--color-text); }
+.admin-account-search input { flex: 1; width: 100%; min-width: 120px; }
+.admin-account-details { overflow-wrap: anywhere; }
+.admin-account-details dt { margin-top: 12px; font-weight: 600; }
+.admin-account-details dd { margin: 4px 0 0; }
+.admin-account-list { padding: 0; list-style: none; display: grid; gap: 8px; }
+.admin-account-row { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; padding: 16px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.admin-account-row span { display: block; }
+.admin-account-row span + span { font-size: 0.85rem; }
+@media (max-width: 800px) { .admin-settings-grid { grid-template-columns: minmax(0, 1fr); } }

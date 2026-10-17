@@ -16,6 +16,13 @@
 - 현재 사양, 구현, 미확정 제안, 실제 실행 결과와 미검증 범위를 구분한다. 문서 정비를 이유로 앱·데이터를 변경하거나 완료된 마이그레이션을 재실행하지 않는다.
 - 사용자 요청과 승인 범위를 기준으로 작업한다. 필요한 문서가 없으면 코드·요청을 확인하고 과거 계획을 실행 승인으로 사용하지 않는다.
 
+## 저장소·데이터 경계
+
+- 편집·통합 검증 원본은 기존 `YGO_Synapse` 저장소 하나다. 기존 미커밋 변경·UI 수정과 `card-service/src/`의 모듈 경계를 보존한다.
+- 별도 `YGO_Synapse_Service`·`YGO_Synapse_Cards` 저장소/폴더는 보존 대상으로 두며, 자동 동기화·덮어쓰기·삭제하지 않는다. 저장소 분리용 준비본·템플릿은 일상 개발의 원본이 아니다.
+- 확정 목표는 같은 Firebase 프로젝트에서 카드 데이터를 Firestore, 사용자·인벤토리 데이터를 Realtime Database로 관리하는 것이다. Authentication과 파일용 Storage는 역할에 맞게 유지한다. 현재 구현과 미구현 목표는 [사용자 저장소 설계](docs/Data/guide_user_storage.md)에서 구분한다.
+- 첫 운영 전환부터 기존 전체 기능·API·데이터 호환을 유지한다. 부분 이전 상태를 운영 완료로 처리하지 않는다. 파일 수정 승인은 DB 생성·데이터 이전·IAM·배포 승인이 아니다.
+
 ## 문서 역할과 분야별 기준
 
 상시 공통 지침은 이 문서, 분야별 작업 기준·반복 가능한 절차는 `docs/`의 `guide_분야명.md`, 현재 상세 사양은 해당 분야 문서에서 관리한다. 상세 코드 계약·수치·실행 명령을 이 문서에 복제하지 않는다. README.md는 GitHub 독자용이며 에이전트 작업 기준으로 사용하지 않는다.
@@ -25,7 +32,7 @@
 | 개발 | [개발 가이드](docs/Development/guide_development.md): 구조·실행·포트·로컬/운영 접속·설정/시크릿·인증/세션/관리자/가입·검증/팔레트. [Docker 가이드](docs/Development/guide_docker.md): 로컬 호스팅·자동 테스트·데이터 보존 |
 | 보안 | [보안 개선 가이드](docs/Development/guide_security.md): 개선 목표·유지할 동작·대상별 이유와 수단·단계별 완료 기준 |
 | UI | [디자인 가이드](docs/UI/guide_design.md): 디자인·CSS 책임/정비·접근성·검증. [Design.md](docs/UI/Design.md): 토큰·조합·화면별 사양과 조회용 구현값. 구현 조회값을 전역 규격으로 확대하지 않음 |
-| 데이터 | [데이터 가이드](docs/Data/guide_data.md): 카드/인벤토리 저장·변환·버전·식별자·조회/동시성·데이터 보존 |
+| 데이터 | [사용자 저장소 설계](docs/Data/guide_user_storage.md): 같은 프로젝트의 Firestore·RTDB 역할과 호환 조건. [데이터 가이드](docs/Data/guide_data.md): 카드/인벤토리 저장·변환·버전·식별자·조회/동시성·데이터 보존 |
 | 일러스트 | [일러스트 가이드](docs/Illustrations/guide_illustration.md): 잠정 CIID·수집/매핑·증분 동기화·경로/제공·운영 경계 |
 | 사진 검색 | [사진 검색 가이드](docs/PhotoSearch/guide_photo_search.md): 현재 Draw2 처리·입출력/자원·검색/등록 연결·실험 평가와 서비스 검증 구분 |
 | 공개·고지 | [공개 가이드](docs/Publication/guide_publication.md): 원본/웹 고지·생성·운영 소스/스테이징·공개 경로/검증 |

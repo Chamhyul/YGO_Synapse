@@ -28,7 +28,9 @@ for (const { project, flags, expected, label } of [
       .map(([name]) => name).sort();
     assert.deepEqual(selected, expected);
     for (const [name, endpoint] of Object.entries(build.endpoints)) {
-      if (!expected.includes(name)) assert.ok(!endpoint.serviceAccount, `${name}의 계정이 바뀌면 안 됩니다.`);
+      if (name === 'compactUserWriterHistory') {
+        assert.equal(endpoint.serviceAccount || null, project === 'ygo-synapse' && !flags.FUNCTIONS_EMULATOR ? 'user-storage-writer@ygo-synapse.iam.gserviceaccount.com' : null);
+      } else if (!expected.includes(name)) assert.ok(!endpoint.serviceAccount, `${name}의 계정이 바뀌면 안 됩니다.`);
     }
   });
 }

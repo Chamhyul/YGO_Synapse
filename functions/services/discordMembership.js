@@ -1,5 +1,6 @@
 const { resolveAccountRole, normalizeSourceMembership, resolveEffectiveMembership } = require('./membershipPolicy');
 const { randomBytes, createHash } = require('node:crypto');
+const { resolveMembershipProviderRuntime, syncProviderMembershipClaims, providerStateError } = require('./membershipProviderRuntime');
 const DISCORD_REDIRECTS = new Set(['https://ygo-synapse.web.app/', 'http://localhost:5005/']);
 const ROLE_MAP = [
   ['1462257396020809804', '이사님'], ['1462257396020809803', '간부'],
@@ -10,20 +11,28 @@ const fail = (status, code, message) => Object.assign(new Error(message), { stat
 const hash = value => createHash('sha256').update(value).digest('hex');
 
 function createDiscordMembershipHandlers({ db, auth, isLocal, verifyAppCheck, verifyRegisteredUser, setCors,
-  forward, getMembership, getClientSecret, clientId, guildId, now = Date.now }) {
+  forward, getMembership, getClientSecret, clientId, guildId, now = Date.now, env = process.env,
+  storage, rtdbTestDependencies = false, syncClaims }) {
   async function handle(req, res, operation) {
     setCors(res, req);
     res.set('Cache-Control', 'no-store');
     if (req.method === 'OPTIONS') return res.status(204).send('');
     if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'POST 요청만 허용합니다.' });
     if (!(await verifyAppCheck(req, res))) return;
+    let runtime;
+    try { runtime = resolveMembershipProviderRuntime({ env, storage,
+      rtdbTestDependencies: rtdbTestDependencies && typeof auth?.getUser === 'function'
+        && typeof getMembership === 'function' && typeof getClientSecret === 'function' }); } catch (_) {
+      return res.status(503).json({ success: false, code: 'USER_STORAGE_FEATURE_UNAVAILABLE',
+        message: '이 환경에서는 멤버십 인증을 사용할 수 없습니다.' });
+    }
     const uid = await verifyRegisteredUser(req, res);
     if (!uid) return;
     const body = req.body || {};
     try {
       if (typeof body !== 'object' || Array.isArray(body)) throw fail(400, 'DISCORD_INVALID_REQUEST', '인증 요청 형식이 올바르지 않습니다.');
       if ('discordId' in body || 'roles' in body || 'redirectUri' in body && operation === 'verifyDiscordMembership') throw fail(400, 'DISCORD_PROOF_REQUIRED', '계정 ID·역할을 제출하는 대신 Discord 인증을 진행해 주세요.');
-      if (isLocal()) {
+      if (!runtime && isLocal()) {
         // 로컬은 자격증명 없이 고정 운영 API에서 검증하고, 결과만 로컬에 저장한다.
         const result = await forward(operation, { ...body, localOnly: true }, req.headers);
         if (result.uid !== uid) throw fail(403, 'DISCORD_SESSION_CHANGED', '인증한 서비스 계정이 변경되었습니다.');
@@ -33,17 +42,19 @@ function createDiscordMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
         }
         return res.json(result);
       }
-      const ref = db.collection('discord_membership_verifications').doc(uid);
+      const ref = runtime ? null : db.collection('discord_membership_verifications').doc(uid);
       if (operation === 'startDiscordMembershipVerification') {
         if (body.localOnly !== undefined && typeof body.localOnly !== 'boolean') throw fail(400, 'DISCORD_INVALID_REQUEST', '인증 요청 형식이 올바르지 않습니다.');
         if (!DISCORD_REDIRECTS.has(body.redirectUri)) throw fail(400, 'DISCORD_REDIRECT_INVALID', '허용된 복귀 주소가 아닙니다.');
         const verificationId = randomBytes(32).toString('hex');
         const startedAt = now();
-        await db.runTransaction(async tx => {
+        const state = { nonceHash: hash(verificationId), startedAt, expiresAt: startedAt + 300000,
+          consumed: false, localOnly: body.localOnly === true || body.redirectUri === 'http://localhost:5005/', redirectUri: body.redirectUri };
+        if (runtime) await runtime.storage.membership.start(uid, 'discord', state);
+        else await db.runTransaction(async tx => {
           const previous = (await tx.get(ref)).data();
           if (previous && startedAt - previous.startedAt < 3000) throw fail(429, 'DISCORD_TOO_MANY_REQUESTS', '잠시 후 다시 인증해 주세요.');
-          tx.set(ref, { nonceHash: hash(verificationId), startedAt, expiresAt: startedAt + 300000,
-            consumed: false, localOnly: body.localOnly === true || body.redirectUri === 'http://localhost:5005/', redirectUri: body.redirectUri });
+          tx.set(ref, state);
         });
         const authorizationUrl = new URL('https://discord.com/oauth2/authorize');
         authorizationUrl.search = new URLSearchParams({ client_id: clientId, response_type: 'code',
@@ -55,9 +66,13 @@ function createDiscordMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
           || typeof code !== 'string' || !code || code.length > 2048 || /[\r\n]/.test(code)) {
         throw fail(400, 'DISCORD_PROOF_REQUIRED', '유효한 Discord 인증 정보가 필요합니다.');
       }
+      const verify = async () => {
       const nonceHash = hash(verificationId);
       let localOnly, redirectUri;
-      await db.runTransaction(async tx => {
+      if (runtime) {
+        const state = await runtime.storage.membership.consume(uid, 'discord', nonceHash, now);
+        localOnly = state.localOnly; redirectUri = state.redirectUri;
+      } else await db.runTransaction(async tx => {
         const state = (await tx.get(ref)).data();
         if (!state || state.nonceHash !== nonceHash || state.consumed || state.expiresAt <= now()) {
           throw fail(403, 'DISCORD_VERIFICATION_EXPIRED', '인증이 만료되었거나 이미 사용되었습니다. 다시 인증해 주세요.');
@@ -79,16 +94,24 @@ function createDiscordMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
       const membership = { status: active ? 'active' : 'none', type: 'discord',
         levelName: matched?.[1] || '일반',
         discordId: verified.discordId, verificationVersion: 2, verificationProvider: 'discord', lastChecked: now() };
-      await db.runTransaction(async tx => {
+      let stored = false;
+      if (runtime) stored = (await runtime.storage.membership.complete(uid, 'discord', nonceHash, membership, now)).stored;
+      else await db.runTransaction(async tx => {
         const state = (await tx.get(ref)).data();
         if (!state || state.nonceHash !== nonceHash || !state.consumed || state.expiresAt <= now()) {
           throw fail(403, 'DISCORD_VERIFICATION_EXPIRED', '인증 상태가 변경되었습니다. 다시 인증해 주세요.');
         }
         if (!localOnly) tx.set(db.collection('users').doc(uid), { settings: { membership } }, { merge: true });
       });
+      const claimState = runtime && stored ? await syncProviderMembershipClaims(uid, runtime, auth, syncClaims) : {};
       const effective = resolveEffectiveMembership(role, membership);
-      return res.json({ success: true, uid, membership: effective, sourceMembership: membership, isMemberActive: effective.status === 'active' });
+      return { success: true, uid, membership: effective, sourceMembership: membership, isMemberActive: effective.status === 'active', ...claimState };
+      };
+      const response = runtime?.storage.membership.withVerification
+        ? await runtime.storage.membership.withVerification(uid, 'discord', verify) : await verify();
+      return res.json(response);
     } catch (error) {
+      error = providerStateError(error, 'DISCORD');
       // Discord 오류 객체에는 인증 정보가 포함될 수 있어 원문을 기록하지 않는다.
       const expected = typeof error.code === 'string' && /^(DISCORD_|AUTH_INVALID$)/.test(error.code);
       return res.status(expected ? error.status : 503).json({ success: false,

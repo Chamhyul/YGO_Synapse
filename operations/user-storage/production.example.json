@@ -1,0 +1,19 @@
+{
+  "projectId": "ygo-synapse",
+  "storageBucket": "ygo-synapse.firebasestorage.app",
+  "targetId": "user-data",
+  "databaseState": "create",
+  "instanceId": null,
+  "location": "asia-southeast1",
+  "databaseURL": null,
+  "writerRunId": null,
+  "job": {
+    "name": "ygo-user-storage-writer",
+    "region": "asia-northeast3",
+    "serviceAccount": null,
+    "image": null,
+    "cpu": 2,
+    "memory": "1Gi",
+    "timeout": "3600s"
+  }
+}

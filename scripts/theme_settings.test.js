@@ -23,6 +23,7 @@ function fixture({ stored = {}, dark = false, blocked = false } = {}) {
     const apiCalls = [];
     let metaColor;
     const context = vm.createContext({
+        authStateRevision: 1,
         localStorage: {
             getItem(key) { if (blocked) throw new Error('blocked'); return records.get(key) ?? null; },
             setItem(key, value) { if (blocked) throw new Error('blocked'); records.set(key, value); },

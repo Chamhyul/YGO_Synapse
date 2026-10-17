@@ -1,3 +1,4 @@
+const { readSourceFile } = require('./sourceFile');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -76,8 +77,8 @@ test('일러스트 로컬 중계는 카드별 고정 운영 경로만 읽고 전
 });
 test('키 없는 로컬 카드 보완은 운영 카드 결과와 로컬 수집 결과를 합치며 저장하지 않는다',async()=>{
  const module={exports:{}};let apiCalls=0;const local={id:'43',exists:true,data:()=>({names:['로컬'],numbers:['LOCAL'],info:{}})};
- const mocks={'../config/firebase':{db:{collection:()=>({doc:id=>({id}),where:()=>({get:async()=>({docs:[local]})})}),getAll:async()=>[local]}},'../utils/common':{normalizeText:value=>value},'../utils/cardSchema':{toRuntimeInfo:info=>info},'./publicReadTransport':{isLocal:()=>true,requestProduction:async()=>{apiCalls++;return{success:true,cards:[{cid:'42',data:{names:['운영'],numbers:['TEST'],info:{}}}]};}}};
- vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../services/cardQueryService.js'),'utf8'),{module,console,require:name=>{assert.ok(Object.hasOwn(mocks,name));return mocks[name];}});
+ const mocks={'./publicCardContract':require('../services/publicCardContract'),'../config/firebase':{db:{collection:()=>({doc:id=>({id}),where:()=>({get:async()=>({docs:[local]})})}),getAll:async()=>[local]}},'../utils/common':{normalizeText:value=>value},'../utils/cardSchema':{toRuntimeInfo:info=>info},'./publicReadTransport':{isLocal:()=>true,requestProduction:async()=>{apiCalls++;return{success:true,cards:[{cid:'42',data:{names:['운영'],numbers:['TEST'],info:{}}}]};}}};
+ vm.runInNewContext(readSourceFile(path.join(__dirname,'../services/cardQueryService.js'),'utf8'),{module,console,require:name=>{assert.ok(Object.hasOwn(mocks,name));return mocks[name];}});
  const cards=await module.exports.getCardsByCids(['42','43']);assert.deepEqual(Array.from(cards,card=>card.cid),['42','43']);assert.equal(apiCalls,1);
  assert.equal(await module.exports.resolveInventoryCid('TEST','운영'),'42');
 });

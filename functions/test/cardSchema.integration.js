@@ -1,3 +1,4 @@
+const { readSourceFile } = require('./sourceFile');
 // firebase emulators:exec --only firestore --project demo-card-schema "node functions/test/cardSchema.integration.js"
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -14,7 +15,7 @@ let fetchFails = false;
 let enqueued = 0;
 const mod = { exports: {} };
 const filename = path.join(__dirname, '../services/cardIllustrationsMigrationService.js');
-vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
+vm.runInNewContext(readSourceFile(filename, 'utf8'), {
   module: mod, exports: mod.exports, console, Date, AbortSignal,
   fetch: async () => fetchFails
     ? { status: 429, ok: false }

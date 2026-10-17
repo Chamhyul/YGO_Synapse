@@ -4,6 +4,7 @@
     const transitions = new WeakMap();
     const popups = new Map();
     const panelSizes = new Map();
+    const resizingPopups = new WeakSet();
 
     // 열린 모달·시트의 내용 변경을 관찰한다. 높이 전환은 표시 수명주기와 별개다.
     function panelRect(panel) {
@@ -30,7 +31,7 @@
         state.height = next.height;
         state.width = next.width;
         const time = duration();
-        if (immediate || !panel.matches('.ui-overlay--modal, .ui-overlay--sheet') ||
+        if (immediate || !(panel.matches('.ui-overlay--modal, .ui-overlay--sheet') || resizingPopups.has(panel)) ||
             transitions.has(panel) || widthChanged || !from || !next.height ||
             Math.abs(from - next.height) < 1 || !panel.animate || !time) return;
         const animation = panel.animate([
@@ -55,7 +56,7 @@
             }
         });
         const register = panel => {
-            if (panelSizes.has(panel) || !panel.matches('.ui-overlay--modal, .ui-overlay--sheet')) return;
+            if (panelSizes.has(panel) || !(panel.matches('.ui-overlay--modal, .ui-overlay--sheet') || resizingPopups.has(panel))) return;
             const rect = panelRect(panel);
             panelSizes.set(panel, { height: rect.height, width: rect.width, animation: null });
             resize.observe(panel);
@@ -221,7 +222,19 @@
         animate(panel, null, false, () => { panel.hidden = true; onClose?.(); });
     }
 
-    root.AppOverlays = { duration, installModal, openPopup, closePopup, placePopup };
+    // 내용 교체를 요청한 팝업만 모달·시트와 같은 높이 전환을 사용한다.
+    function updatePopup(panel, update, trigger) {
+        resizingPopups.add(panel);
+        if (!panelSizes.has(panel)) {
+            const rect = panelRect(panel);
+            panelSizes.set(panel, { height:rect.height, width:rect.width, animation:null });
+        }
+        if (trigger !== undefined) popups.set(panel, trigger);
+        update();
+        syncPanelHeight(panel);
+    }
+
+    root.AppOverlays = { duration, installModal, openPopup, closePopup, placePopup, updatePopup };
     root.addEventListener('resize', syncViewport);
     root.addEventListener('scroll', syncViewport, true);
     root.visualViewport?.addEventListener('resize', syncViewport);

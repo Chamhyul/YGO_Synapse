@@ -1,6 +1,12 @@
 'use strict';
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
+const checks = ['scripts/check-card-package.cjs'];
+if (fs.existsSync('card-service/manifest.json')) checks.push('scripts/sync-card-service.cjs');
+for (const check of checks) {
+  const result = spawnSync(process.execPath, [check], { stdio: 'inherit' });
+  if (result.status !== 0) process.exit(result.status ?? 1);
+}
 const files = ['functions/test', 'scripts'].flatMap(directory => fs.readdirSync(directory)
   .filter(name => name.endsWith('.test.js') && !name.endsWith('.browser.test.js'))
   .sort().map(name => `${directory}/${name}`));

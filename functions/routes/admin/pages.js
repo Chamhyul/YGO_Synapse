@@ -1,19 +1,17 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { admin, db } = require('../../config/firebase');
-const { createAdminPageHandler, createFirestoreStore } = require('../../services/adminPageSession');
-const { createErrorSummaryService } = require('../../services/adminErrorSummary');
-const { createTrafficSummaryService } = require('../../services/adminTrafficSummary');
-const { createNoticeService, createStorageNoticeStore } = require('../../services/noticeService');
-const { createMembershipCsvService, createFirestoreMembershipCsvStore } = require('../../services/membershipCsvService');
-const { createAdminProxy, createAdminBackendHandler, createLocalAdminRenderer, emulatorConfigured } = require('../../services/adminTransport');
-const { google } = require('googleapis');
-let productionHandler;
-function production() {
-  if (emulatorConfigured(process.env)) throw Error('운영 관리자 처리는 에뮬레이터에서 실행할 수 없습니다.');
-  if (productionHandler) return productionHandler;
-  // 운영 실행 계정의 ADC만 사용한다. 로컬 키 파일로 대체하는 경로는 없다.
+const { createAdminRouteHandlers } = require('../../services/adminPageRuntime');
+const { createAdminProxy, createLocalAdminRenderer } = require('../../services/adminTransport');
+function productionDependencies() {
+  // 실행 환경·RTDB 대상 검증을 통과하기 전에는 운영 SDK와 서비스를 만들지 않는다.
+  const { admin, db } = require('../../config/firebase');
+  const { createErrorSummaryService } = require('../../services/adminErrorSummary');
+  const { createTrafficSummaryService } = require('../../services/adminTrafficSummary');
+  const { createNoticeService, createStorageNoticeStore } = require('../../services/noticeService');
+  const { google } = require('googleapis');
+  // 기존 관리형 운영 실행 계정의 ADC를 사용하는 관리자 서비스 구성을 유지한다.
+  // RTDB 연결의 metadata 자격증명 제한은 별도 userStorage 설정 계층에서 검사한다.
   let analytics, reporting;
   const getTrafficSummary = createTrafficSummaryService({
     async run(requests) {
@@ -39,20 +37,21 @@ function production() {
       return data;
     }
   });
-  productionHandler = createAdminPageHandler({
-    auth: admin.auth(), store: createFirestoreStore(db), getErrorSummary, getTrafficSummary,
+  const dependencies = {
+    auth: admin.auth(), getErrorSummary, getTrafficSummary,
     notices: createNoticeService({ storage: createStorageNoticeStore(admin.storage().bucket()), environment: 'production' }),
-    membershipCsv: createMembershipCsvService({ store: createFirestoreMembershipCsvStore(db) }),
     template: name => fs.readFile(path.join(__dirname, '../../templates/admin', name + '.html'), 'utf8')
-  });
-  return productionHandler;
+  };
+  const { createMembershipCsvService } = require('../../services/membershipCsvService');
+  const { getMembershipCsvStore } = require('../../services/membershipCsvRepository');
+  dependencies.membershipCsv = createMembershipCsvService({ store: getMembershipCsvStore({ db }) });
+  return dependencies;
 }
 const proxy = createAdminProxy({ renderDocument: createLocalAdminRenderer(
   name => fs.readFile(path.join(__dirname, '../../templates/admin', name + '.html'), 'utf8')
 ) });
 const options = { invoker: 'public', timeoutSeconds: 60, memory: '256MiB' };
-// 로컬 관리자 경로는 페이지·세션·데이터 모두 운영 서버의 판정으로 연결한다.
-exports.adminPages = onRequest(options, (req, res) => emulatorConfigured(process.env)
-  ? proxy(req, res) : production()(req, res));
-const backend = createAdminBackendHandler({ handler: (req, res) => production()(req, res) });
-exports.adminBackend = onRequest(options, backend);
+// 기본 로컬 경로의 운영 proxy 계약은 유지한다. RTDB 에뮬레이터 의존성은 export에 주입하지 않는다.
+const handlers = createAdminRouteHandlers({ productionDependencies, proxy });
+exports.adminPages = onRequest(options, handlers.adminPages);
+exports.adminBackend = onRequest(options, handlers.adminBackend);

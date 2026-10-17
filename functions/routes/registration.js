@@ -1,8 +1,7 @@
 const { onRequest } = require('firebase-functions/v2/https');
-const { db, FieldValue } = require('../config/firebase');
 const { setCors, verifyUser, verifyAppCheck } = require('../utils/auth');
 const { safeErrorSummary } = require('../utils/safeError');
-const { isRegisteredUser } = require('../services/registrationService');
+const { isRegisteredUser, completeUserRegistration } = require('../services/registrationService');
 
 // 공개 문서의 SHA-256. 문서를 변경할 때 이 버전도 함께 갱신한다.
 const CONSENT_VERSIONS = Object.freeze({
@@ -14,6 +13,15 @@ async function prepare(req, res, method) {
   setCors(res, req);
   res.set('Cache-Control', 'no-store');
   if (req.method === 'OPTIONS') { res.status(204).send(''); return null; }
+  if (process.env.USER_PROFILE_WRITER_MODE || process.env.USER_STORAGE_MODE === 'production') {
+    try {
+      if (require('../config/userProfileWriter').resolveProfileWriterConfig().mode !== 'production') throw Error('test only');
+      await require('../services/userWriterSelection').selectProductionWriter().initialize();
+    } catch (_) {
+      res.status(503).json({ success: false, code: 'USER_STORAGE_FEATURE_UNAVAILABLE', message: '이 환경에서는 사용자 저장소에 접근할 수 없습니다.' });
+      return null;
+    }
+  }
   if (req.method !== method) { res.status(405).json({ success: false, message: `${method} 요청을 사용하세요.` }); return null; }
   if (!(await verifyAppCheck(req, res))) return null;
   return verifyUser(req, res);
@@ -42,21 +50,7 @@ exports.completeRegistration = onRequest({ invoker: 'public' }, async (req, res)
   }
   try {
     // 기존 데이터·가입일·동의 기록을 덮어쓰지 않는다. 재요청도 같은 결과를 반환한다.
-    if (!(await isRegisteredUser(uid))) {
-      const ref = db.collection('users').doc(uid);
-      await db.runTransaction(async transaction => {
-        const snapshot = await transaction.get(ref);
-        if (snapshot.exists) return;
-        transaction.create(ref, {
-          createdAt: FieldValue.serverTimestamp(),
-          registration: {
-            completed: true,
-            consent: { terms: CONSENT_VERSIONS.terms, privacy: CONSENT_VERSIONS.privacy,
-              acceptedAt: FieldValue.serverTimestamp() },
-          },
-        });
-      });
-    }
+    await completeUserRegistration(uid, CONSENT_VERSIONS);
     return res.json({ success: true, registered: true });
   } catch (error) {
     console.error('Registration completion failed:', safeErrorSummary(error));

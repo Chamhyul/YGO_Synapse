@@ -24,7 +24,11 @@ case "${1:-dev}" in
     exec node docker/run-tests.cjs
     ;;
   browser-test)
-    exec node --test --test-concurrency=1 scripts/admin_notice_editor.browser.test.js scripts/admin_membership_csv.browser.test.js
+    # Compose와 이미지 단독 실행에 같은 오프라인 Chromium 환경을 제공한다.
+    export MEMBERSHIP_TEST_BROWSER="${MEMBERSHIP_TEST_BROWSER:-chromium}"
+    export TEST_WEB_ASSETS="${TEST_WEB_ASSETS:-/opt/browser-assets}"
+    export TEST_ARTIFACT_DIR="${TEST_ARTIFACT_DIR:-/test-results}"
+    exec node --test --test-concurrency=1 scripts/admin_notice_editor.browser.test.js scripts/admin_membership_csv.browser.test.js scripts/admin_settings.browser.test.js scripts/admin_cards.browser.test.js scripts/local_api_endpoints.browser.test.js
     ;;
   *) exec "$@" ;;
 esac

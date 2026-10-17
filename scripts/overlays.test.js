@@ -145,13 +145,13 @@ test('스크롤 시 열린 팝업의 앵커를 다시 따라가고 제거된 팝
   assert.equal(panel.style.top, '78px');
 });
 
-function sizeFixture({ reduced = false, sheet = false } = {}) {
+function sizeFixture({ reduced = false, sheet = false, popup = false } = {}) {
   let mutationCallback, resizeCallback;
   const observed = new Set();
   const animations = [];
   const panel = {
     nodeType: 1, isConnected: true, height: 400, width: 600, hidden: false, activeAnimation: null,
-    matches: selector => selector === '.ui-overlay__panel' || selector.includes(sheet ? '.ui-overlay--sheet' : '.ui-overlay--modal'),
+    matches: selector => selector === '.ui-overlay__panel' || selector.includes(popup ? '.ui-overlay--popup' : sheet ? '.ui-overlay--sheet' : '.ui-overlay--modal'),
     closest: selector => selector === '.ui-overlay__panel' ? panel : panel.hidden ? panel : null,
     contains: node => node === panel || node === body,
     querySelectorAll: () => [],
@@ -179,8 +179,30 @@ function sizeFixture({ reduced = false, sheet = false } = {}) {
   const change = height => { panel.height = height; mutationCallback([{ type: 'childList', target: body, addedNodes: [] }]); };
   const resize = () => resizeCallback([{ target: panel }]);
   const flush = async () => { animations.at(-1)?.finish(); await Promise.resolve(); await Promise.resolve(); };
-  return { panel, animations, change, resize, flush, observed, mutationCallback };
+  return { panel, animations, change, resize, flush, observed, mutationCallback, api:window.AppOverlays };
 }
+
+test('명시적으로 내용 전환을 요청한 팝업만 공통 높이 애니메이션을 사용한다', async () => {
+  const f = sizeFixture({ popup:true });
+  f.change(260);
+  assert.equal(f.animations.length, 0);
+  f.api.updatePopup(f.panel, () => { f.panel.height = 600; });
+  assert.equal(f.animations[0].frames[0].height, '260px');
+  assert.equal(f.animations[0].frames[1].height, '600px');
+  assert.equal(f.animations[0].options.duration, 200);
+  await f.flush();
+  f.api.updatePopup(f.panel, () => { f.panel.height = 220; });
+  assert.equal(f.animations[1].frames[0].height, '600px');
+  assert.equal(f.animations[1].frames[1].height, '220px');
+  await f.flush();
+});
+
+test('팝업 내용 전환도 감소된 모션에서는 즉시 높이를 반영한다', () => {
+  const f = sizeFixture({ popup:true, reduced:true });
+  f.api.updatePopup(f.panel, () => { f.panel.height = 220; });
+  assert.equal(f.animations.length, 0);
+  assert.equal(f.panel.height, 220);
+});
 
 for (const sheet of [false, true]) {
   test(`${sheet ? '시트' : '모달'} 내용의 확대·축소는 200ms로 전환하고 자연 높이로 돌아온다`, async () => {

@@ -85,10 +85,14 @@ test('좁은 공지 목록은 본문 DOM을 유지하며 조작을 차단하고 
 });
 
 test('미리보기 배치 노드는 단일 class 속성에 공통 본문·문서 배치 클래스를 함께 제공한다', () => {
-    const html = fs.readFileSync('previews/document-specimen.html', 'utf8');
-    const tag = html.match(/<div\b[^>]*data-document-layout[^>]*>/)[0];
-    assert.equal((tag.match(/\bclass=/g) || []).length, 1);
-    assert.match(tag, /class="ui-overlay__body document-view"/);
+    const files = ['scripts/fixtures/document-specimen.html'];
+    if (fs.existsSync('previews/document-specimen.html')) files.push('previews/document-specimen.html');
+    for (const file of files) {
+        const html = fs.readFileSync(file, 'utf8');
+        const tag = html.match(/<div\b[^>]*data-document-layout[^>]*>/)[0];
+        assert.equal((tag.match(/\bclass=/g) || []).length, 1);
+        assert.match(tag, /class="ui-overlay__body document-view"/);
+    }
 });
 
 function readStateFixture(stored = []) {

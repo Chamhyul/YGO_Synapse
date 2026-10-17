@@ -31,6 +31,10 @@ RUN npm --prefix functions ci --no-audit --no-fund
 COPY docker/cache-web-assets.cjs /opt/cache-web-assets.cjs
 RUN node /opt/cache-web-assets.cjs
 
+# 사용자 저장소 통합 검사는 네트워크가 차단된 상태에서 RTDB 에뮬레이터를 실행한다.
+# 기존 Node/Java/Chromium·의존성 캐시를 유지하면서 빌드 때만 바이너리를 준비한다.
+RUN firebase setup:emulators:database
+
 # .dockerignore의 허용 목록에 있는 소스만 포함한다. 호스트 인증정보는 복사하지 않는다.
 COPY --chown=node:node . .
 RUN sha256sum package-lock.json functions/package-lock.json > /opt/dependency-locks.sha256 \

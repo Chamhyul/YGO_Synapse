@@ -1,3 +1,4 @@
+const { readSourceFile } = require('./sourceFile');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -7,7 +8,7 @@ const vm = require('node:vm');
 function load(fetchImpl = async () => { throw new Error('unexpected fetch'); }) {
   const filename = path.join(__dirname, '..', 'services/cardIllustrationsMigrationService.js');
   const module = { exports: {} };
-  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
+  vm.runInNewContext(readSourceFile(filename, 'utf8'), {
     module, exports: module.exports, console, Date, URL, encodeURIComponent,
     fetch: fetchImpl,
     AbortSignal: { timeout: () => ({}) },

@@ -1,8 +1,10 @@
 const { normalizeSourceMembership, resolveEffectiveMembership } = require('../services/membershipPolicy');
 const { onRequest: firebaseOnRequest } = require("firebase-functions/v2/https");
 const { withPublicReadRequest } = require("../services/publicReadTransport");
-const onRequest = (options, handler) => firebaseOnRequest(options, withPublicReadRequest(handler));
-const { db, admin, getBucket, getStorageEmulatorBaseUrl, FieldValue } = require("../config/firebase");
+const { withUserStorageRequestGuard } = require('../services/userStorageRequestGuard');
+const onRequest = (options, handler, storageOptions) => firebaseOnRequest(options,
+  withUserStorageRequestGuard(withPublicReadRequest(handler), storageOptions));
+const { getUserProfileRepository } = require('../services/userProfileRepository');
 const { setCors, verifyRegisteredUser, getVerifiedAccountRole, verifyAppCheck } = require("../utils/auth");
 const { downloadInventory, updateInventoryWithRetry, deleteInventory } = require("../utils/inventoryStorage");
 
@@ -26,47 +28,6 @@ exports.clearUserData = onRequest({ invoker: "public" }, async (req, res) => {
   }
 });
 
-exports.getInitialData = onRequest({ invoker: "public", memory: "256MiB" }, async (req, res) => {
-  setCors(res, req);
-  if (req.method === "OPTIONS") return res.status(204).send("");
-  if (!(await verifyAppCheck(req, res))) return;
-
-  try {
-    const bucket = getBucket();
-    const getResource = async (path, format) => {
-      const file = bucket.file(path);
-      try {
-        const [metadata] = await file.getMetadata();
-        const url = process.env.FUNCTIONS_EMULATOR === "true"
-          ? `${getStorageEmulatorBaseUrl()}/download/storage/v1/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media`
-          : `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media`;
-        return { available: true, url, updatedAt: new Date(metadata.updated).getTime(),
-          generation: String(metadata.generation), format };
-      } catch (error) {
-        if (Number(error.code) !== 404) console.warn(`[Sync] ${path} metadata error:`, error.message);
-        return { available: false, url: null, updatedAt: 0, generation: null, format };
-      }
-    };
-
-    const [cardManifest, packs, rarity] = await Promise.all([
-      getResource("public/cardNames.json", "card-manifest-v2"),
-      getResource("public/packs.json", "packs-v1"),
-      getResource("public/rarityMapping.json", "rarity-langs-v1"),
-    ]);
-
-    return res.json({
-      success: true,
-      schemaVersion: 2,
-      syncType: "storage-links",
-      serverTime: Date.now(),
-      resources: { cardManifest, packs, rarity },
-    });
-  } catch (e) {
-    console.error("getInitialData error:", e);
-    return res.status(500).json({ success: false, message: e.toString() });
-  }
-});
-
 exports.getUserData = onRequest({ invoker: "public", memory: "256MiB" }, async (req, res) => {
   setCors(res, req);
   if (req.method === "OPTIONS") return res.status(204).send("");
@@ -83,17 +44,25 @@ exports.getUserData = onRequest({ invoker: "public", memory: "256MiB" }, async (
     const accountRole = await getVerifiedAccountRole(req, uid);
     const start = Date.now();
     
-    // [Storage 전환] 인벤토리를 Storage에서 다운로드 + 설정, 기본 가입정보는 Firestore 유지
-    const [inventoryResult, userSnap] = await Promise.all([
+    // 프로필·가입 판정과 인벤토리는 같은 backend 선택을 따른다.
+    const [inventoryResult, profile] = await Promise.all([
       ensureInventoryV2(uid).then(data => ({ data })).catch(async error => {
         console.warn('[InventoryV2] 저장 실패, 기존 재고 반환:', error.message);
         return { ...await downloadInventory(uid), migrationFailed: true };
       }),
-      db.collection("users").doc(uid).get()
+      getUserProfileRepository().read(uid)
     ]);
     
     let inventory = inventoryResult.data;
-    let userData = userSnap.exists ? userSnap.data() : {};
+    let userData = profile.exists ? profile.value : {};
+    // RTDB의 원본으로 표시를 유지한다. claims 갱신 지연은 가입/인벤토리 조회를 실패시키지 않는다.
+    let membershipClaims = process.env.USER_STORAGE_BACKEND === 'rtdb'
+      ? await require('../services/membershipClaims').syncMembershipClaims(uid) : undefined;
+    if (membershipClaims?.status === 'synced'
+        && membershipClaims.version !== require('../services/user-storage/membershipStore').membershipVersion(userData.settings?.membership)) {
+      // 응답의 프로필 snapshot과 다른 버전으로 토큰 갱신을 지시하지 않는다.
+      membershipClaims = { status: 'pending' };
+    }
     const sourceMembership = normalizeSourceMembership(userData.settings?.membership);
     let userSettings = { ...(userData.settings || {}), membership: resolveEffectiveMembership(accountRole, sourceMembership) };
 
@@ -102,33 +71,21 @@ exports.getUserData = onRequest({ invoker: "public", memory: "256MiB" }, async (
 
     // 신규 가입일은 completeRegistration에서만 생성한다. 기존 결측값은 추측하지 않는다.
     
-    // Self-healing: 데이터 형식 교정
-    let needsFix = false;
-    if (Array.isArray(inventory.locations)) {
-      inventory.locations = {}; needsFix = true;
-    }
-    if (Array.isArray(inventory.rarities)) {
-      inventory.rarities = {}; needsFix = true;
-    } else {
-      for (const key in inventory.rarities) {
-        if (inventory.rarities[key] <= 0) {
-          delete inventory.rarities[key]; needsFix = true;
-        }
-      }
-    }
-
-    if (needsFix) {
+    // 과거 배열형 집계만 저장 형식을 교정한다. 삭제 뒤 남는 rarity 0은
+    // 기존 저장/변경 API 계약이므로 조회할 때 다시 저장하지 않는다.
+    if (Array.isArray(inventory.locations) || Array.isArray(inventory.rarities)) {
       console.warn(`[Self-healing] Sanitizing inventory for UID: ${uid}`);
       inventory = await updateInventoryWithRetry(uid, current => {
         if (Array.isArray(current.locations)) current.locations = {};
         if (Array.isArray(current.rarities)) current.rarities = {};
-        for (const key in current.rarities) if (current.rarities[key] <= 0) delete current.rarities[key];
       });
     }
 
     const amount = inventory.amount || 0;
     const locationsMap = inventory.locations || {};
-    const raritiesMap = inventory.rarities || {};
+    // 응답용 사본에서만 걸러 공유된 인벤토리 snapshot과 복구 원본을 보존한다.
+    const raritiesMap = Object.fromEntries(Object.entries(inventory.rarities || {})
+      .filter(([, count]) => !(count <= 0)));
 
     // cards 객체를 allCards 2D 배열로 변환
     const allCards = [];
@@ -168,6 +125,7 @@ exports.getUserData = onRequest({ invoker: "public", memory: "256MiB" }, async (
         : inventoryMigrationStatus(inventory),
       settings: userSettings,
       sourceMembership,
+      ...(membershipClaims ? { membershipClaims } : {}),
       nickname,
       createdAt,
       debug: { serverTime: (end - start) }
@@ -177,7 +135,7 @@ exports.getUserData = onRequest({ invoker: "public", memory: "256MiB" }, async (
     console.error("getUserData error:", e);
     return res.status(500).json({ success: false, message: e.toString() });
   }
-});
+}, { allowWarmup: true });
 
 exports.updateUserSettings = onRequest({ invoker: "public" }, async (req, res) => {
   setCors(res, req);
@@ -201,14 +159,7 @@ exports.updateUserSettings = onRequest({ invoker: "public" }, async (req, res) =
   }
 
   try {
-    const userRef = db.collection("users").doc(uid);
-    
-    await userRef.set({
-      settings: {
-        ...filteredSettings,
-        updatedAt: Date.now()
-      }
-    }, { merge: true });
+    await getUserProfileRepository().updateSettings(uid, filteredSettings);
 
     return res.json({ success: true, message: "설정이 성공적으로 저장되었습니다." });
   } catch (e) {
@@ -234,11 +185,7 @@ exports.updateNickname = onRequest({ invoker: "public" }, async (req, res) => {
   }
 
   try {
-    const userRef = db.collection("users").doc(uid);
-    await userRef.set({
-      Nickname: nickname.trim(),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
+    await getUserProfileRepository().updateNickname(uid, nickname.trim());
 
     return res.json({ success: true, message: "닉네임이 성공적으로 변경되었습니다." });
   } catch (e) {
@@ -246,3 +193,5 @@ exports.updateNickname = onRequest({ invoker: "public" }, async (req, res) => {
     return res.status(500).json({ success: false, message: e.toString() });
   }
 });
+
+Object.defineProperty(exports, 'getInitialData', { enumerable: true, get: () => require('./initialData').getInitialData });

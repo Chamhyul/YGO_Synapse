@@ -27,7 +27,7 @@ function fixture(resolver = async () => '123') {
   let onSave = null;
   const migration = load('services/inventoryMigrationService.js', {
     'node:timers': require('node:timers'),
-    './cardQueryService': {
+    './inventoryCardLookup': {
       resolveInventoryCid: async (...args) => { calls++; return resolver(...args); },
       mapLimited: async (values, fn) => { for (const value of values) await fn(value); },
       normalizeNumber: value => String(value).trim().toUpperCase(),

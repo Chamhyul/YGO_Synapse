@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require.resolve('../public/script.js'), 'utf8');
 function fixture(api) {
-  const nodes = new Map(), calls = [];
+  const nodes = new Map(), calls = [], diagnostics = [];
   for (const id of ['auth-modal', 'signup-modal', 'terms-agree-cb', 'privacy-agree-cb', 'signup-status', 'signup-complete-btn', 'google-login-btn', 'twitter-login-btn', 'service-login-retry-btn', 'login-guide-msg', 'login-sub-msg', 'loading-overlay', 'loading-text']) {
     nodes.set(id, { id, checked: false, disabled: true, hidden: true, options: { dismissible: true },
       style: { display: 'none' }, setAttribute() {}, querySelectorAll: () => [nodes.get('terms-agree-cb'), nodes.get('privacy-agree-cb')],
@@ -22,17 +22,18 @@ function fixture(api) {
     } }) } },
     callApi: (...args) => { calls.push(['api', ...args]); return api(...args); },
     showToast: message => calls.push(['toast', message]),
+    console: { warn: (...args) => diagnostics.push(args) },
     getApiAppCheckToken: async force => { calls.push(['appcheck-refresh',force]); return 'fixture-app'; },
     getProviderInstance: name => ({ name }), IS_LOCAL_DEV: true,
     setTimeout: callback => { calls.push('retry-delay'); callback(); },
   });
   vm.runInContext('let authStateRevision = 0, pendingRegistrationUser = null, pendingConsentVersions = null, registrationSaving = false, loginInProgress = false, registrationCheckPending = false, pendingServiceAuthUser = null, serviceLoginPending = false;', c);
-  for (const name of ['showLoading', 'setServiceLoginPending', 'checkAndHideInitialLoading', 'awaitApiPreparation', 'getServiceRegistrationStatus', 'handleFirebaseAuthState', 'toggleAuthModal', 'toggleLoginBtn', 'retryServiceLoginConfirmation', 'signInWithProvider', 'toggleRegistrationButton', 'setRegistrationSaving', 'completeServiceRegistration', 'cancelServiceRegistration']) {
+  for (const name of ['showLoading', 'setServiceLoginPending', 'reportAuthFailure', 'checkAndHideInitialLoading', 'awaitApiPreparation', 'getServiceRegistrationStatus', 'handleFirebaseAuthState', 'toggleAuthModal', 'toggleLoginBtn', 'retryServiceLoginConfirmation', 'signInWithProvider', 'toggleRegistrationButton', 'setRegistrationSaving', 'completeServiceRegistration', 'cancelServiceRegistration']) {
     const start = source.search(new RegExp(`^(?:async )?function ${name}\\(`, 'm'));
     const rest = source.slice(start), end = rest.slice(1).search(/\n(?:async )?function /);
     vm.runInContext(rest.slice(0, end + 1), c);
   }
-  return { c, nodes, calls, auth };
+  return { c, nodes, calls, auth, diagnostics };
 }
 const newStatus = { success: true, registered: false, consentVersions: { terms: 'terms-version', privacy: 'privacy-version' } };
 function agree(f) {
@@ -349,4 +350,128 @@ test('로그인 수단과 재시도 버튼은 hidden으로만 표시 상태를 �
   assert.equal(f.nodes.get('google-login-btn').hidden, false);
   assert.equal(f.nodes.get('twitter-login-btn').hidden, false);
   assert.equal(f.nodes.get('service-login-retry-btn').hidden, true);
+});
+
+for (const code of ['auth/operation-not-supported-in-this-environment', 'auth/network-request-failed', 'auth/unauthorized-domain']) {
+  test(`운영 redirect 시작 실패 ${code}는 안전한 분류와 기존 안내만 남긴다`, async () => {
+    const f = fixture(async () => assert.fail('OAuth 실패 뒤 가입 API를 호출하지 않는다'));
+    f.c.IS_LOCAL_DEV = false;
+    f.auth.currentUser = null;
+    f.nodes.get('google-login-btn').disabled = false;
+    f.auth.signInWithRedirect = async () => {
+      f.calls.push('redirect');
+      throw { code, name: 'FirebaseError', message: 'never-log@example.invalid', customData: { token: 'never-log-token' } };
+    };
+    await f.c.signInWithProvider('google');
+    assert.deepEqual(f.diagnostics, [[`[Firebase Auth] stage=sign-in-redirect code=${code} name=FirebaseError`]]);
+    assert.equal(f.calls.filter(call => call === 'redirect').length, 1);
+    assert.equal(f.calls.includes('popup'), false);
+    assert.equal(f.calls.some(call => call[0] === 'close'), false);
+    assert.equal(f.calls.some(call => call[0] === 'toast' && call[1] === '로그인하지 못했습니다. 다시 시도해 주세요.'), true);
+    assert.equal(f.nodes.get('google-login-btn').disabled, false);
+    assert.equal(f.nodes.get('loading-overlay').style.display, 'none');
+    assert.equal(f.c.UserStore.user, null);
+  });
+}
+
+test('인증 진단은 원문 오류 속성과 허용하지 않은 code/name/stage를 노출하지 않는다', () => {
+  const f = fixture(async () => {});
+  const secret = 'never-log@example.invalid?token=never-log-token';
+  const unsafe = { code: `auth/${secret}`, name: secret };
+  for (const field of ['message', 'stack', 'email', 'credential', 'customData']) {
+    Object.defineProperty(unsafe, field, { get() { assert.fail(`${field}를 읽지 않는다`); } });
+  }
+  f.c.reportAuthFailure('sign-in-redirect', unsafe);
+  f.c.reportAuthFailure(secret, unsafe);
+  f.c.reportAuthFailure('sign-in-popup', { code: 'auth/popup-closed-by-user', name: 'FirebaseError', message: secret });
+  f.c.reportAuthFailure('redirect-result', { get code() { throw Error(secret); } });
+  assert.deepEqual(f.diagnostics, [
+    ['[Firebase Auth] stage=sign-in-redirect code=unknown name=unknown'],
+    ['[Firebase Auth] stage=sign-in-popup code=auth/popup-closed-by-user name=FirebaseError'],
+    ['[Firebase Auth] stage=redirect-result code=unknown name=unknown'],
+  ]);
+  assert.doesNotMatch(JSON.stringify(f.diagnostics), /never-log/);
+});
+
+test('브라우저 저장소·통신 예외의 종류를 구분하고 콘솔 장애가 로그인 UI 복원을 막지 않는다', async () => {
+  const f = fixture(async () => assert.fail('가입 API 호출 금지'));
+  f.c.IS_LOCAL_DEV = false;
+  f.auth.currentUser = null;
+  f.nodes.get('google-login-btn').disabled = false;
+  for (const name of ['SecurityError', 'QuotaExceededError', 'TypeError']) {
+    f.auth.signInWithRedirect = async () => { throw { name, message: 'never-log-secret' }; };
+    await f.c.signInWithProvider('google');
+  }
+  assert.deepEqual(f.diagnostics, ['SecurityError', 'QuotaExceededError', 'TypeError'].map(name =>
+    [`[Firebase Auth] stage=sign-in-redirect code=unknown name=${name}`]));
+  f.c.console.warn = () => { throw Error('console-unavailable'); };
+  await f.c.signInWithProvider('google');
+  assert.equal(f.nodes.get('google-login-btn').disabled, false);
+  assert.equal(f.nodes.get('loading-overlay').style.display, 'none');
+  assert.equal(f.calls.filter(call => call[0] === 'toast').length, 4);
+});
+
+function initializeAuthFixture(f, getRedirectResult) {
+  f.c.IS_LOCAL_DEV = false;
+  f.c.window.location = { hostname: 'login.example.invalid' };
+  f.c.window.addEventListener = () => {};
+  f.c.handleTooltipDisplay = () => {};
+  f.c.firebase.app = () => ({ options: {} });
+  f.auth.getRedirectResult = getRedirectResult;
+  f.auth.onIdTokenChanged = () => {};
+  f.auth.onAuthStateChanged = handler => { f.auth.deliverState = handler; };
+  const start = source.indexOf('function initFirebaseAuth(');
+  const end = source.indexOf('\nfunction applyServiceAuthState(', start);
+  vm.runInContext(source.slice(start, end), f.c);
+  f.c.initFirebaseAuth();
+}
+
+test('redirect 복귀 실패는 시작 실패와 구분하고 기존 사용자 안내를 유지한다', async () => {
+  const f = fixture(async () => ({ success: true }));
+  f.auth.currentUser = null;
+  f.c.setServiceLoginPending(true);
+  initializeAuthFixture(f, async () => {
+    throw { code: 'auth/account-exists-with-different-credential', name: 'FirebaseError',
+      email: 'never-log@example.invalid', credential: { accessToken: 'never-log-token' } };
+  });
+  await new Promise(setImmediate);
+  assert.deepEqual(f.diagnostics, [[
+    '[Firebase Auth] stage=redirect-result code=auth/account-exists-with-different-credential name=FirebaseError'
+  ]]);
+  assert.equal(f.calls.some(call => call[0] === 'toast' && call[1] === '로그인하지 못했습니다. 다시 시도해 주세요.'), true);
+  assert.equal(f.calls.some(call => call[1] === 'getRegistrationStatus'), false);
+  assert.equal(f.nodes.get('loading-overlay').style.display, 'none');
+  assert.equal(f.c.UserStore.user, null);
+});
+
+test('빈 redirect 결과 뒤 SDK 로그인 알림은 기존 가입 판정을 거쳐 회원 화면으로 전환한다', async () => {
+  const f = fixture(async () => ({ success: true, registered: true }));
+  f.auth.currentUser = null;
+  initializeAuthFixture(f, async () => ({ user: null, credential: null }));
+  await new Promise(setImmediate);
+  assert.equal(f.diagnostics.length, 0);
+  assert.equal(f.c.UserStore.user, null);
+  f.auth.currentUser = { uid: 'new' };
+  f.auth.deliverState(f.auth.currentUser);
+  await new Promise(setImmediate);
+  assert.equal(f.calls.filter(call => call[1] === 'getRegistrationStatus').length, 1);
+  assert.equal(f.c.UserStore.user.uid, 'new');
+  assert.equal(f.calls.some(call => call[0] === 'open' && call[1] === 'signup-modal'), false);
+  assert.equal(f.diagnostics.length, 0);
+});
+
+test('redirect 복귀 뒤 가입 확인 실패는 OAuth 오류로 기록하거나 로그인 수단을 바꾸지 않는다', async () => {
+  const f = fixture(async action => {
+    if (action === 'getRegistrationStatus') throw Object.assign(Error('fixture-appcheck'), { code: 'APPCHECK_INVALID', status: 401 });
+    return { success: true };
+  });
+  initializeAuthFixture(f, async () => ({ user: f.auth.currentUser }));
+  f.auth.deliverState(f.auth.currentUser);
+  await new Promise(setImmediate);
+  assert.equal(f.c.UserStore.user, null);
+  assert.equal(f.auth.currentUser.uid, 'new');
+  assert.equal(f.nodes.get('service-login-retry-btn').hidden, false);
+  assert.equal(f.calls.includes('sign-out'), false);
+  assert.equal(f.calls.includes('popup'), false);
+  assert.equal(f.diagnostics.length, 0);
 });

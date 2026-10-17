@@ -85,15 +85,15 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.2.0/css/all.min.css">
     <link rel="stylesheet" href="styles/tokens.css?v=177-danger-tokens">
     <link rel="stylesheet" href="styles/base.css?v=142-common-ui">
-    <link rel="stylesheet" href="styles/components.css?v=183-result-table">
-    <link rel="stylesheet" href="style.css?v=185-style-cleanup">
+    <link rel="stylesheet" href="styles/components.css?v=191-filter-alignment">
+    <link rel="stylesheet" href="style.css?v=190-overlay-cleanup">
     <link rel="stylesheet" href="styles/settings.css?v=154-ui-structure">
     <link rel="stylesheet" href="styles/dashboard.css?v=154-ui-structure">
     <link rel="stylesheet" href="styles/search.css?v=166-style-cleanup">
-    <link rel="stylesheet" href="styles/search-results.css?v=165-style-cleanup">
+    <link rel="stylesheet" href="styles/search-results.css?v=196-chip-remove-padding">
     <link rel="stylesheet" href="styles/home.css?v=154-ui-structure">
     <link rel="stylesheet" href="styles/layout.css?v=154-ui-structure">
-    <link rel="stylesheet" href="styles/overlays.css?v=183-style-cleanup">
+    <link rel="stylesheet" href="styles/overlays.css?v=190-overlay-cleanup">
     <link rel="stylesheet" href="styles/documents.css?v=10-document-cleanup">
 </head>
 
@@ -2558,21 +2558,22 @@
     <script src="photo-card-geometry.js?v=1" defer></script>
     <script src="photo-card-search.js?v=166-overlay-exteriors" defer></script>
     <script src="search-illustrations.js?v=166-overlay-exteriors" defer></script>
-    <script src="catalog-filters.js?v=1-search-filters" defer></script>
+    <script src="catalog-filters.js?v=3-type-labels" defer></script>
+    <script src="filter-editor.js?v=5-type-labels" defer></script>
     <script src="search-navigation.js?v=154-ui-structure" defer></script>
     <script src="management-results.js?v=183-style-cleanup" defer></script>
     <script src="data-transfer.js?v=178-data-dialogs" defer></script>
-    <script src="overlays.js?v=177-overlay-height" defer></script>
-    <script src="catalog-search.js?v=165-style-cleanup" defer></script>
+    <script src="overlays.js?v=193-popup-height" defer></script>
+    <script src="catalog-search.js?v=195-chip-spacing" defer></script>
     <script src="owned-cards.js?v=156-owned-detail-colors" defer></script>
     <script src="auth-session.js?v=2" defer></script>
     <script src="admin-session.js?v=2" defer></script>
     <script src="documents.js?v=3-document-list-overlay" defer></script>
-    <script src="script.js?v=188-style-cleanup" defer></script>
+    <script src="script.js?v=190-overlay-cleanup" defer></script>
     <!-- 인벤토리 필터 팝업 -->
-    <div id="inventory-filter-popup" class="filter-popup">
+    <section id="inventory-filter-popup" class="catalog-filter-editor ui-overlay ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium" role="dialog" tabindex="-1" hidden>
         <!-- JS에서 동적 렌더링 -->
-    </div>
+    </section>
 
     <!-- [모바일 개편] 바텀 시트 -->
     <div class="ui-overlay__backdrop color-surface-black" id="bottom-sheet-overlay" onclick="closeEntryBottomSheet()"></div>
@@ -2671,26 +2672,8 @@
         </div>
     </div>
 
-    <!-- [모바일 개편] 보유현황 목록 정렬 및 필터 바텀시트 -->
-    <div class="bottom-sheet-overlay" id="grid-filter-sheet-overlay" onclick="closeGridFilterSheet()"
-        style="z-index: 109999;"></div>
-    <div id="mobile-grid-filter-sheet" class="mobile-bottom-sheet" style="display: none; z-index: 110000;">
-        <div class="bottom-sheet-header">
-            <span class="sheet-title" id="grid-filter-sheet-title">정렬 및 필터링</span>
-            <i class="material-icons close-btn" onclick="closeGridFilterSheet()">close</i>
-        </div>
-        <div class="bottom-sheet-body" id="grid-filter-sheet-body">
-            <!-- JS에서 정렬 및 필터 UI 동적 렌더링 -->
-        </div>
-        <div class="bottom-sheet-footer"
-            style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px;">
-            <button class="filter-btn filter-btn-close btn-flat waves-effect" onclick="closeGridFilterSheet()"
-                style="color: var(--text-001); margin: 0; padding: 0 16px; height: 36px; line-height: 36px;">닫기</button>
-            <button class="filter-btn filter-btn-apply btn cyan-theme waves-effect waves-light confirm-btn"
-                id="grid-filter-sheet-apply-btn"
-                style="margin: 0; height: 36px; line-height: 36px; background-color: var(--theme-000);">적용</button>
-        </div>
-    </div>
+    <div id="grid-filter-sheet-overlay" class="ui-overlay__backdrop color-surface-black" hidden onclick="closeGridFilterSheet()"></div>
+    <section id="mobile-grid-filter-sheet" class="catalog-filter-editor ui-overlay ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet" role="dialog" tabindex="-1" hidden></section>
 
     <!-- 구버전 유입 안내 모달 -->
     <div id="legacy-migration-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-labelledby="legacy-migration-title">

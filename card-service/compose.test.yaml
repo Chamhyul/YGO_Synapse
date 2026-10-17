@@ -1,0 +1,9 @@
+name: ygo-card-service-test
+services:
+  tests:
+    build: .
+    image: ygo-card-service:local
+    command: [node, --test, test/read.test.js, test/compat.test.js]
+    network_mode: none
+    environment:
+      NODE_ENV: test

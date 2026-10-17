@@ -1,19 +1,20 @@
 name: ygo-synapse
 
 x-common: &common
-  image: ygo-synapse-local:dev
+  image: ygo-synapse:local
   build: .
   init: true
   stop_grace_period: 2m
   # 소스 폴더만 읽기 전용으로 연결한다. 호스트의 인증정보·의존성은 연결하지 않는다.
   volumes:
-    # 문서 UI 테스트가 읽는 합성 견본 하나만 연결한다. 이미지에는 포함하지 않는다.
+    # 자체 합성 견본을 기존 검사 경로에도 연결한다. 이미지에는 scripts/fixtures로 포함한다.
     - type: bind
-      source: ./previews/document-specimen.html
+      source: ./scripts/fixtures/document-specimen.html
       target: /app/previews/document-specimen.html
       read_only: true
       bind:
         create_host_path: false
+    - ./card-service:/app/card-service:ro
     - ./public:/app/public:ro
     - ./scripts:/app/scripts:ro
     - ./docker:/app/docker:ro
@@ -41,6 +42,18 @@ x-common: &common
     - ./storage.rules:/app/storage.rules:ro
 
 services:
+  read-api:
+    image: ygo-synapse:local
+    build: .
+    command: [node, functions/server.js]
+    profiles: [read-api]
+    environment:
+      GCLOUD_PROJECT: ${MAIN_PROJECT_ID:-}
+      STORAGE_BUCKET: ${MAIN_STORAGE_BUCKET:-}
+      CARD_SERVICE_URL: ${CARD_SERVICE_URL:-}
+      CARD_SERVICE_AUDIENCE: ${CARD_SERVICE_AUDIENCE:-}
+    ports: ["127.0.0.1:5090:8080"]
+    restart: "no"
   dev:
     <<: *common
     command: [dev]
@@ -132,6 +145,11 @@ services:
       - browser-results:/test-results
     restart: "no"
 
+# 기존 개발 서버 정상 종료·데이터 내보내기 후에만 이 폴더에서 dev를 전환한다.
+# 기존 볼륨을 재사용하며 실행 중인 서버와 동시에 연결하지 않는다.
 volumes:
   local-data:
+    name: ygo-main-service_local-data
+    external: true
   browser-results:
+    name: ygo-main-service_browser-results

@@ -165,7 +165,7 @@ function createMembershipCsvService({ store, now = Date.now }) {
       removed: previous.members.filter(item => !next.has(item.channelId)).length,
       changed: members.filter(item => old.has(item.channelId) && old.get(item.channelId).levelName !== item.levelName).length };
   }
-  return {
+  const service = {
     async summary() { const state = await store.read(); return { ...summarize(state.members), revision: state.revision, updatedAt: state.updatedAt }; },
     preview,
     async status(body, actor) {
@@ -205,6 +205,8 @@ function createMembershipCsvService({ store, now = Date.now }) {
       }
     }
   };
+  if (!store.withRequest) return service;
+  return Object.fromEntries(Object.entries(service).map(([method, action]) => [method, (...args) => store.withRequest(null, () => action(...args))]));
 }
 module.exports = { membershipCsvParseMembers, membershipCsvValidateMembers, createMembershipCsvService,
   createFirestoreMembershipCsvStore, MAX_BYTES, MAX_MEMBERS };

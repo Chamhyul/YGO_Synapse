@@ -1,3 +1,4 @@
+const { readSourceFile } = require('./sourceFile');
 // 실제 계정·운영 쓰기 없이 인증 경계와 로컬/운영 분기를 검증한다.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -9,10 +10,12 @@ const { safeErrorSummary } = require('../utils/safeError');
 
 function load(file, mocks, env = {}) {
   const module = { exports: {} };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
+  vm.runInNewContext(readSourceFile(path.join(__dirname, '..', file), 'utf8'), {
     module, exports: module.exports, process: { env }, Buffer, __dirname: path.dirname(path.join(__dirname, '..', file)),
     console: { log() {}, error() {}, warn() {} },
-    require(name) { if (name === '../services/publicReadTransport' && !Object.hasOwn(mocks, name)) return { withPublicReadRequest: handler => handler }; assert.ok(Object.hasOwn(mocks, name), `격리되지 않은 의존성: ${name}`); return mocks[name]; },
+    require(name) {
+      if (name === '../services/inventoryRequestTiming') return require('../services/inventoryRequestTiming');
+      if (name === '../services/userStorageRequestGuard') return { withUserStorageRequestGuard: handler => handler }; if (name === '../../services/membershipClaims') return { updateAccountClaims: (uid, patch, options) => require('../services/membershipClaims').updateAccountClaims(uid, JSON.parse(JSON.stringify(patch)), options) }; if (name === '../services/publicReadTransport' && !Object.hasOwn(mocks, name)) return { withPublicReadRequest: handler => handler }; assert.ok(Object.hasOwn(mocks, name), `격리되지 않은 의존성: ${name}`); return mocks[name]; },
   });
   return module.exports;
 }
@@ -45,7 +48,8 @@ function fixture({ env = {}, claims = { role: 'admin' }, tokenError, disabled = 
     batch: () => ({ set() { writes.push('csv-write'); }, async commit() {} }),
   } };
   const helpers = load('utils/auth.js', { '../config/firebase': config, './safeError': { safeErrorSummary },
-    '../services/publicReadTransport': { isLocal: () => !!(env.FUNCTIONS_EMULATOR || env.FIREBASE_EMULATOR_HUB), requestProduction: async (_operation,_body,{headers}) => { calls.push(['remote-auth']); return { success:true,uid:(await auth.verifyIdToken(headers.authorization.slice(7),true)).uid }; } },
+    '../services/userStorageRequestGuard': { withUserStorageRequestGuard: handler => handler },
+    '../services/publicReadTransport': { isLocal: () => !!(env.FUNCTIONS_EMULATOR || env.FIREBASE_EMULATOR_HUB || env.FIREBASE_DATABASE_EMULATOR_HOST), requestProduction: async (_operation,_body,{headers}) => { calls.push(['remote-auth']); return { success:true,uid:(await auth.verifyIdToken(headers.authorization.slice(7),true)).uid }; } },
     '../services/registrationService': { isRegisteredUser: async uid => { calls.push(['registered',uid]); return true; } },
   }, env);
   return { auth, config, helpers, calls, writes, env };
@@ -64,10 +68,12 @@ test('로컬에서 본문 UID가 있어도 위조·만료·철회 토큰은 거�
   }
 });
 test('정상 로컬 로그인은 운영 Auth 확인 API로 검증하고 요청의 UID 대신 검증한 UID를 사용한다',async()=>{
-  const f=fixture({env:{FUNCTIONS_EMULATOR:'true'}}),res=response();
-  assert.equal(await f.helpers.verifyRegisteredUser(request({uid:'other-user'}),res),'verified-user');
-  assert.deepEqual(f.calls,[['remote-auth'],['verify','fixture-token',true],['registered','verified-user']]);
-  assert.equal(f.writes.length,0);
+  for(const flags of [{}, {FIREBASE_DATABASE_EMULATOR_HOST:'localhost:9000'}]){
+    const f=fixture({env:{FUNCTIONS_EMULATOR:'true',...flags}}),res=response();
+    assert.equal(await f.helpers.verifyRegisteredUser(request({uid:'other-user'}),res),'verified-user');
+    assert.deepEqual(f.calls,[['remote-auth'],['verify','fixture-token',true],['registered','verified-user']]);
+    assert.equal(f.writes.length,0);
+  }
 });
 test('인증 헤더 누락·배열·빈 값과 Auth 에뮬레이터는 검증 전에 거부한다',async()=>{
   for(const authorization of [undefined,[],123,'Basic x','Bearer ','Bearer a b']){
@@ -90,7 +96,7 @@ test('관리자 역할은 현재 계정으로 확인하고 일반·비활성·�
   }
 });
 test('로컬 관리자 권한 확인은 직접 실행할 수 없다',async()=>{
-  for(const key of ['FUNCTIONS_EMULATOR','FIREBASE_EMULATOR_HUB','FIRESTORE_EMULATOR_HOST','FIREBASE_STORAGE_EMULATOR_HOST','FIREBASE_AUTH_EMULATOR_HOST']){
+  for(const key of ['FUNCTIONS_EMULATOR','FIREBASE_EMULATOR_HUB','FIRESTORE_EMULATOR_HOST','FIREBASE_STORAGE_EMULATOR_HOST','FIREBASE_AUTH_EMULATOR_HOST','FIREBASE_DATABASE_EMULATOR_HOST']){
     const f=fixture({env:{[key]:'true'}}),res=response();assert.equal(await f.helpers.verifyAdmin(request(),res),null);
     assert.equal(res.code,503);assert.equal(f.calls.length,0);
   }
@@ -171,8 +177,11 @@ test('관리 작업 진입점은 로컬 실행·미허용 작업·인증 누락�
   let runs=0,received;
   const resolve=()=>async(req,res)=>{runs++;received=req;return res.json({success:true});};
   const envelope={operation:'manageNotice',method:'POST',body:{headers:{authorization:'Bearer fake'}},query:{}};
-  let res=response();await transport.createAdminOperationRequestHandler(resolve,{env:{FUNCTIONS_EMULATOR:'true'}})(request(envelope),res);
-  assert.equal(res.code,503);assert.equal(runs,0);
+  let res;
+  for(const env of [{FUNCTIONS_EMULATOR:'true'}, {FIREBASE_DATABASE_EMULATOR_HOST:'localhost:9000'}]){
+    res=response();await transport.createAdminOperationRequestHandler(resolve,{env})(request(envelope),res);
+    assert.equal(res.code,503);assert.equal(runs,0);
+  }
   for(const operation of ['__proto__','getUserData','https://evil.invalid']){
     res=response();await transport.createAdminOperationRequestHandler(resolve,{env:{}})(request({...envelope,operation}),res);
     assert.equal(res.code,400);assert.equal(runs,0);
@@ -184,7 +193,7 @@ test('관리 작업 진입점은 로컬 실행·미허용 작업·인증 누락�
 });
 test('공개 카드 검색은 사용자 로그인 없이 유지한다',async()=>{
   const f=fixture({env:{FUNCTIONS_EMULATOR:'true'}}),res=response();
-  const routes=load('routes/card.js',{
+  const routes=load('routes/cardCatalog.js',{
     'firebase-functions/v2/https':{onRequest:(_,handler)=>handler},'../config/firebase':f.config,
     '../utils/auth':f.helpers,'../utils/common':{},'../scrapers/cardScraper':{},
     '../services/cardService':{getCardFromCacheByNo:async()=>({cid:'42',info:{}}),buildSearchResponse:()=>({cid:'42'})},
@@ -204,9 +213,9 @@ test('로컬 인벤토리 수정은 실제로 검증한 UID의 기존 저장 경
     };}})});
     const migration={prepareInventoryV2:async()=>{},inventoryMigrationStatus:()=>({status:'complete'})};
     const storage=load('utils/inventoryStorage.js',{'../config/firebase':f.config,'../services/inventoryMigrationService':migration});
-    const routes=load('routes/card.js',{
+    const routes=load('routes/inventory.js',{
       'firebase-functions/v2/https':{onRequest:(_,handler)=>handler},'../config/firebase':f.config,
-      '../utils/auth':f.helpers,'../utils/common':{},'../scrapers/cardScraper':{},'../services/cardService':{},
+      '../utils/auth':f.helpers,'../utils/common':{},'../scrapers/cardScraper':{},'../services/inventoryCardLookup':{},
       '../utils/inventoryStorage':{...storage,processMoveCards:inventory=>{inventory.amount=2;return[];}},
       '../services/cardQueryService':{},'../services/inventoryMigrationService':migration,'../utils/indexStorage':{},
     },f.env);
@@ -232,6 +241,7 @@ test('멤버십 CSV 관리자 업로드도 실제 현재 권한을 확인한 뒤
       '../utils/auth':f.helpers,'../utils/safeError':{safeErrorSummary},
       '../services/adminActionTransport':{forwardAdminRequest:async()=>false},'../integrations/googleSheets':{},'../integrations/discord':{},
       'node:crypto':require('node:crypto'),
+      '../services/membershipCsvRepository': {getMembershipCsvStore:()=>({})},
       '../services/membershipCsvService': {createFirestoreMembershipCsvStore:()=>({}),createMembershipCsvService:()=>({preview:async()=>{f.writes.push('preview');return{};},apply:async(_,uid)=>{assert.equal(uid,'verified-user');f.writes.push('apply');return{count:1};}}),},
     });
     await routes.uploadMembershipCsv(request({members:[{channelId:'synthetic-channel'}]}),res);
@@ -254,8 +264,10 @@ test('로컬 전달부터 운영 공지 인증까지 연결하여 검증 실패�
 });
 
 test('로컬 데이터 에뮬레이터가 없으면 사용자 작업 인증을 503으로 차단한다',async()=>{
-  const f=fixture({env:{FUNCTIONS_EMULATOR:'true',FIRESTORE_EMULATOR_HOST:''}}),res=response();
-  assert.equal(await f.helpers.verifyUser(request(),res),null);assert.equal(res.code,503);assert.equal(f.calls.length,0);
+  for(const env of [{FUNCTIONS_EMULATOR:'true',FIRESTORE_EMULATOR_HOST:''}, {FIREBASE_DATABASE_EMULATOR_HOST:'localhost:9000'}]){
+    const f=fixture({env}),res=response();
+    assert.equal(await f.helpers.verifyUser(request(),res),null);assert.equal(res.code,503);assert.equal(f.calls.length,0);
+  }
 });
 
 test('토큰 검증 서버 장애는 무효 토큰과 구분하고 사용자 데이터 접근은 차단한다',async()=>{

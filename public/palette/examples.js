@@ -296,7 +296,7 @@ export function renderExamples(container) {
     artButton.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/></svg>';
     name.append(back, element('h2', 'search-card__title color-text-000', '예시 드래곤'), artButton);
     const info = element('div', 'search-card__info border-basic shape-rounded002');
-    const table = element('table', 'search-card__table search-card__table--monster');
+    const table = element('table', 'search-card__table search-card__table--monster color-text-000');
     table.setAttribute('aria-label', '합성 카드 정보');
     const tbody = element('tbody');
     [['속성', '빛', '종족', '드래곤족', '레벨', '8'], ['공격력', '3000', '수비력', '2500', '펜듈럼 스케일', '-']].forEach((values, r) => {

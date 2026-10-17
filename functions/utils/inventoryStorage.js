@@ -9,9 +9,22 @@
  *   - Cloud Storage의 generation 기반 낙관적 잠금 (ifGenerationMatch)
  *   - 충돌 시 자동 재시도 (최대 3회)
  */
-const { admin } = require("../config/firebase");
+const legacyAdmin = () => require("../config/firebase").admin;
 
 const INVENTORY_DIR = "users";
+
+function rtdbRepository() {
+  if (typeof process !== 'undefined' && (process.env.USER_PROFILE_WRITER_MODE === 'production' || process.env.USER_STORAGE_MODE === 'production')) {
+    return require('../services/userWriterSelection').selectProductionWriter().inventoryRepository;
+  }
+  if (typeof process !== 'undefined' && process.env.USER_PROFILE_WRITER_MODE) return require('../services/userProfileWriterRuntime').getProfileWriterBinding().inventoryRepository;
+  const backend = typeof process === 'undefined' ? undefined : process.env.USER_STORAGE_BACKEND;
+  if (backend === undefined || backend === '' || backend === 'storage') return null;
+  if (backend !== 'rtdb') {
+    throw Object.assign(new Error('지원하지 않는 인벤토리 저장소 설정입니다.'), { code: 'USER_STORAGE_CONFIG_INVALID' });
+  }
+  return require('../services/inventoryRepository').getRtdbInventoryRepository();
+}
 
 /**
  * 빈 인벤토리 객체를 생성합니다.
@@ -34,7 +47,9 @@ function createEmptyInventory() {
  * @returns {Promise<{data: Object, generation: string}>} 인벤토리 데이터와 generation
  */
 async function downloadInventory(uid) {
-  const bucket = admin.storage().bucket();
+  const repository = rtdbRepository();
+  if (repository) return repository.downloadInventory(uid);
+  const bucket = legacyAdmin().storage().bucket();
   const path = `${INVENTORY_DIR}/${uid}/inventory.json`;
   for (let attempt = 0; attempt < 3; attempt++) {
     let metadata;
@@ -60,8 +75,10 @@ async function downloadInventory(uid) {
 }
 
 // 이관과 일반 수정 모두 최신 generation의 본문에 변경을 적용합니다.
-async function updateInventoryWithRetry(uid, updateFn, maxRetries = 3) {
-  const file = admin.storage().bucket().file(`${INVENTORY_DIR}/${uid}/inventory.json`);
+async function updateInventoryWithRetry(uid, updateFn, maxRetries = 3, options = {}) {
+  const repository = rtdbRepository();
+  if (repository) return repository.updateInventoryWithRetry(uid, updateFn, maxRetries, options);
+  const file = legacyAdmin().storage().bucket().file(`${INVENTORY_DIR}/${uid}/inventory.json`);
   const { prepareInventoryV2, inventoryMigrationStatus } = require('../services/inventoryMigrationService');
   const resolutions = new Map();
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -93,7 +110,9 @@ async function updateInventoryWithRetry(uid, updateFn, maxRetries = 3) {
  * @returns {Promise<void>}
  */
 async function deleteInventory(uid) {
-  const bucket = admin.storage().bucket();
+  const repository = rtdbRepository();
+  if (repository) return repository.deleteInventory(uid);
+  const bucket = legacyAdmin().storage().bucket();
   const file = bucket.file(`${INVENTORY_DIR}/${uid}/inventory.json`);
   try {
     await file.delete();

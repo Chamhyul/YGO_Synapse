@@ -1,0 +1,32 @@
+name: ygo-user-storage-test
+services:
+  emulators:
+    image: ${MAIN_IMAGE:-ygo-synapse:local}
+    init: true
+    command: [firebase, emulators:start, --config, integration/user-storage/firebase.json, --project, demo-user-storage, --only, "database,auth", --non-interactive]
+    networks: [isolated]
+    healthcheck:
+      # DB의 읽기 거부 응답과 Auth의 준비를 함께 확인한 뒤에만 검사를 시작한다.
+      test: [CMD, node, -e, "Promise.all([fetch('http://127.0.0.1:9000/.json?ns=demo-user-storage-default-rtdb',{signal:AbortSignal.timeout(1500)}).then(r=>[200,401,403].includes(r.status)),fetch('http://127.0.0.1:9099/emulator/v1/projects/demo-user-storage/config',{headers:{Authorization:'Bearer owner'},signal:AbortSignal.timeout(1500)}).then(r=>r.status===200)]).then(values=>process.exit(values.every(Boolean)?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      start_period: 5s
+      retries: 40
+    restart: "no"
+  tests:
+    image: ${MAIN_IMAGE:-ygo-synapse:local}
+    init: true
+    command: [node, --test, functions/test/userStorage.integration.js, functions/test/inventoryParts.integration.js, functions/test/inventoryApi.integration.js, functions/test/inventoryRecovery.integration.js, functions/test/userProfileApi.integration.js, functions/test/adminSessionApi.integration.js, functions/test/adminRuntimeApi.integration.js, functions/test/adminSessionStore.integration.js, functions/test/apiAccessApi.integration.js, functions/test/apiAccessStore.integration.js, functions/test/apiAccessCli.integration.js, functions/test/membershipStore.integration.js, functions/test/membershipApi.integration.js, functions/test/membershipClaims.integration.js, functions/test/membershipCsvStore.integration.js, functions/test/membershipCsvAdminApi.integration.js, functions/test/membershipCsvCli.integration.js, functions/test/membershipClaimsRecovery.integration.js]
+    environment:
+      NODE_ENV: test
+      GCLOUD_PROJECT: demo-user-storage
+      USER_STORAGE_BACKEND: rtdb
+      FIREBASE_DATABASE_EMULATOR_HOST: emulators:9000
+      USER_DATABASE_URL: http://emulators:9000?ns=demo-user-storage-default-rtdb
+    depends_on:
+      emulators: {condition: service_healthy}
+    networks: [isolated]
+    restart: "no"
+networks:
+  isolated:
+    internal: true

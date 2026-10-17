@@ -384,9 +384,14 @@ function buildCatalogView(state, mount) {
     root.appendChild(pager);
     mount.replaceChildren(root);
     const add = catalogButton('', 'catalog-search-add ui-button color-tint-theme color-disabled shape-capsule ui-control--disabled', event => openCatalogFilterEditor(state, 'add', event.currentTarget));
-    const addIcon = document.createElement('i');
-    addIcon.className = 'material-icons catalog-search-chip__icon';
-    addIcon.textContent = 'add';
+    const addIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    addIcon.setAttribute('class', 'catalog-search-chip__icon');
+    addIcon.setAttribute('viewBox', '0 0 24 24');
+    addIcon.setAttribute('fill', 'currentColor');
+    addIcon.setAttribute('focusable', 'false');
+    const addPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    addPath.setAttribute('d', 'M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z');
+    addIcon.appendChild(addPath);
     addIcon.setAttribute('aria-hidden', 'true');
     add.appendChild(addIcon);
     add.setAttribute('aria-label', '검색 필터 추가');
@@ -402,6 +407,7 @@ function buildCatalogView(state, mount) {
 
 function catalogFilterChip(state, key, mobile) {
     const wrapper = document.createElement('div');
+    wrapper.dataset.filterKey = key;
     wrapper.className = 'catalog-search-chip ui-chip ui-chip--interactive color-tint-theme color-disabled shape-capsule';
     const edit = catalogButton('', 'catalog-search-chip__edit ui-control--disabled color-disabled', event => openCatalogFilterEditor(state, key, event.currentTarget));
     edit.setAttribute('aria-haspopup', 'dialog');
@@ -446,12 +452,11 @@ function updateCatalogChips(state, view) {
         node.edit.disabled = !enabled;
         node.wrapper.classList.toggle('is-unavailable', !enabled);
         node.wrapper.hidden = mobile && !enabled;
-        if (key === 'traits') {
-            const active = CatalogFilters.selectedKinds(state.filters).filter(kind => CatalogFilters.isActive(state.filters, kind));
-            node.label.textContent = `특성: ${active.length ? active.map(kind => `${CatalogFilters.definitions[kind].label.replace(' 특성', '')} ${CatalogFilters.summarize(state.filters, kind)}`).join(' / ') : '설정 없음'}`;
-        } else {
-            node.label.textContent = `${CatalogFilters.definitions[key].label}: ${CatalogFilters.summarize(state.filters, key)}${enabled ? '' : ' (비활성)'}`;
-        }
+        const active = CatalogFilters.isActive(state.filters,key), definition = CatalogFilters.definitions[key];
+        const summary = CatalogFilters.summarize(state.filters,key).replace(/^(OR|AND): /,'$1 : ');
+        node.label.textContent = active ? summary : definition.characteristic ? CatalogFilters.kinds.find(kind=>kind.value===key).label : definition.label;
+        node.wrapper.classList.toggle('color-tint-theme',active); node.wrapper.classList.toggle('color-tint-neutral',!active);
+        node.edit.setAttribute('aria-label', `${definition.label}: ${summary}`);
         return node;
     };
     const visibleKeys = ['target', ...state.addedFilters.filter(key => key !== 'target' && CatalogFilters.definitions[key])];
@@ -460,10 +465,11 @@ function updateCatalogChips(state, view) {
         const node = update(key, view.chipNodes, false);
         if (!node.wrapper.parentNode) view.chips.insertBefore(node.wrapper, view.add);
     }
-    const mobileKeys = ['target', 'kind', 'traits', 'attribute', 'race', 'level', 'pendulum', 'attack', 'defense'];
+    const mobileKeys = CatalogFilters.keys.filter(key => CatalogFilters.isEnabled(state.filters,key)).sort((a,b)=>Number(CatalogFilters.isActive(state.filters,b))-Number(CatalogFilters.isActive(state.filters,a)));
+    for (const [key,node] of view.mobileChipNodes) if (!mobileKeys.includes(key)) { node.wrapper.remove(); view.mobileChipNodes.delete(key); }
     for (const key of mobileKeys) {
         const node = update(key, view.mobileChipNodes, true);
-        if (!node.wrapper.parentNode) view.mobileChips.appendChild(node.wrapper);
+        view.mobileChips.appendChild(node.wrapper);
     }
 }
 
@@ -604,20 +610,19 @@ function ensureCatalogEditor() {
     header.append(title, close);
     const body = document.createElement('div'); body.className = 'catalog-filter-editor__body';
     const content = document.createElement('div'); content.className = 'ui-overlay__body';
-    const hint = document.createElement('p'); hint.className = 'catalog-filter-editor__hint color-text-002';
-    const error = document.createElement('p'); error.id = 'catalog-filter-error'; error.className = 'catalog-filter-editor__error';
+    const error = document.createElement('p'); error.id = 'catalog-filter-error'; error.className = 'catalog-filter-editor__error color-text-red';
     error.setAttribute('role', 'alert');
-    const actions = document.createElement('footer'); actions.className = 'ui-overlay__footer catalog-filter-editor__actions';
+    const actions = document.createElement('footer'); actions.className = 'ui-overlay__footer';
     const reset = catalogButton('초기화', catalogFilledButton, () => {
         const editor = catalogFilterEditor;
         const key = editor.editKey;
         editor.drafts[key] = CatalogFilters.emptyValue(key);
         renderCatalogEditorForm();
     });
-    const cancel = catalogButton('취소', catalogTextButton, () => closeCatalogFilterEditor());
     const apply = catalogButton('적용', 'ui-button color-theme shape-capsule', () => {
         const editor = catalogFilterEditor;
         const key = editor.editKey;
+        if (key === 'target' && !editor.drafts.target.length) return;
         const errorMessage = applyCatalogFilter(editor.state, key, editor.drafts[key]);
         if (errorMessage) {
             editor.error.textContent = errorMessage;
@@ -625,13 +630,15 @@ function ensureCatalogEditor() {
             return;
         }
         editor.drafts[key] = CatalogFilters.clone(editor.state.filters[key]);
-        if (editor.key === 'traits') {
-            editor.hint.textContent = `${CatalogFilters.definitions[key].label}을 적용했습니다. 다른 종류의 조건은 유지됩니다.`;
-            editor.error.textContent = '';
-        } else closeCatalogFilterEditor();
+        closeCatalogFilterEditor();
     });
-    actions.append(reset, cancel, apply);
-    content.append(body, hint, error);
+    reset.className = catalogTextButton;
+    reset.textContent = ''; reset.setAttribute('aria-label','초기화');
+    const resetIcon=document.createElement('i'); resetIcon.className='material-icons'; resetIcon.textContent='refresh'; resetIcon.setAttribute('aria-hidden','true'); reset.append(resetIcon);
+    const tools=document.createElement('div'); tools.className='ui-overlay__header'; tools.append(reset,close); header.replaceChildren(title,tools);
+    apply.classList.add('color-disabled','ui-control--disabled');
+    actions.append(apply);
+    content.append(body, error);
     root.append(header, content, actions);
     document.body.append(backdrop, root);
     backdrop.onclick = () => closeCatalogFilterEditor();
@@ -647,7 +654,7 @@ function ensureCatalogEditor() {
             closeCatalogFilterEditor();
         }
     });
-    catalogFilterEditor = { root, backdrop, title, body, hint, error, actions, reset, apply, open: false };
+    catalogFilterEditor = { root, backdrop, title, body, error, actions, reset, apply, open: false };
     return catalogFilterEditor;
 }
 
@@ -661,7 +668,8 @@ function openCatalogFilterEditor(state, key, trigger) {
     editor.mobile = document.documentElement.classList.contains('is-mobile-device');
     editor.trigger = trigger;
     editor.drafts = CatalogFilters.clone(state.filters);
-    editor.editKey = key === 'traits' ? CatalogFilters.selectedKinds(state.filters)[0] : key;
+    if (!editor.drafts.target.length) editor.drafts.target = ['name', 'number'];
+    editor.editKey = key;
     editor.open = true;
     editor.root.hidden = false;
     editor.root.inert = false;
@@ -692,38 +700,19 @@ function closeCatalogFilterEditor({ restoreFocus = true } = {}) {
     editor.open = false;
     editor.root.inert = true;
     editor.trigger?.setAttribute('aria-expanded', 'false');
+    const view = catalogViews.get(editor.state);
+    const key = editor.editKey;
+    if (!editor.mobile && key !== 'target' && CatalogFilters.definitions[key] && !CatalogFilters.isActive(editor.state.filters, key)) {
+        editor.state.addedFilters = editor.state.addedFilters.filter(item => item !== key);
+        if (view) updateCatalogChips(editor.state, view);
+    }
     if (editor.mobile) {
         closeManagedSheet(editor.root, { backdrop: editor.backdrop });
     } else {
         if (globalThis.AppOverlays) globalThis.AppOverlays.closePopup(editor.root);
         else editor.root.hidden = true;
-        if (restoreFocus && editor.trigger?.isConnected) editor.trigger.focus({ preventScroll: true });
+        if (restoreFocus) (editor.trigger?.isConnected ? editor.trigger : view?.add)?.focus({ preventScroll: true });
     }
-}
-
-function catalogEditorSegment(name, legendText, choices, selected, change) {
-    const fieldset = document.createElement('fieldset');
-    fieldset.className = 'ui-segment ui-segment--compact color-surface-001 shape-capsule';
-    const legend = document.createElement('legend'); legend.className = 'visually-hidden'; legend.textContent = legendText;
-    fieldset.appendChild(legend);
-    choices.forEach(choice => {
-        const input = document.createElement('input');
-        input.type = 'radio'; input.name = name; input.value = choice.value;
-        input.id = `${name}-${choice.value}`;
-        input.className = 'ui-segment__input';
-        input.checked = choice.value === selected;
-        input.disabled = !!choice.disabled;
-        const label = document.createElement('label');
-        label.className = 'ui-segment__option color-text-selectable shape-capsule';
-        label.htmlFor = input.id; label.textContent = choice.label;
-        input.onchange = () => { if (input.checked) change(choice.value); };
-        fieldset.append(input, label);
-    });
-    const indicator = document.createElement('span');
-    indicator.className = 'ui-segment__indicator color-surface-002 shape-capsule';
-    indicator.setAttribute('aria-hidden', 'true');
-    fieldset.appendChild(indicator);
-    return fieldset;
 }
 
 function renderCatalogEditorForm() {
@@ -731,95 +720,40 @@ function renderCatalogEditorForm() {
     const { state, key, editKey, body } = editor;
     body.replaceChildren();
     editor.error.textContent = '';
-    editor.hint.textContent = '';
     editor.actions.hidden = key === 'add';
-    editor.title.textContent = key === 'add' ? '필터 추가' : key === 'traits' ? '특성' : CatalogFilters.definitions[key].label;
+    editor.reset.hidden = key === 'add';
+    editor.title.textContent = key === 'add' ? '필터 추가' : CatalogFilters.definitions[key].label;
     if (key === 'add') {
         const available = CatalogFilters.keys.filter(item => !state.addedFilters.includes(item));
+        const options = document.createElement('div');
+        if (!editor.mobile) options.className = 'catalog-search-filters';
         for (const item of available) {
             const option = catalogButton(CatalogFilters.definitions[item].label,
-                `catalog-filter-editor__add-option ${catalogFilledButton}`, () => {
-                    editor.key = item; editor.editKey = item;
-                    renderCatalogEditorForm();
+                editor.mobile ? `catalog-filter-editor__add-option ${catalogFilledButton}`
+                    : 'ui-button ui-chip color-tint-neutral color-disabled ui-control--disabled shape-capsule', () => {
+                    if (!state.addedFilters.includes(item)) state.addedFilters.push(item);
+                    const view = catalogViews.get(state);
+                    if (view) updateCatalogChips(state, view);
+                    const update = () => {
+                        editor.key = item; editor.editKey = item;
+                        renderCatalogEditorForm();
+                    };
+                    if (!editor.mobile && globalThis.AppOverlays?.updatePopup) AppOverlays.updatePopup(editor.root, update);
+                    else update();
                     editor.root.focus({ preventScroll: true });
                 });
             option.disabled = !CatalogFilters.isEnabled(state.filters, item);
-            body.appendChild(option);
+            options.appendChild(option);
         }
+        body.appendChild(options);
         if (!available.length) body.textContent = '추가할 수 있는 필터가 없습니다.';
         return;
     }
-    if (key === 'traits') {
-        body.appendChild(catalogEditorSegment('catalog-trait-kind', '특성을 편집할 카드 종류',
-            CatalogFilters.kinds.map(kind => ({ ...kind, disabled: !CatalogFilters.selectedKinds(state.filters).includes(kind.value) })), editKey,
-            value => {
-                editor.editKey = value; renderCatalogEditorForm();
-                const restoreSegmentFocus = () => {
-                    if (editor.open && editor.editKey === value) {
-                        editor.body.querySelector(`#catalog-trait-kind-${value}`)?.focus({ preventScroll: true });
-                    }
-                };
-                restoreSegmentFocus();
-                // Space의 네이티브 처리가 제거된 radio에 남더라도 다음 프레임에서 복원한다.
-                // 이미 다른 조작 대상으로 이동한 초점은 가져오지 않는다.
-                requestAnimationFrame(() => {
-                    if (document.activeElement === document.body || document.activeElement === editor.root) restoreSegmentFocus();
-                });
-            }));
-        editor.hint.textContent = '적용은 현재 종류의 특성만 반영합니다.';
-    }
+    editor.reset.hidden = false;
     const definition = CatalogFilters.definitions[editKey];
-    const draft = editor.drafts[editKey];
-    if (definition.characteristic) {
-        body.appendChild(catalogEditorSegment('catalog-trait-operator', '선택한 특성의 조합 방식',
-            [{ value: 'or', label: 'OR' }, { value: 'and', label: 'AND' }], draft.operator,
-            value => { editor.drafts[editKey].operator = value; }));
-        const help = document.createElement('p');
-        help.className = 'catalog-filter-editor__hint color-text-002';
-        help.textContent = 'OR: 하나 이상 일치 · AND: 모두 일치. 전체 선택도 조건을 유지합니다.';
-        body.appendChild(help);
-    }
-    if (definition.options) {
-        const options = document.createElement('div'); options.className = 'catalog-filter-editor__options';
-        for (const option of definition.options) {
-            const label = document.createElement('label'); label.className = 'catalog-filter-editor__option';
-            const input = document.createElement('input'); input.type = 'checkbox'; input.value = option.value;
-            input.checked = (definition.characteristic ? draft.values : draft).includes(option.value);
-            const text = document.createElement('span'); text.textContent = option.label;
-            input.onchange = () => {
-                let values = definition.characteristic ? editor.drafts[editKey].values : editor.drafts[editKey];
-                values = input.checked ? [...values, option.value] : values.filter(value => value !== option.value);
-                if (definition.characteristic) editor.drafts[editKey].values = values;
-                else editor.drafts[editKey] = values;
-            };
-            label.append(input, text); options.appendChild(label);
-        }
-        body.appendChild(options);
-    } else {
-        const numbers = document.createElement('div'); numbers.className = 'catalog-filter-editor__numbers';
-        const addNumber = (part, labelText, value) => {
-            const label = document.createElement('label');
-            const text = document.createElement('span'); text.textContent = labelText;
-            const input = document.createElement('input');
-            // 문자열을 그대로 검증하여 소수·지수·역전 범위를 몰래 교정하지 않는다.
-            input.type = 'text'; input.inputMode = 'numeric';
-            input.className = 'catalog-filter-editor__number ui-input--filled color-type001 border-basic shape-rounded002';
-            input.value = value ?? '';
-            input.setAttribute('aria-describedby', 'catalog-filter-error');
-            input.oninput = () => {
-                if (part) editor.drafts[editKey][part] = input.value;
-                else editor.drafts[editKey] = input.value;
-                editor.error.textContent = '';
-            };
-            label.append(text, input); numbers.appendChild(label);
-        };
-        if (definition.numeric === 'range') {
-            addNumber('from', '시작값', draft.from); addNumber('to', '끝값', draft.to);
-            editor.hint.textContent = '0 이상의 정수. 한쪽을 비우면 해당 방향은 제한하지 않습니다. ?는 0으로 비교합니다.';
-        } else {
-            addNumber(null, '정확한 값 (0~13)', draft);
-            editor.hint.textContent = '빈 입력은 조건을 해제합니다. 0도 유효한 값입니다.';
-        }
-        body.appendChild(numbers);
-    }
+    FilterEditor.render({ form:body, key:editKey, definition, drafts:editor.drafts, mobile:editor.mobile,
+        errorId:'catalog-filter-error', changed:() => {
+            editor.apply.disabled = editKey === 'target' && !editor.drafts.target.length;
+            editor.error.textContent = '';
+        } });
 }

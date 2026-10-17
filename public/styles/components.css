@@ -113,6 +113,7 @@
   --color-highlight-bg: var(--theme-001);
   --color-selected-bg: var(--theme-000);
   --color-selected-highlight-bg: var(--theme-002);
+  --color-selected-text: var(--text-white);
 }
 
 .color-switch-theme::before {
@@ -239,9 +240,9 @@
 }
 
 .color-tint-neutral {
-  --color-bg: var(--surface-003);
+  --color-bg: var(--surface-002);
   --color-text: var(--text-002);
-  --color-highlight-bg: var(--surface-002);
+  --color-highlight-bg: var(--surface-003);
   --color-highlight-text: var(--color-text);
 }
 
@@ -388,6 +389,7 @@ input[type="text"].ui-input--filled,
 input[type="number"].ui-input--filled,
 input[type="text"].ui-input--filled:focus:not([readonly]),
 input[type="number"].ui-input--filled:focus:not([readonly]) {
+  border: 0;
   background-color: var(--color-bg);
   color: var(--color-text);
   box-shadow: none;
@@ -696,6 +698,7 @@ html.is-mobile-device .ui-segment--compact {
 .ui-table td {
   padding: 8px 12px;
   border: 0;
+  border-radius: 0;
   vertical-align: middle;
   text-align: left;
   font-size: inherit;
@@ -1036,4 +1039,38 @@ html.is-mobile-device .ui-segment--compact {
   z-index: -1;
   /* 입력창 뒤로 배치 */
   pointer-events: none;
+}
+
+/* UI: filter options — 선택 목록 배치. 색상·곡률은 조합 클래스로 제공. */
+ul.filter-option-list { list-style:none; max-height:200px; overflow:auto; display:flex; flex-direction:column; gap:2px; width:100%; box-sizing:border-box; padding:4px; margin:0; }
+.filter-option-item { display:flex; align-items:center; width:100%; margin:0; }
+.filter-option-item label { display:flex; align-items:center; justify-content:flex-start; gap:12px; width:100%; box-sizing:border-box; min-height:38px; padding:8px 12px; margin:0; font-size:.92rem; font-weight:400; text-align:left; }
+.filter-option-item label span { line-height:20px; overflow-wrap:anywhere; }
+input[type="text"].filter-input-field { box-sizing:border-box; width:100%; margin:0; padding:0 12px; height:36px; font:inherit; font-size:.9rem; }
+.filter-select-toggle { align-self:flex-end; font-size:.85rem; font-weight:600; }
+
+.filter-option-item[hidden] { display:none; }
+.filter-option-item label:focus-within { background-color:var(--color-highlight-bg); color:var(--color-highlight-text); }
+
+/* 공유 선택지의 네이티브 체크박스. Materialize 장식과 숨김을 해제한다. */
+.filter-option-item input[type="checkbox"] {
+  position: static;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  opacity: 1;
+  pointer-events: auto;
+  accent-color: var(--color-text);
+}
+
+.filter-option-item input[type="checkbox"] + span:not(.lever) {
+  height: auto;
+  padding: 0;
+  line-height: 1.5;
+  font-size: inherit;
+}
+
+.filter-option-item input[type="checkbox"] + span:not(.lever)::before,
+.filter-option-item input[type="checkbox"] + span:not(.lever)::after {
+  display: none;
 }

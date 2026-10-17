@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "name": "YGO_Synapse_Cards",
+  "visibility": "private",
+  "history": "new-root",
+  "sourceRepository": "https://github.com/Chamhyul/YGO_Synapse",
+  "preserveSourceRepository": true,
+  "companionRepository": "YGO_Synapse_Service",
+  "automation": "tests-only"
+}

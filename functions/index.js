@@ -15,7 +15,7 @@ setGlobalOptions({ region: "asia-northeast3", maxInstances: 10 });
 // HTTP 라우트 등록. 실제 처리 로직은 서비스·크롤러에서 수행합니다.
 
 // 1. 카드 기능 모음
-const cardRoutes = require("./routes/card");
+const cardRoutes = require("./routes/cardCatalog");
 exports.searchCardByNo = cardRoutes.searchCardByNo;
 exports.searchCardByName = cardRoutes.searchCardByName;
 exports.getCardMetadata = cardRoutes.getCardMetadata;
@@ -24,9 +24,10 @@ exports.crawlCardMetaByName = cardRoutes.crawlCardMetaByName;
 exports.getRamMemoryStats = cardRoutes.getRamMemoryStats;
 exports.searchCard = cardRoutes.searchCard;
 exports.resolveCardNames = cardRoutes.resolveCardNames;
-exports.addCards = cardRoutes.addCards;
-exports.moveCards = cardRoutes.moveCards;
-exports.discardCards = cardRoutes.discardCards;
+const inventoryRoutes = require("./routes/inventory");
+exports.addCards = inventoryRoutes.addCards;
+exports.moveCards = inventoryRoutes.moveCards;
+exports.discardCards = inventoryRoutes.discardCards;
 exports.suggestCardNames = cardRoutes.suggestCardNames;
 exports.searchCardByImage = require('./routes/cardImageSearch').searchCardByImage;
 exports.getIllustration = require('./routes/illustrationDelivery').getIllustration;
@@ -39,7 +40,7 @@ exports.crawlPackCardsBatch = packRoutes.crawlPackCardsBatch;
 
 // 3. 사용자 관련 모음
 const userRoutes = require("./routes/user");
-exports.getInitialData = userRoutes.getInitialData;
+exports.getInitialData = require("./routes/initialData").getInitialData;
 exports.getUserData = userRoutes.getUserData;
 exports.updateUserSettings = userRoutes.updateUserSettings;
 exports.clearUserData = userRoutes.clearUserData;
@@ -74,6 +75,7 @@ exports.migrateCardIllustrations = cardIllustrationsAdmin.migrateCardIllustratio
 const crawlerSchedules = require("./schedules/autoCrawler");
 exports.autoCrawlFull = crawlerSchedules.autoCrawlFull;
 exports.autoCrawlQuick = crawlerSchedules.autoCrawlQuick;
+exports.compactUserWriterHistory = require('./schedules/userWriterHistory').compactUserWriterHistory;
 exports.processCardIndexTask = require("./tasks/cardIndexes").processCardIndexTask;
 exports.autoCrawlTask = require("./tasks/autoCrawler").autoCrawlTask;
 exports.migrateCardNumbersTask = require("./tasks/cardNumbers").migrateCardNumbersTask;
@@ -104,7 +106,7 @@ exports.adminBackend = require("./routes/admin/pages").adminBackend;
 // 키 없는 로컬 공개 조회와 실제 사용자 확인을 위한 운영 진입점.
 const publicReadRoutes = require("./routes/publicRead");
 exports.getPublicCardData = publicReadRoutes.getPublicCardData;
-exports.verifyUserIdentity = publicReadRoutes.verifyUserIdentity;
+exports.verifyUserIdentity = require("./routes/userIdentity").verifyUserIdentity;
 
 // YouTube 채널 소유를 확인한 뒤 기존 CSV 목록과 비교한다.
 const youtubeMembershipRoutes = require("./routes/youtubeMembership");
