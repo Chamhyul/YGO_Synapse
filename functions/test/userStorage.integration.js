@@ -28,6 +28,8 @@ function loadLegacy(relative, mocks) {
   const loaded = new Module(filename, module);
   loaded.filename = filename;
   loaded.require = name => {
+    // 고정 계측 모듈은 SDK·운영 연결 없이 실제 구현을 사용한다.
+    if (name === '../services/inventoryRequestTiming') return require('../services/inventoryRequestTiming');
     assert.ok(Object.hasOwn(mocks, name), `격리되지 않은 의존성: ${name}`);
     return mocks[name];
   };
