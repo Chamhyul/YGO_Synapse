@@ -30,6 +30,8 @@ function loadLegacy(relative, mocks) {
   loaded.require = name => {
     // 고정 계측 모듈은 SDK·운영 연결 없이 실제 구현을 사용한다.
     if (name === '../services/inventoryRequestTiming') return require('../services/inventoryRequestTiming');
+    if (name === '../services/loginUserData') return require('./loginUserDataFixture.cjs').loadLoginUserData(loadLegacy, mocks);
+    if (name === '../services/requestAccount') return require('../services/requestAccount');
     assert.ok(Object.hasOwn(mocks, name), `격리되지 않은 의존성: ${name}`);
     return mocks[name];
   };
@@ -89,7 +91,7 @@ function legacyRoutes(store, uid, { profileValue, membershipClaims = { status: '
   });
   const handlers = { ...routes, ...imports, getUserData: user.getUserData };
   return async (name, body = {}) => {
-    const res = { code: 200, status(value) { this.code = value; return this; },
+    const res = { code: 200, set() { return this; }, status(value) { this.code = value; return this; },
       json(value) { this.body = value; return this; } };
     await handlers[name]({ method: 'POST', headers: {}, query: {}, body }, res);
     assert.equal(res.code, 200);

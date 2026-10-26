@@ -20,6 +20,9 @@ jobs:
           cache: 'npm'
           cache-dependency-path: functions/package-lock.json
 
+      - name: Check approved production storage target
+        run: node scripts/check_user_storage_target_registration.cjs --project ygo-synapse
+
       - name: Install Functions Dependencies
         run: cd functions && npm ci
 

@@ -9,9 +9,10 @@ const fixture = () => ({ config: { projectId: 'synthetic-project', storageBucket
   firebase: { functions: [{ source: 'functions', ignore: ['**/.env*'] }], hosting: { site: 'synthetic', rewrites: [{ source: '**', destination: '/index.html' }] }, firestore: { rules: 'firestore.rules' }, storage: [{ target: 'main', rules: 'storage.rules' }] },
   firebaserc: { projects: { default: 'synthetic-project' }, targets: { 'synthetic-project': { storage: { main: ['synthetic-project.firebasestorage.app'] }, database: { retained: ['retained-database'] } } } } });
 test('운영 준비는 코드 등록과 같은 설정을 검증하며 SDK나 명령을 실행하지 않는다', () => {
+  const registered = structuredClone(require('../functions/config/userStorageTargets').PRODUCTION_TARGETS);
   const f = fixture(), original = structuredClone(f), plan = prepare(f.config, f);
   assert.equal(plan.executionPerformed, false); assert.equal(plan.configurationComplete, true); assert.deepEqual(plan.needsInput, []);
-  assert.deepEqual(f, original); assert.deepEqual(require('../functions/config/userStorageTargets').PRODUCTION_TARGETS, []);
+  assert.deepEqual(f, original); assert.deepEqual(require('../functions/config/userStorageTargets').PRODUCTION_TARGETS, registered);
   assert.equal(plan.artifacts.targetRegistration.writerRunId, f.config.writerRunId);
 });
 test('미정 값은 임의 생성/기본 지역 선택 없이 검토 자료의 미확정 목록에 남는다', () => {

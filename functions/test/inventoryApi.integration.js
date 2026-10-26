@@ -47,6 +47,8 @@ function loadSource(relative, mocks, environment) {
   loaded.require = name => {
     // 고정 계측 모듈은 SDK·운영 연결 없이 실제 구현을 사용한다.
     if (name === '../services/inventoryRequestTiming') return require('../services/inventoryRequestTiming');
+    if (name === '../services/loginUserData') return require('./loginUserDataFixture.cjs').loadLoginUserData(loadSource, mocks, environment);
+    if (name === '../services/requestAccount') return require('../services/requestAccount');
     assert.ok(Object.hasOwn(mocks, name), `격리되지 않은 의존성: ${relative}: ${name}`);
     return typeof mocks[name] === 'function' && mocks[name].lazyFixture
       ? mocks[name]() : mocks[name];
@@ -344,7 +346,7 @@ test('GET 응답용 집계 정리는 공유 snapshot을 변경하지 않고 양�
     '../services/inventoryMigrationService': { ensureInventoryV2: async () => inventory,
       inventoryMigrationStatus: () => ({ status: 'complete' }) },
   }, { USER_STORAGE_BACKEND: 'rtdb' });
-  const response = { code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
+  const response = { code: 200, set() { return this; }, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
   await routes.getUserData({ method: 'GET', query: {}, headers: {} }, response);
   assert.equal(response.code, 200);
   assert.deepEqual(response.body.rarities, Object.fromEntries([['__proto__', 2]]));

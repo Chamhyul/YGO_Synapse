@@ -49,6 +49,9 @@ function loadSource(relative, mocks, environment) {
   loaded.require = name => {
     // 고정 계측 모듈은 SDK·운영 연결 없이 실제 구현을 사용한다.
     if (name === '../services/inventoryRequestTiming') return require('../services/inventoryRequestTiming');
+    if (name === '../services/loginUserData') return require('./loginUserDataFixture.cjs').loadLoginUserData(loadSource, mocks, environment);
+    if (name === '../services/requestAccount') return require('../services/requestAccount');
+    if (name === '../services/initialWriterRoute') return require('../services/initialWriterRoute');
     assert.ok(Object.hasOwn(mocks, name), `격리되지 않은 의존성: ${relative}: ${name}`);
     return typeof mocks[name] === 'function' && mocks[name].lazyFixture ? mocks[name]() : mocks[name];
   };
@@ -89,7 +92,7 @@ function instrument(database, hook = (_event, invoke) => invoke()) {
   }) };
 }
 
-async function harness({ hook, claims = {}, authFailure, roleFailure, repositoryFailure,
+async function harness({ hook, claims = {}, account = {}, authFailure, roleFailure, repositoryFailure,
   timeoutMs } = {}) {
   const tracked = instrument(open().database, hook);
   const profile = createProfileStore({ database: tracked.database, timeoutMs });
@@ -103,7 +106,7 @@ async function harness({ hook, claims = {}, authFailure, roleFailure, repository
   const registration = loadSource('services/registrationService.js', {
     './userProfileRepository': profileModule,
   });
-  const authCalls = [], appCheckCalls = [];
+  const authCalls = [], accountReads = [], appCheckCalls = [];
   const auth = loadSource('utils/auth.js', {
     '../config/firebase': { admin: {
       auth: () => ({
@@ -112,11 +115,12 @@ async function harness({ hook, claims = {}, authFailure, roleFailure, repository
           if (authFailure) throw authFailure;
           const match = /^synthetic:([a-zA-Z0-9_-]+)$/.exec(token);
           if (!match) throw Object.assign(new Error('합성 무효 토큰'), { code: 'auth/invalid-id-token' });
-          return { uid: match[1], role: 'owner' }; // 토큰의 과거 권한을 신뢰하지 않는지 확인한다.
+          return { uid: match[1], role: 'owner', auth_time: 1700000000 }; // 토큰의 과거 권한을 신뢰하지 않는지 확인한다.
         },
         getUser: async uid => {
+          accountReads.push(uid);
           if (roleFailure) throw roleFailure;
-          return { uid, customClaims: claims };
+          return { uid, customClaims: claims, ...account };
         },
       }),
       appCheck: () => ({ verifyToken: async token => {
@@ -204,7 +208,7 @@ async function harness({ hook, claims = {}, authFailure, roleFailure, repository
     const { consentVersions } = await ok('getRegistrationStatus', uid);
     return { agreements: { terms: true, privacy: true }, consentVersions };
   }
-  return { call, ok, consent, profile, inventory, repository, tracked, authCalls, appCheckCalls };
+  return { call, ok, consent, profile, inventory, repository, tracked, authCalls, accountReads, appCheckCalls };
 }
 
 const isWrite = event => ['transaction', 'set', 'update', 'remove'].includes(event.method);
@@ -425,7 +429,14 @@ test('HTTP Auth·App Check 오류·본문 UID 위조를 차단하며 과거 토�
   assert.deepEqual(current.settings.membership, {
     status: 'none', type: 'none', levelName: '일반', verificationRequired: false,
   });
-  assert.ok(app.authCalls.length > 0 && app.authCalls.every(call => call.checkRevoked === true));
+  assert.ok(app.authCalls.length > 0 && app.accountReads.includes(uid));
+  // 검증된 토큰과 별도로 현재 계정의 disabled·철회를 실제 HTTP 경로에서 거부한다.
+  for (const account of [{ disabled: true }, { tokensValidAfterTime: '2023-11-14T22:13:21.000Z' }]) {
+    const blocked = await harness({ account });
+    const result = await blocked.call('getUserData', uid, {}, { expectedStatus: 401 });
+    assert.equal(result.body.code, 'AUTH_INVALID');
+    assert.equal(blocked.tracked.events.some(event => event.path.startsWith('inventories/')), false);
+  }
   assert.ok(app.appCheckCalls.length > 0);
 });
 
@@ -471,6 +482,6 @@ test('HTTP 저장 거부는 기존 프로필을 보존하고 권한 조회 장�
   assert.deepEqual(await rawProfile(uid), before);
   const denied = await harness({ roleFailure: new Error('합성 권한 조회 장애') });
   const result = await denied.call('getUserData', uid, {}, { expectedStatus: 503 });
-  assert.equal(result.body.code, 'ACCOUNT_ROLE_UNAVAILABLE');
+  assert.equal(result.body.code, 'AUTH_VERIFICATION_UNAVAILABLE');
   assert.equal(denied.tracked.events.some(event => event.path.startsWith('inventories/')), false);
 });

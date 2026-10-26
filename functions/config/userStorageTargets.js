@@ -1,9 +1,14 @@
 'use strict';
-
-// 운영 RTDB는 아직 선택·생성하지 않았다. 실제 프로젝트 소속·위치·정확한 URL을
-// 별도로 확인하고 승인한 대상만 코드 검토를 거쳐 등록한다. 환경변수는 등록을 대신하지 않는다.
-// 항목: { id, projectId, instanceId, location, databaseURL, writerRunId }
-// writerRunId는 같은 DB의 모든 함수/관리 도구가 공유하는 고정 전환 ID다.
-const PRODUCTION_TARGETS = Object.freeze([]);
-
+// 검증된 기존 운영 대상의 고정 등록이다. 접속 키·토큰·사용자 데이터가 아니다.
+// 환경변수는 이 등록과 일치해야 하며 관리형 런타임·IAM 검사는 별도로 유지한다.
+const PRODUCTION_TARGETS = Object.freeze([
+  {
+    "id": "user-data",
+    "projectId": "ygo-synapse",
+    "instanceId": "ygo-synapse-default-rtdb",
+    "location": "asia-southeast1",
+    "databaseURL": "https://ygo-synapse-default-rtdb.asia-southeast1.firebasedatabase.app/",
+    "writerRunId": "f7581980072e404fb8f250d377e55097"
+  }
+].map(Object.freeze));
 module.exports = { PRODUCTION_TARGETS };
