@@ -10,13 +10,14 @@ function load(file, mocks, env = {}) {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
     module, exports: module.exports, console: { error() {} }, process: { env },
-    require(name) { if (['../services/inventoryRequestTiming', './inventoryRequestTiming'].includes(name)) return require('../services/inventoryRequestTiming'); 
+    require(name) { if (name === '../services/requestAccount') return require('../services/requestAccount');  if (['../services/inventoryRequestTiming', './inventoryRequestTiming'].includes(name)) return require('../services/inventoryRequestTiming');
+      if (name === '../services/initialWriterRoute') return require('../services/initialWriterRoute');
       if (name === '../services/publicReadTransport' || name === './publicReadTransport') return { isLocal: () => false, withPublicReadRequest: handler => handler }; assert.ok(name in mocks, name); return mocks[name]; },
   });
   return module.exports;
 }
-function fixture({ existing, inventory = false, auth = true, failure = false, writerMode } = {}) {
-  let data = existing, reads = 0, writes = 0, authCalls = 0;
+function fixture({ existing, inventory = false, auth = true, failure = false, writerMode, initialData, initialFailure, accountFailure } = {}) {
+  let data = existing, reads = 0, writes = 0, authCalls = 0, initialReads = 0;
   const ref = { async get() { reads++; if (failure) throw Error('private'); return { exists: !!data, data: () => data }; } };
   const db = { collection: () => ({ doc: () => ref }),
     async runTransaction(fn) { return fn({ get: () => ref.get(), create(_, value) { assert.equal(data, undefined); writes++; data = value; } }); } };
@@ -28,13 +29,14 @@ function fixture({ existing, inventory = false, auth = true, failure = false, wr
   });
   const routes = load('routes/registration.js', {
     'firebase-functions/v2/https': { onRequest: (_, fn) => fn },
+    '../services/loginUserData': { readLoginAccountData: async () => { if(accountFailure) throw Object.assign(Error('private'),{code:'ACCOUNT_ROLE_UNAVAILABLE'}); return {success:true,nickname:'fixture'}; }, readLoginUserData: async () => { initialReads++; if (initialFailure) throw Error('private'); return initialData; } },
     '../services/registrationService': service, '../utils/safeError': { safeErrorSummary: () => ({ type: 'internal_error' }) },
     '../utils/auth': { setCors() {}, verifyAppCheck: async () => true,
       verifyUser: async (_, res) => { authCalls++; if (auth) return 'fixture-user'; res.status(401).json({ success: false }); return null; } },
   }, { USER_PROFILE_WRITER_MODE: writerMode });
   const res = () => ({ code: 200, headers: {}, set(k, v) { this.headers[k] = v; return this; },
     status(n) { this.code = n; return this; }, json(body) { this.body = body; return this; }, send() { return this; } });
-  return { routes, res, service, stats: () => ({ data, reads, writes, authCalls }) };
+  return { routes, res, service, stats: () => ({ data, reads, writes, authCalls, initialReads }) };
 }
 async function status(f) { const r = f.res(); await f.routes.getRegistrationStatus({ method: 'GET', headers: {} }, r); return r; }
 async function complete(f, body) { const r = f.res(); await f.routes.completeRegistration({ method: 'POST', body }, r); return r; }
@@ -92,7 +94,7 @@ test('동의 버전은 현재 공개 문서의 해시와 일치한다', async ()
 test('가입 전 보호 API 검증은 403, 장애는 503이며 기존 회원은 허용한다', async () => {
   for (const registered of [false, true, 'failure']) {
     const helpers = load('utils/auth.js', {
-      '../config/firebase': { admin: { auth: () => ({ verifyIdToken: async () => ({ uid: 'test-user' }) }) } },
+      '../config/firebase': { admin: { auth: () => ({ verifyIdToken: async () => ({ uid: 'test-user' }), getUser: async () => ({disabled:false}) }) } },
       './safeError': { safeErrorSummary: () => ({ type: 'internal_error' }) },
       '../services/registrationService': { isRegisteredUser: async () => { if (registered === 'failure') throw Error('secret'); return registered; } },
     });
@@ -146,4 +148,35 @@ test('프로필 writer 시험 플래그의 일반 가입 경로는 Auth/저장�
   const f = fixture({ writerMode: 'emulator' });
   assert.equal((await status(f)).code, 503); assert.equal((await complete(f, {})).code, 503);
   assert.equal(f.stats().authCalls, 0); assert.equal(f.stats().reads, 0); assert.equal(f.stats().writes, 0);
+});
+
+test('초기 통합은 기존 응답·미가입 무조회와 본문 장애 분리를 유지한다', async () => {
+  for (const existing of [undefined, { Nickname: 'synthetic' }]) {
+    const f = fixture({ existing, initialData: { success: true, allCards: [] } });
+    const plain = await status(f); assert.equal(Object.hasOwn(plain.body, 'initialData'), false);
+    const res = f.res(); await f.routes.getRegistrationStatus({ method: 'GET', headers: {}, query: { includeUserData: 'true' } }, res);
+    assert.equal(res.body.registered, !!existing); assert.equal(f.stats().initialReads, existing ? 1 : 0);
+    assert.equal(!!res.body.initialData, !!existing); assert.equal(f.stats().writes, 0);
+  }
+  const f = fixture({ inventory: true, initialFailure: true }); const res = f.res();
+  await f.routes.getRegistrationStatus({ method: 'GET', headers: {}, query: { includeUserData: 'true' } }, res);
+  assert.equal(res.code, 200); assert.equal(res.body.registered, true);
+  assert.equal(res.body.initialData.code, 'INITIAL_USER_DATA_UNAVAILABLE');
+  assert.doesNotMatch(JSON.stringify(res.body), /private/); assert.equal(f.stats().writes, 0);
+});
+
+
+test('선택 계정 요약은 가입된 계정만 반환하고 기존 전체 API 옵션을 우선한다', async () => {
+  for(const existing of [undefined,{Nickname:'fixture'}]){
+    const f=fixture({existing}),r=f.res();await f.routes.getRegistrationStatus({method:'GET',headers:{},query:{includeAccountData:'true'}},r);
+    assert.equal(r.code,200);assert.equal(!!r.body.initialAccount,!!existing);assert.equal(f.stats().initialReads,0);
+    assert(!Object.hasOwn(r.body,'initialData'));assert.equal(f.stats().writes,0);
+  }
+  const f=fixture({existing:{},initialData:{success:true,allCards:[]}}),r=f.res();
+  await f.routes.getRegistrationStatus({method:'GET',headers:{},query:{includeAccountData:'true',includeUserData:'true'}},r);
+  assert(r.body.initialData);assert(!Object.hasOwn(r.body,'initialAccount'));
+});
+test('계정 요약의 현재 역할 조회 실패는 로그인 성공 응답으로 숨기지 않는다', async () => {
+ const f=fixture({existing:{},accountFailure:true}),r=f.res();await f.routes.getRegistrationStatus({method:'GET',headers:{},query:{includeAccountData:'true'}},r);
+ assert.equal(r.code,503);assert.equal(r.body.success,false);assert(!r.body.initialAccount);
 });

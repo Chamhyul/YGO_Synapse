@@ -3,8 +3,33 @@
 
 <head>
     <meta charset="UTF-8">
+    <!-- 기존 OAuth 복귀 주소는 유지하고, 팝업만 일반 앱 부팅 전에 분리한다. -->
+    <script>
+        (function () {
+            try {
+                var marker = JSON.parse(sessionStorage.getItem('ygo_discord_popup_callback'));
+                var query = new URLSearchParams(location.search);
+                if (!marker || marker.version !== 1 || !/^[a-f0-9]{64}$/.test(marker.state)
+                    || !Number.isFinite(marker.expiresAt) || query.getAll('state').length !== 1
+                    || query.get('state') !== marker.state || !query.has('code') && !query.has('error')) return;
+                window.YgoDiscordPopup = Object.freeze({ isCallback: true });
+                var result = new URLSearchParams();
+                ['code', 'state', 'error'].forEach(function (key) { query.getAll(key).forEach(function (value) { result.append(key, value); }); });
+                history.replaceState({}, '', location.pathname);
+                location.replace('/discord-popup.html#' + result.toString());
+            } catch (_) { /* 일반 페이지의 인증 초기화는 그대로 진행한다. */ }
+        })();
+    </script>
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+    <!-- 인증에 필요한 외부 연결만 미리 준비한다. 실제 요청과 인증 검사는 기존 SDK가 수행한다. -->
+    <link rel="preconnect" href="https://accounts.google.com">
+    <link rel="preconnect" href="https://apis.google.com">
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+    <link rel="dns-prefetch" href="https://accounts.google.com">
+    <link rel="dns-prefetch" href="https://apis.google.com">
+    <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com">
 
     <!-- Google Tag Manager: GA4 태그·운영 호스트 조건은 컨테이너에서 관리한다. -->
     <script>
@@ -69,6 +94,15 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
     <link rel="shortcut icon" href="/favicon.ico">
 
+    <!-- 같은 기본 앱의 인증 준비는 일반 화면 라이브러리보다 먼저 시작한다. -->
+    <script src="login-timing.js?v=8-auth-recovery-end" defer></script>
+    <!-- Firebase SDK -->
+    <script defer src="/__/firebase/13.0.0/firebase-app-compat.js"></script>
+    <script defer src="/__/firebase/13.0.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/13.0.0/firebase-app-check-compat.js"></script>
+    <script defer src="/__/firebase/init.js"></script>
+    <script src="auth-bootstrap.js?v=3-discord-popup" defer></script>
+
     <title>YGO 시냅스 - 유희왕 카드 관리 시스템</title>
     <meta name="description"
         content="유희왕 오피셜 카드게임에서 사용하는 실물 유희왕 카드의 효율적인 관리를 보조하는 웹 애플리케이션입니다. 사용자가 보유한 카드들을 전산화하여 등록하는 것으로 보다 빠르고 편하게 실물 카드를 관리할 수 있게 해줍니다.">
@@ -92,7 +126,7 @@
     <link rel="stylesheet" href="styles/search.css?v=166-style-cleanup">
     <link rel="stylesheet" href="styles/search-results.css?v=196-chip-remove-padding">
     <link rel="stylesheet" href="styles/home.css?v=154-ui-structure">
-    <link rel="stylesheet" href="styles/layout.css?v=154-ui-structure">
+    <link rel="stylesheet" href="styles/layout.css?v=20261021-discord-header-v38">
     <link rel="stylesheet" href="styles/overlays.css?v=190-overlay-cleanup">
     <link rel="stylesheet" href="styles/documents.css?v=10-document-cleanup">
 </head>
@@ -276,6 +310,10 @@
     </div>
 
     <main class="app-page-content">
+        <div id="user-sync-status" class="color-text-001" role="status" aria-live="polite" hidden>
+            <span data-sync-message>보유 정보를 동기화하고 있습니다.</span>
+            <button type="button" class="ui-button ui-button--text color-text-theme" onclick="retryUserDataSync()" hidden>다시 시도</button>
+        </div>
 
         <div id="app-search-masthead">
             <a class="app-title-container" href="./" aria-label="YGO Synapse 홈" onclick="event.preventDefault(); switchToMode('home');">
@@ -1733,7 +1771,7 @@
                                 </div>
                                 <div class="page-btn-container">
                                     <button class="btn cyan-theme waves-effect waves-light"
-                                        onclick="submitPageEntries()" tabindex="0">등록</button>
+                                        data-requires-inventory onclick="submitPageEntries()" tabindex="0">등록</button>
                                 </div>
                             </div>
 
@@ -1766,7 +1804,7 @@
                                 </div>
                                 <div class="page-btn-container">
                                     <button class="btn cyan-theme waves-effect waves-light"
-                                        onclick="submitPageEntries()" tabindex="0">등록</button>
+                                        data-requires-inventory onclick="submitPageEntries()" tabindex="0">등록</button>
                                 </div>
                             </div>
                         </div>
@@ -2063,7 +2101,7 @@
                             <div class="management-row" style="margin-top: 15px;">
                                 <span class="management-desc">서버 데이터를 다운로드 합니다.</span>
                                 <button class="btn cyan-theme waves-effect waves-light management-btn"
-                                    onclick="openExportModal()">내보내기</button>
+                                    data-requires-inventory onclick="openExportModal()">내보내기</button>
                             </div>
                         </div>
 
@@ -2075,7 +2113,7 @@
                             <div class="management-row">
                                 <span class="management-desc">서버에 등록된 카드 정보를 삭제합니다.</span>
                                 <button class="btn waves-effect waves-light management-btn"
-                                    onclick="openDataClearModal()"
+                                    data-requires-inventory onclick="openDataClearModal()"
                                     style="background-color: var(--error-red) !important;">데이터 삭제</button>
                             </div>
 
@@ -2369,7 +2407,7 @@
         </div>
         <footer class="ui-overlay__footer">
             <button type="button" class="ui-button ui-button--text color-text-001 modal-close">취소</button>
-            <button type="button" class="ui-button color-theme shape-capsule" onclick="exportInventoryToCSV()">내보내기</button>
+            <button type="button" class="ui-button color-theme shape-capsule" data-requires-inventory onclick="exportInventoryToCSV()">내보내기</button>
         </footer>
     </div>
 
@@ -2385,18 +2423,9 @@
         <footer class="ui-overlay__footer"><button type="button" class="ui-button color-theme shape-capsule modal-close">확인</button></footer>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
-    <script src="https://unpkg.com/hangul-js"></script>
-    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js" defer></script>
+    <script src="https://unpkg.com/hangul-js" defer></script>
 
-    <!-- Firebase SDK -->
-    <script defer src="/__/firebase/10.12.0/firebase-app-compat.js"></script>
-    <script defer src="/__/firebase/10.12.0/firebase-auth-compat.js"></script>
-    <script defer src="/__/firebase/10.12.0/firebase-app-check-compat.js"></script>
-    <script defer src="/__/firebase/init.js"></script>
-
-    <!-- Google Identity Services (유튜브 채널 연동 OAuth 2.0 토큰 전용) -->
-    <script src="https://accounts.google.com/gsi/client" async></script>
 
     <section id="noti-popup" class="noti-popup-layer ui-overlay ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium" role="dialog" aria-label="공지 미리보기" tabindex="-1" hidden>
         <header class="ui-overlay__header">
@@ -2563,13 +2592,18 @@
     <script src="search-navigation.js?v=154-ui-structure" defer></script>
     <script src="management-results.js?v=183-style-cleanup" defer></script>
     <script src="data-transfer.js?v=178-data-dialogs" defer></script>
+    <script src="import-attempt.js?v=1" defer></script>
+    <script src="spreadsheet-loader.js?v=1" defer></script>
     <script src="overlays.js?v=193-popup-height" defer></script>
-    <script src="catalog-search.js?v=195-chip-spacing" defer></script>
+    <script src="catalog-search.js?v=27-195-chip-spacing" defer></script>
     <script src="owned-cards.js?v=156-owned-detail-colors" defer></script>
     <script src="auth-session.js?v=2" defer></script>
-    <script src="admin-session.js?v=2" defer></script>
+    <script src="authentication-result.js?v=2" defer></script>
+    <script src="admin-session.js?v=5" defer></script>
     <script src="documents.js?v=3-document-list-overlay" defer></script>
-    <script src="script.js?v=190-overlay-cleanup" defer></script>
+    <script src="membership-claims-sync.js?v=6" defer></script>
+    <script src="discord-popup.js?v=4" defer></script>
+    <script src="script.js?v=211-authentication-result" defer></script>
     <!-- 인벤토리 필터 팝업 -->
     <section id="inventory-filter-popup" class="catalog-filter-editor ui-overlay ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium" role="dialog" tabindex="-1" hidden>
         <!-- JS에서 동적 렌더링 -->

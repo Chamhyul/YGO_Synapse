@@ -27,7 +27,7 @@ function fixture(role = 'owner', getErrorSummary, getTrafficSummary, notices, me
     return res;
   }
   async function signIn(origin) { return request('/admin/session', { method: 'POST', origin, headers: { authorization: 'Bearer valid' } }); }
-  return { request, signIn, calls, store, cookie: '__session=test-signed-cookie', advance(ms) { time += ms; }, role(v) { role = v; },
+  return { request, signIn, calls, store, auth, cookie: '__session=test-signed-cookie', advance(ms) { time += ms; }, role(v) { role = v; },
     disable() { disabled = true; }, revoke() { revoked = true; }, fail() { failure = true; } };
 }
 test('세션이 없으면 로그인 문서만 제공하고 관리자 본문은 응답에 포함하지 않는다', async () => {
@@ -35,12 +35,21 @@ test('세션이 없으면 로그인 문서만 제공하고 관리자 본문은 �
   assert.equal(res.code, 200); assert.match(res.body, /id="admin-login"/); assert.doesNotMatch(res.body, /id="admin-content"/);
   assert.match(res.body, /data-admin-page="\/admin\/cards"/); assert.equal(f.calls.length, 0);
 });
+test('쿠키 없는 로그인 문서는 전환 저장소를 조회하지 않으며 보호 API도 익명으로 거부한다', async () => {
+  const f=fixture();let entered=0;
+  f.store.withRequest=async()=>{entered++;throw Error('synthetic-storage-down');};
+  const document=await f.request('/admin/settings');
+  assert.equal(document.code,200);assert.doesNotMatch(document.body,/id="admin-content"/);
+  assert.equal((await f.request('/admin/api/traffic')).code,401);
+  assert.equal(entered,0);
+  assert.equal((await f.signIn()).code,503);assert.equal(entered,1);
+});
 test('로그인 토큰 검증·현재 Claims 확인 후 HttpOnly 세션 쿠키를 발급한다', async () => {
   const f = fixture(); const res = await f.signIn();
   assert.equal(res.code, 200); assert.equal(res.body.role, 'owner');
   assert.match(res.headers['Set-Cookie'], /Path=\/admin; HttpOnly; SameSite=Strict$/);
   assert.doesNotMatch(res.headers['Set-Cookie'], /Expires|Max-Age/);
-  assert.deepEqual(f.calls[0], ['token', true]);
+  assert.deepEqual(f.calls[0], ['token', false]);
   const https = await fixture().signIn('https://ygo-synapse.web.app'); assert.match(https.headers['Set-Cookie'], /; Secure$/);
 });
 test('UID나 admin=true 본문은 소유자 권한의 근거가 아니며 일반 계정은 거부한다', async () => {
@@ -70,7 +79,7 @@ test('서명된 세션으로 여섯 페이지를 바로 제공하고 owner 상�
   }
   assert.equal(f.calls.filter(c => c[0] === 'token').length, before);
   assert.equal(f.calls.filter(c => c[0] === 'cookie').length, 6);
-  assert.ok(f.calls.filter(c => c[0] === 'cookie').every(c => c[1] === true));
+  assert.ok(f.calls.filter(c => c[0] === 'cookie').every(c => c[1] === false));
 });
 test('일반 관리자는 다섯 화면만 접근하고 설정 HTML과 owner 링크를 받지 않는다', async () => {
   for (const role of ['admin', 'flag']) {
@@ -234,7 +243,7 @@ test('공통 요청 종료가 실패하면 로그인 성공 본문과 쿠키를 
   const f = fixture();
   f.store.withRequest = async (_req, work) => { await work(); throw new Error('synthetic journal end failure'); };
   const result = await f.signIn();
-  assert.equal(result.code, 503); assert.deepEqual(result.body, { success: false });
+  assert.equal(result.code, 503); assert.deepEqual(result.body, { success: false, code: 'ADMIN_SESSION_UNAVAILABLE' });
   assert.equal(result.headers['Set-Cookie'], undefined);
 });
 test('공통 요청이 끝난 뒤 기존 로그인 응답과 쿠키 속성을 한 번 전달한다', async () => {
@@ -243,4 +252,113 @@ test('공통 요청이 끝난 뒤 기존 로그인 응답과 쿠키 속성을 �
   const result = await f.signIn(); assert.equal(completed, true); assert.equal(result.code, 200);
   assert.deepEqual(result.body, { success: true, role: 'owner' });
   assert.match(result.headers['Set-Cookie'], /Path=\/admin; HttpOnly; SameSite=Strict/);
+});
+
+for (const [reason, code] of [['WRITER_RESOURCE_BUSY','ADMIN_SESSION_BUSY'],['WRITER_FENCED','ADMIN_SESSION_BUSY'],['WRITER_OUTCOME_UNRESOLVED','ADMIN_SESSION_RECOVERY_REQUIRED'],['WRITER_CANCELLED','ADMIN_SESSION_UNAVAILABLE']]) test(`세션 ${reason} 응답은 권한 부족으로 바꾸지 않는다`, async()=>{
+ const f=fixture();f.store.withRequest=async()=>{throw Object.assign(Error('secret-detail'),{code:reason});};
+ const result=await f.signIn();assert.equal(result.code,503);assert.deepEqual(result.body,{success:false,code});
+ assert.equal(result.headers['Set-Cookie'],undefined);
+});
+test('요청 출처 거부와 실제 관리자 권한 부족을 고정 code로 구분한다',async()=>{
+ assert.equal((await fixture('none').signIn()).body.code,'ADMIN_ROLE_REQUIRED');
+ const res=await fixture().request('/admin/session',{method:'POST',headers:{origin:'https://evil.example'}});
+ assert.equal(res.body.code,'ADMIN_REQUEST_REJECTED');
+});
+
+for (const [label,change] of [
+ ['logout',async f=>{await f.request('/admin/session/logout',{method:'POST',cookie:f.cookie});}],
+ ['권한 회수',async f=>f.role('user')],['계정 중지',async f=>f.disable()],['철회',async f=>f.revoke()],
+ ['30분 만료',async f=>f.advance(IDLE_MS)],
+]) test(`읽기 중 ${label}가 완료되면 수집한 응답을 전달하지 않는다`,async()=>{
+ let release,entered;const gate=new Promise(r=>release=r),ready=new Promise(r=>entered=r);
+ const f=fixture('owner',async()=>{entered();await gate;return{privateResult:'synthetic-private-result'};});
+ await f.signIn();
+ const pending=f.request('/admin/api/errors',{cookie:f.cookie});await ready;
+ await change(f);release();const result=await pending;
+ assert.equal(result.code,401);assert.doesNotMatch(JSON.stringify(result.body),/synthetic-private-result/);
+});
+test('페이지와 로그인은 최신 계정 한 번으로 철회·역할을 검사하고 이전 요청 값을 재사용하지 않는다',async()=>{
+ const f=fixture();await f.signIn();assert.equal(f.calls.filter(c=>c[0]==='claims').length,1);
+ f.calls.length=0;await f.request('/admin',{cookie:f.cookie});assert.equal(f.calls.filter(c=>c[0]==='claims').length,1);
+ f.role('user');assert.doesNotMatch((await f.request('/admin',{cookie:f.cookie})).body,/id="admin-content"/);
+});
+
+test('읽기 응답의 마지막 잠금 종료가 실패하면 수집한 데이터와 성공 상태를 전달하지 않는다',async()=>{
+ const f=fixture('owner',async()=>({privateResult:'synthetic-private-result'}));await f.signIn();
+ let gates=0;f.store.withRequest=async(_req,work)=>{const result=await work();if(++gates===2)throw Error('synthetic-private-end-failure');return result;};
+ const response=await f.request('/admin/api/errors',{cookie:f.cookie});
+ assert.equal(response.code,503);assert.deepEqual(response.body,{success:false});
+ assert.doesNotMatch(JSON.stringify(response),/synthetic-private-result|synthetic-private-end-failure/);
+});
+test('로그인 계정 조회 장애는 인증 실패와 구분한503이며 쿠키를 발급하지 않는다',async()=>{
+ const f=fixture();f.fail();const response=await f.signIn();
+ assert.equal(response.code,503);assert.equal(response.headers['Set-Cookie'],undefined);
+ assert.equal(response.body.code,'ADMIN_SESSION_UNAVAILABLE');
+});
+for(const invalid of ['expired','disabled','role']) test(`읽기 사전 인증의 ${invalid} 거부는 세션을 쓰거나 외부 데이터를 조회하지 않는다`,async()=>{
+ let reads=0;const f=fixture('owner',async()=>{reads++;return{};});await f.signIn();
+ if(invalid==='expired')f.advance(IDLE_MS);
+ if(invalid==='disabled')f.disable();
+ if(invalid==='role')f.role('user');
+ f.store.remove=async()=>assert.fail('읽기 전용 사전 확인에서 삭제하면 안 된다');
+ f.store.withReadRequest=async(_req,authorize)=>({access:await authorize({readOnly:true})});
+ const res=await f.request('/admin/api/errors',{cookie:f.cookie});
+ assert.equal(res.code,401);assert.equal(reads,0);
+});
+
+
+test('활동 POST만 요청 journal을 재사용하고 발급·로그아웃 경계는 유지한다', async () => {
+  const f = fixture(), seen = [];
+  f.store.withRequest = async (_req, action, options) => { seen.push(options); return action(); };
+  assert.equal((await f.signIn()).code, 200);
+  assert.deepEqual(seen.pop(), { reuseJournal: false, activityOnly: false });
+  assert.equal((await f.request('/admin/session/activity', { method: 'POST', cookie: f.cookie, body: { uid: 'test-owner' } })).code, 204);
+  assert.deepEqual(seen.pop(), { reuseJournal: true, activityOnly: true });
+  await f.request('/admin/cards', { cookie: f.cookie });
+  assert.deepEqual(seen.pop(), { reuseJournal: true, activityOnly: false });
+  await f.request('/admin/session/logout', { method: 'POST', cookie: f.cookie });
+  assert.deepEqual(seen.pop(), { reuseJournal: false, activityOnly: false });
+});
+
+function deferred() { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; }
+function bounded(promise) {
+  let timer;
+  return Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('synthetic-preparation-timeout')), 2000); })]).finally(() => clearTimeout(timer));
+}
+test('활동의 현재 Auth와 route는 병렬이며 양쪽 승인 전에는 활동을 쓰지 않고 요청마다 새로 확인한다', async () => {
+  const f = fixture(); await f.signIn();
+  const routeStarted = deferred(), routeReady = deferred(), accountStarted = deferred(), accountReady = deferred();
+  const getUser = f.auth.getUser, touch = f.store.touch; let touched = 0;
+  f.store.withRequest = async (req, action) => { routeStarted.resolve(); await routeReady.promise; return action(); };
+  f.auth.getUser = async () => { accountStarted.resolve(); await accountReady.promise; return getUser(); };
+  f.store.touch = async (...args) => { touched++; return touch(...args); };
+  const before = f.calls.length, pending = f.request('/admin/session/activity', { method: 'POST', cookie: f.cookie, body: { uid: 'test-owner' } });
+  try {
+    await bounded(Promise.all([routeStarted.promise, accountStarted.promise])); assert.equal(touched, 0);
+    routeReady.resolve(); await new Promise(setImmediate); assert.equal(touched, 0);
+    accountReady.resolve(); assert.equal((await pending).code, 204); assert.equal(touched, 1);
+    assert.deepEqual(f.calls.slice(before).map(c => c[0]).sort(), ['claims', 'cookie']);
+    f.disable(); assert.equal((await f.request('/admin/session/activity', { method: 'POST', cookie: f.cookie })).code, 401);
+    assert.equal(touched, 1); assert.equal(f.calls.slice(before).filter(c => c[0] === 'claims').length, 2);
+  } finally { routeReady.resolve(); accountReady.resolve(); await pending; }
+});
+test('활동 route 실패 때 시작된 Auth를 회수하고 실패 응답을 유지한다', async () => {
+  const f = fixture(); await f.signIn(); const entered = deferred(), release = deferred(); let settled = false, replied = false;
+  f.auth.getUser = async () => { entered.resolve(); await release.promise; settled = true; throw Error('synthetic-account-down'); };
+  f.store.withRequest = async () => { await entered.promise; throw Error('synthetic-route-down'); };
+  const pending = f.request('/admin/session/activity', { method: 'POST', cookie: f.cookie }).then(value => { replied = true; return value; });
+  try {
+    await bounded(entered.promise); await new Promise(setImmediate); assert.equal(replied, false);
+    release.resolve(); const response = await pending; assert.equal(response.code, 503); assert.equal(settled, true);
+    assert.equal(response.body.code, 'ADMIN_SESSION_UNAVAILABLE');
+  } finally { release.resolve(); await pending; }
+});
+test('활동의 CSRF·조작 쿠키는 병렬 준비로 계정 조회나 쓰기를 허용하지 않는다', async () => {
+  const f = fixture(); await f.signIn(); let writes = 0;
+  f.store.withRequest = async (req, action) => action(); f.store.touch = async () => { writes++; return true; };
+  const before = f.calls.length;
+  assert.equal((await f.request('/admin/session/activity', { method: 'POST', cookie: f.cookie, headers: { origin: 'https://evil.example' } })).code, 403);
+  assert.equal(f.calls.length, before);
+  assert.equal((await f.request('/admin/session/activity', { method: 'POST', cookie: '__session=forged' })).code, 401);
+  assert.equal(f.calls.slice(before).filter(c => c[0] === 'claims').length, 0); assert.equal(writes, 0);
 });

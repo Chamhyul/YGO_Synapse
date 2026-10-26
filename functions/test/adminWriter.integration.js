@@ -34,6 +34,16 @@ async function serve(handler) {
   }, close: () => new Promise(resolve => { server.close(resolve); server.closeIdleConnections(); }) };
 }
 const forbidden = () => assert.fail('운영 proxy/카드 handler 호출 금지');
+// 운영 분류도 고정 demo 클라이언트에서만 확인한다. 실제 운영 연결을 만들지 않는다.
+for (const mode of ['emulator', 'production']) test(`${mode} 공지 환경은 검증된 binding 설정을 따르고 목록 조회가 journal을 쓰지 않는다`, async () => {
+  const f = await setup({ config: { mode } });
+  try {
+    const before = await state(f), result = await f.notices.list();
+    assert.equal(result.environment, mode === 'emulator' ? 'local' : 'production');
+    assert.deepEqual(result.notices, []); assert.equal(result.revision, '0');
+    assert.deepEqual(await state(f), before);
+  } finally { await f.close(); }
+});
 for (const backend of ['legacy', 'rtdb']) test(`${backend} 공지 Storage CRUD·generation·정렬·정화와 양방향 전환을 유지한다`, async () => {
   const f = await setup(); try {
     if (backend === 'rtdb') await flip(f);
@@ -120,7 +130,7 @@ async function consoleHarness(f, options = {}) {
   await auth.createUser({ uid }); await auth.createUser({ uid: target });
   await auth.setCustomUserClaims(uid, { role: 'owner', admin: true }); await auth.setCustomUserClaims(target, { other: 'preserve' });
   const injected = { getUser: auth.getUser.bind(auth), listUsers: auth.listUsers.bind(auth), setCustomUserClaims: auth.setCustomUserClaims.bind(auth),
-    verifyIdToken: async (token, revoked) => { assert.equal(revoked, true); if (token !== 'synthetic-token') throw Object.assign(Error('rejected'), { code: 'auth/id-token-revoked' }); return { uid, role: 'owner' }; }, ...options.auth };
+    verifyIdToken: async (token, revoked) => { assert.equal(revoked, false); if (token !== 'synthetic-token') throw Object.assign(Error('rejected'), { code: 'auth/id-token-revoked' }); return { uid, role: 'owner', auth_time: Math.floor(Date.now() / 1000) }; }, ...options.auth };
   const env = environment(f), operations = createWriterAdminOperations({ ...options, writerBinding: f, auth: injected, env });
   const http = await serve(createAdminOperationRequestHandler(forbidden, { env, writerOperations: operations }));
   return { ...http, uid, target, auth, operations, env, async operation(operation, body = {}, token = 'synthetic-token', method = 'POST') {
@@ -170,19 +180,20 @@ test('관리자 목록 pagination과 Auth 시간초과의 기존 오류 계약�
     } finally { await blocked.close(); }
   } finally { await h.close(); await f.close(); }
 });
-test('console 요청 진행 중 drain은 대기하며 종료 승인 유실 시 성공 응답을 전달하지 않는다', async () => {
-  const f = await setup(); let entered, release, gated = true;
+test('console 쓰기 요청 진행 중 drain은 대기하며 종료 승인 유실 시 성공 응답을 전달하지 않는다', async () => {
+  const f = await setup(); let entered, release, verifies = 0;
   const ready = new Promise(resolve => { entered = resolve; }), gate = new Promise(resolve => { release = resolve; });
-  const h = await consoleHarness(f, { auth: { verifyIdToken: async () => { if (gated) { gated = false; entered(); await gate; } return { uid: h.uid }; } } });
+  const h = await consoleHarness(f, { auth: { verifyIdToken: async () => { if (++verifies === 2) { entered(); await gate; } return { uid: h.uid, auth_time: Math.floor(Date.now() / 1000) }; } } });
   try {
-    const pending = h.operation('checkAdminAccess'); await ready;
+    // 자격 조회는 읽기 전용이다. 실제 쓰기 요청으로 drain 보호를 검사한다.
+    const pending = h.operation('manageNotice', notice()); await ready;
     const writer = await f.transition.route(); await f.transition.copy(writer); await f.transition.drain(writer);
     await assert.rejects(f.transition.activate(writer), { code: 'WRITER_NOT_DRAINED' }); release(); assert.equal((await pending).status, 200);
     await f.transition.activate(writer);
     const end = f.transition.endExternal; f.transition.endExternal = async () => { throw Error('synthetic end ack loss'); };
     const result = await h.operation('manageNotice', notice()); assert.equal(result.status, 503); assert.equal(result.data.success, false);
     f.transition.endExternal = end; assert.ok((await f.transition.inspect()).externalUnresolved > 0);
-    assert.equal((await f.notices.list()).notices.length, 1);
+    assert.equal((await f.notices.list()).notices.length, 2);
   } finally { release?.(); await h.close(); await f.close(); }
 });
 test('동일 caller/target의 관리자 권한 변경은 인증 진행과 프로필을 앞지르지 않는다', async () => {

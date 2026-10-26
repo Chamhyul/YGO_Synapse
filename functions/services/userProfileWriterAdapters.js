@@ -1,4 +1,5 @@
 'use strict';
+const { measureRtdbGet } = require('./rtdbReadDiagnostics');
 const { Timestamp } = require('firebase-admin/firestore');
 const { encodeKey, decodeKey, encodeValue, decodeValue } = require('./user-storage/codec');
 const { createProfilePayloadCodec, serverTimestampPaths } = require('./user-storage/profileCodec');
@@ -171,7 +172,7 @@ function createRtdbProfileWriter({ database, access }) {
     return { path, parent: database.ref(path), profile: `${path}/profile` };
   }
   const decode = (key, raw) => recordEntry(key, decodeRecord(raw, { path: location(key).profile, payloadCodec: codec }));
-  const read = async key => { const loc = location(key); return decode(key, (await access.guarded(loc.parent.child('profile').get(), false)).val()); };
+  const read = async key => { const loc = location(key); return decode(key, (await access.guarded(measureRtdbGet(database, 'profile', () => loc.parent.child('profile').get()), false)).val()); };
   function decodeProof(raw, op) {
     savedProof(raw, op.id, op.digest);
     if (raw.kind === 'cancelled') return { id: op.id, digest: op.digest, outcome: 'cancelled' };
@@ -218,7 +219,17 @@ function createRtdbProfileWriter({ database, access }) {
         if (count < 25) break; }
       return sorted(entries);
     },
-    async commit(op) { const paths = timePaths(op); await write(op.changes[0].key, op.id, op.digest, op.changes[0], { token: op.changes[0].token }, paths, op.result, 'write'); },
+    async commit(op, onConfirmedReceipt) {
+      const paths = timePaths(op);
+      const raw = await write(op.changes[0].key, op.id, op.digest, op.changes[0], { token: op.changes[0].token }, paths, op.result, 'write');
+      // SDK transaction snapshot의 server-time은 서버 저장값과 미세하게 다를 수 있다.
+      // 새 서버 시각을 기록한 작업은 기존 fresh receipt 조회로 실제 값을 확인한다.
+      if (paths.length || !onConfirmedReceipt) return;
+      const decoded = decodeProof(raw, op);
+      if (raw.kind !== 'cancelled' && raw.kind !== 'write') throw fail('PROFILE_WRITER_RECEIPT_CONFLICT');
+      onConfirmedReceipt?.(raw.kind === 'cancelled' ? decoded
+        : { id: op.id, digest: op.digest, changes: [decoded], result: decodeValue(raw.result) });
+    },
     async receipt(op) {
       const key = op.changes[0].key, loc = location(key);
       const raw = (await access.guarded(loc.parent.child(`profileWriterReceipts/${op.id}`).get(), false)).val(); if (!raw) return null;

@@ -1,3 +1,4 @@
+const { measure } = require('./inventoryRequestTiming');
 const { resolveAccountRole, normalizeSourceMembership, resolveEffectiveMembership } = require('./membershipPolicy');
 const { randomBytes, createHash } = require('node:crypto');
 const { resolveMembershipProviderRuntime, syncProviderMembershipClaims, providerStateError } = require('./membershipProviderRuntime');
@@ -18,23 +19,32 @@ function createDiscordMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
     res.set('Cache-Control', 'no-store');
     if (req.method === 'OPTIONS') return res.status(204).send('');
     if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'POST 요청만 허용합니다.' });
-    if (!(await verifyAppCheck(req, res))) return;
+    if (!(await measure('auth.app_check', () => verifyAppCheck(req, res)))) return;
     let runtime;
-    try { runtime = resolveMembershipProviderRuntime({ env, storage,
+    try { runtime = measure('membership.runtime', () => resolveMembershipProviderRuntime({ env, storage,
       rtdbTestDependencies: rtdbTestDependencies && typeof auth?.getUser === 'function'
-        && typeof getMembership === 'function' && typeof getClientSecret === 'function' }); } catch (_) {
+        && typeof getMembership === 'function' && typeof getClientSecret === 'function' })); } catch (_) {
       return res.status(503).json({ success: false, code: 'USER_STORAGE_FEATURE_UNAVAILABLE',
         message: '이 환경에서는 멤버십 인증을 사용할 수 없습니다.' });
     }
-    const uid = await verifyRegisteredUser(req, res);
+    const uid = await measure('auth.verify', () => verifyRegisteredUser(req, res));
     if (!uid) return;
     const body = req.body || {};
     try {
       if (typeof body !== 'object' || Array.isArray(body)) throw fail(400, 'DISCORD_INVALID_REQUEST', '인증 요청 형식이 올바르지 않습니다.');
       if ('discordId' in body || 'roles' in body || 'redirectUri' in body && operation === 'verifyDiscordMembership') throw fail(400, 'DISCORD_PROOF_REQUIRED', '계정 ID·역할을 제출하는 대신 Discord 인증을 진행해 주세요.');
+      if (body.membershipPrepare === true) return measure('membership.prepare', () =>
+        require('./membershipReadiness').respondMembershipReadiness(req, res, operation));
       if (!runtime && isLocal()) {
         // 로컬은 자격증명 없이 고정 운영 API에서 검증하고, 결과만 로컬에 저장한다.
-        const result = await forward(operation, { ...body, localOnly: true }, req.headers);
+        const result = await forward(operation, { ...body, localOnly: true }, req.headers, undefined, {
+          onResult(value) {
+            if (value.uid !== uid || value.sourceMembership?.type !== 'discord'
+                || value.sourceMembership?.verificationProvider !== 'discord' || value.sourceMembership?.verificationVersion !== 2
+                || !/^\d{17,20}$/.test(value.sourceMembership?.discordId)) throw fail(503, 'DISCORD_UNAVAILABLE', '검증 결과를 확인하지 못했습니다.');
+            require('./authenticationResult').publishAuthenticationResult(value);
+          }
+        });
         if (result.uid !== uid) throw fail(403, 'DISCORD_SESSION_CHANGED', '인증한 서비스 계정이 변경되었습니다.');
         if (operation === 'verifyDiscordMembership') {
           if (result.sourceMembership?.type !== 'discord' || result.sourceMembership?.verificationVersion !== 2 || !/^\d{17,20}$/.test(result.sourceMembership?.discordId) || result.sourceMembership?.verificationProvider !== 'discord') throw fail(503, 'DISCORD_UNAVAILABLE', '검증 결과를 확인하지 못했습니다.');
@@ -50,7 +60,7 @@ function createDiscordMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
         const startedAt = now();
         const state = { nonceHash: hash(verificationId), startedAt, expiresAt: startedAt + 300000,
           consumed: false, localOnly: body.localOnly === true || body.redirectUri === 'http://localhost:5005/', redirectUri: body.redirectUri };
-        if (runtime) await runtime.storage.membership.start(uid, 'discord', state);
+        if (runtime) await measure('membership.start', () => runtime.storage.membership.start(uid, 'discord', state));
         else await db.runTransaction(async tx => {
           const previous = (await tx.get(ref)).data();
           if (previous && startedAt - previous.startedAt < 3000) throw fail(429, 'DISCORD_TOO_MANY_REQUESTS', '잠시 후 다시 인증해 주세요.');
@@ -70,7 +80,7 @@ function createDiscordMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
       const nonceHash = hash(verificationId);
       let localOnly, redirectUri;
       if (runtime) {
-        const state = await runtime.storage.membership.consume(uid, 'discord', nonceHash, now);
+        const state = await measure('membership.consume', () => runtime.storage.membership.consume(uid, 'discord', nonceHash, now));
         localOnly = state.localOnly; redirectUri = state.redirectUri;
       } else await db.runTransaction(async tx => {
         const state = (await tx.get(ref)).data();
@@ -84,8 +94,8 @@ function createDiscordMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
       // 토큰은 이 요청에서만 사용하며 DB·오류 로그에 저장하지 않는다.
       const clientSecret = getClientSecret();
       if (typeof clientSecret !== 'string' || !clientSecret) throw fail(503, 'DISCORD_UNAVAILABLE', 'Discord 인증 설정을 확인하지 못했습니다.');
-      const verified = await getMembership({ code, redirectUri, clientId, clientSecret, guildId });
-      const account = await auth.getUser(uid);
+      const verified = await measure('discord.provider', () => getMembership({ code, redirectUri, clientId, clientSecret, guildId }));
+      const account = await measure('membership.account', () => auth.getUser(uid));
       if (account.disabled) throw fail(401, 'AUTH_INVALID', '사용할 수 없는 계정입니다.');
       const claims = account.customClaims || {};
       const role = resolveAccountRole(claims);
@@ -94,8 +104,12 @@ function createDiscordMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
       const membership = { status: active ? 'active' : 'none', type: 'discord',
         levelName: matched?.[1] || '일반',
         discordId: verified.discordId, verificationVersion: 2, verificationProvider: 'discord', lastChecked: now() };
+      const effective = resolveEffectiveMembership(role, membership);
+      const immediate = { success: true, uid, membership: effective, sourceMembership: membership,
+        isMemberActive: effective.status === 'active', claimsPending: true, membershipClaims: { status: 'pending' } };
+      require('./authenticationResult').prepareAuthenticationResult(immediate);
       let stored = false;
-      if (runtime) stored = (await runtime.storage.membership.complete(uid, 'discord', nonceHash, membership, now)).stored;
+      if (runtime) stored = (await measure('membership.complete', () => runtime.storage.membership.complete(uid, 'discord', nonceHash, membership, now))).stored;
       else await db.runTransaction(async tx => {
         const state = (await tx.get(ref)).data();
         if (!state || state.nonceHash !== nonceHash || !state.consumed || state.expiresAt <= now()) {
@@ -103,12 +117,13 @@ function createDiscordMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
         }
         if (!localOnly) tx.set(db.collection('users').doc(uid), { settings: { membership } }, { merge: true });
       });
-      const claimState = runtime && stored ? await syncProviderMembershipClaims(uid, runtime, auth, syncClaims) : {};
-      const effective = resolveEffectiveMembership(role, membership);
+      require('./authenticationResult').publishAuthenticationResult(immediate);
+      const claimState = runtime && stored ? await measure('membership.claims', () => syncProviderMembershipClaims(uid, runtime, auth, syncClaims)) : {};
       return { success: true, uid, membership: effective, sourceMembership: membership, isMemberActive: effective.status === 'active', ...claimState };
       };
       const response = runtime?.storage.membership.withVerification
-        ? await runtime.storage.membership.withVerification(uid, 'discord', verify) : await verify();
+        ? await measure('membership.verification', () => runtime.storage.membership.withVerification(uid, 'discord', verify,
+          { consume: { nonceHash: hash(verificationId), at: now }, deferClaims: runtime.deferClaims === true })) : await measure('membership.verification', verify);
       return res.json(response);
     } catch (error) {
       error = providerStateError(error, 'DISCORD');
@@ -121,7 +136,8 @@ function createDiscordMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
   }
   return {
     startDiscordMembershipVerification: (req, res) => handle(req, res, 'startDiscordMembershipVerification'),
-    verifyDiscordMembership: (req, res) => handle(req, res, 'verifyDiscordMembership')
+    verifyDiscordMembership: (req, res) => require('./authenticationResult').withAuthenticationResult(req, res, 'membership',
+      response => handle(req, response, 'verifyDiscordMembership'))
   };
 }
 // 시작 계정과의 연결을 검증하지 않은 과거 Discord 결과는 재인증 대상으로 반환한다.

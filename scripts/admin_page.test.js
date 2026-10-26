@@ -50,6 +50,29 @@ test('최초 진입은 기존 Firebase 세션을 서버 세션으로 교환하�
   assert.ok(f.calls.some(c => Array.isArray(c) && c[0] === 'establish'));
   assert.ok(f.calls.some(c => Array.isArray(c) && c[0] === 'replace' && c[1] === '/admin/cards'));
 });
+test('동일 계정의 Auth 알림·재시도가 겹쳐도 세션은 한 번만 발급하고 유효한 쿠키를 지우지 않는다', async () => {
+  let done;
+  const f = fixture({ establish: () => new Promise(resolve => { done = resolve; }) }); await settle();
+  f.notify(user); f.nodes.get('admin-retry').events.click(); f.notify({ ...user }); await settle();
+  assert.equal(f.calls.filter(c => Array.isArray(c) && c[0] === 'establish').length, 1);
+  done({ status: 200, ok: true }); await settle();
+  assert.equal(f.calls.includes('clear'), false);
+  assert.equal(f.calls.filter(c => Array.isArray(c) && c[0] === 'replace').length, 1);
+});
+test('발급 도중 계정이 바뀌면 이전 쿠키 정리 후 새 계정의 세션을 발급한다', async () => {
+  const done = [];
+  const f = fixture({ establish: () => new Promise(resolve => done.push(resolve)) }); await settle();
+  f.notify({ ...user, uid: 'test-next-owner' }); await settle();
+  assert.equal(done.length, 1);
+  done[0]({ status: 200, ok: true }); await settle();
+  assert.equal(done.length, 2);
+  const next = f.calls.findIndex(c => Array.isArray(c) && c[0] === 'establish' && c[1] === 'test-next-owner');
+  assert.ok(f.calls.indexOf('clear') < next);
+  assert.equal(f.calls.some(c => Array.isArray(c) && c[0] === 'replace'), false);
+  done[1]({ status: 200, ok: true }); await settle();
+  assert.equal(f.calls.filter(c => c === 'clear').length, 1);
+  assert.equal(f.calls.filter(c => Array.isArray(c) && c[0] === 'replace').length, 1);
+});
 test('비로그인은 서버 세션을 만들지 않고 Google·X만 제공한다', async () => {
   const f = fixture({ currentUser: null }); await settle();
   assert.equal(f.nodes.get('admin-providers').hidden, false);
@@ -88,7 +111,7 @@ test('서버 권한 거부와 오류는 재로그인 또는 재시도 화면으�
     const f = fixture({ code }); await settle();
     assert.equal(f.calls.some(c => Array.isArray(c) && c[0] === 'replace'), false);
     if (code === 401) assert.ok(f.calls.includes('firebaseSignOut'));
-    if (code === 403) assert.match(f.nodes.get('admin-status').textContent, /관리자 권한/);
+    if (code === 403) assert.match(f.nodes.get('admin-status').textContent, /요청이 거부/);
     if (code === 503) assert.equal(f.nodes.get('admin-retry').hidden, false);
   }
 });
@@ -107,12 +130,25 @@ test('여섯 관리자 문서는 서버 템플릿에만 존재하고 Hosting은 
     const $ = load(fs.readFileSync(path.join(__dirname, '../functions/templates/admin', name + '.html'), 'utf8'));
     for (const selector of ['.admin-sidebar-links', '.admin-bottom-nav']) assert.deepEqual($(selector).find('a').toArray().map(a => $(a).attr('href')), routes);
     assert.equal($('#admin-settings').attr('href'), '/admin/settings');
-    assert.equal($('script[src="/admin.js?v=6"]').length, 1);
-    assert.equal($('script[src="/admin-session.js?v=2"]').length, 1);
+    assert.equal($('script[src="/admin.js?v=7"]').length, 1);
+    assert.equal($('script[src="/authentication-result.js?v=2"]').length, 1);
+    assert.equal($('script[src="/admin-session.js?v=5"]').length, 1);
     assert.equal(fs.existsSync(path.join(__dirname, '../public/admin', name + '.html')), false);
   }
   assert.equal(fs.existsSync(path.join(__dirname, '../public/admin.html')), false);
   const main = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
   assert.doesNotMatch(main, /href=["'][^"']*\/admin/);
-  assert.match(main, /admin-session.js\?v=2/);
+  assert.match(main, /admin-session.js\?v=5/);
+});
+
+for(const [status,code,text] of [[403,'ADMIN_ROLE_REQUIRED','권한이 없는'],[403,'ADMIN_REQUEST_REJECTED','출처 또는 형식'],[503,'ADMIN_SESSION_BUSY','작업이 진행'],[503,'ADMIN_SESSION_RECOVERY_REQUIRED','복구가 필요']]) test(`관리자 ${code} 안내는 구분하고 응답 원문을 표시하지 않는다`,async()=>{
+ const f=fixture({establish:async()=>({status,ok:false,json:async()=>({code,message:'secret-detail'})})});await settle();
+ assert.ok(f.nodes.get('admin-status').textContent.includes(text));
+ assert(!f.nodes.get('admin-status').textContent.includes('secret'));
+ assert.equal(f.calls.some(c=>Array.isArray(c)&&c[0]==='replace'),false);
+});
+
+test('알 수 없는 관리자 code는 고정 일반 안내만 표시한다',async()=>{
+ const f=fixture({establish:async()=>({status:403,ok:false,json:async()=>({code:'constructor',message:'secret-detail'})})});await settle();
+ assert.match(f.nodes.get('admin-status').textContent,/요청이 거부/);
 });

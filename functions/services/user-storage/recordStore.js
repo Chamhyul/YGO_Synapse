@@ -1,4 +1,5 @@
 'use strict';
+const { measureRtdbGet } = require('../rtdbReadDiagnostics');
 
 const { measure } = require('../inventoryRequestTiming');
 const { AsyncLocalStorage } = require('node:async_hooks');
@@ -157,8 +158,8 @@ function createRecordStore({ database, path, suffix = '', timeoutMs = DEFAULT_TI
     // 첫 읽기·충돌 재조회는 서버 get의 최신값 계약을 유지한다. 명령의 구독 준비만
     // 동시에 수행하여 순차 대기를 줄이며, 구독 캐시를 fresh read로 대체하지 않는다.
     const snapshot = sessions.getStore()
-      ? (await Promise.all([measure('record.get', () => bounded(ref.get(), false)), latest(observation(ref, path))]))[0]
-      : await measure('record.get', () => bounded(ref.get(), false));
+      ? (await Promise.all([measure('record.get', () => bounded(measureRtdbGet(database, 'record', () => ref.get()), false)), latest(observation(ref, path))]))[0]
+      : await measure('record.get', () => bounded(measureRtdbGet(database, 'record', () => ref.get()), false));
     ensureUsable();
     return measure('record.decode', () => parse(snapshot.val(), path));
   }

@@ -128,6 +128,28 @@ function migrationStatus(summary, now = Date.now()) {
   return { status: value.retryableError ? 'retryableError' : value.pendingCount || (value.nextRetryAt && now >= value.nextRetryAt) ? 'pending' : 'complete',
     pendingCount: value.pendingCount, unresolvedCount: value.unresolvedCount, retryAt: value.retryAt };
 }
+// 버전이 같은 검증 snapshot의 조건부 읽기에서 기한만 확인한다. 전체 요약의
+// fingerprint/집계 검증을 대신하지 않으며 결측·불확실한 값은 전체 읽기로 보낸다.
+function canReuseSyncMigration(value, now = Date.now()) {
+  if (!plain(value) || Object.keys(value).length !== 5 || value.pendingCount !== 0
+      || !Number.isSafeInteger(value.unresolvedCount) || value.unresolvedCount < 0
+      || !Number.isSafeInteger(value.nextRetryAt) || value.nextRetryAt < 0
+      || !Number.isSafeInteger(value.retryAt) || value.retryAt !== 0
+      || value.retryableError !== false || !Number.isFinite(now)) return false;
+  return value.unresolvedCount === 0 ? value.nextRetryAt === 0 : value.nextRetryAt > now;
+}
+function readSyncMigration(node) {
+  try {
+    const value = decodeValue({ version: 1, value: node });
+    // 만료와 손상을 구분할 필요 없이 전체 준비로 복귀한다. 반환 직전 다시 기한 검사한다.
+    return canReuseSyncMigration(value) ? value : undefined;
+  } catch { return undefined; }
+}
+function inventorySyncMigration(inventory) {
+  const totals = rows(inventory.cards);
+  if (!totals.prepared) return;
+  return migrationOf(inventory, totals);
+}
 function patchApiSummary(manifest, before, inventory, previous, options) {
   const old = rows(before), next = rows(inventory.cards);
   if (!old.prepared || !next.prepared) invalid();
@@ -163,4 +185,4 @@ function retokenApiSummary(manifest, versions, options = {}) {
   for (const item of versions) manifest.cards[item.hash].v = item.token;
   if (manifest.apiSummary) manifest.apiSummary.fingerprint = fingerprint(manifest, manifest.apiSummary.value);
 }
-module.exports = { buildApiSummary, readApiSummary, validateApiSummary, patchApiSummary, migrationStatus, retokenApiSummary };
+module.exports = { buildApiSummary, readApiSummary, validateApiSummary, patchApiSummary, migrationStatus, retokenApiSummary, canReuseSyncMigration, readSyncMigration, inventorySyncMigration };

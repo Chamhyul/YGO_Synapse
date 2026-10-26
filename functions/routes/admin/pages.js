@@ -9,13 +9,12 @@ function productionDependencies() {
   const { createErrorSummaryService } = require('../../services/adminErrorSummary');
   const { createTrafficSummaryService } = require('../../services/adminTrafficSummary');
   const { createNoticeService, createStorageNoticeStore } = require('../../services/noticeService');
-  const { google } = require('googleapis');
   // 기존 관리형 운영 실행 계정의 ADC를 사용하는 관리자 서비스 구성을 유지한다.
   // RTDB 연결의 metadata 자격증명 제한은 별도 userStorage 설정 계층에서 검사한다.
   let analytics, reporting;
   const getTrafficSummary = createTrafficSummaryService({
     async run(requests) {
-      if (!analytics) analytics = google.analyticsdata({ version: 'v1beta', auth: new google.auth.GoogleAuth({
+      if (!analytics) analytics = require('googleapis/build/src/apis/analyticsdata').analyticsdata({ version: 'v1beta', auth: new (require('google-auth-library').GoogleAuth)({
         scopes: ['https://www.googleapis.com/auth/analytics.readonly']
       }) });
       const { data } = await analytics.properties.batchRunReports({
@@ -26,7 +25,7 @@ function productionDependencies() {
   });
   const getErrorSummary = createErrorSummaryService({
     async list({ period, pageToken }) {
-      if (!reporting) reporting = google.clouderrorreporting({ version: 'v1beta1', auth: new google.auth.GoogleAuth({
+      if (!reporting) reporting = require('googleapis/build/src/apis/clouderrorreporting').clouderrorreporting({ version: 'v1beta1', auth: new (require('google-auth-library').GoogleAuth)({
         scopes: ['https://www.googleapis.com/auth/cloud-platform']
       }) });
       const { data } = await reporting.projects.locations.groupStats.list({

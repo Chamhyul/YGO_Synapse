@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { syncMembershipClaims, updateAccountClaims, membershipClaim, mergeClaims } = require('../services/membershipClaims');
+const { syncMembershipClaims, updateAccountClaims, membershipClaim, mergeClaims, readMembershipClaimsAfterVerification } = require('../services/membershipClaims');
 const { resolveRtdbConfig } = require('../config/userStorage');
 const env = { NODE_ENV: 'test', USER_STORAGE_BACKEND: 'rtdb', GCLOUD_PROJECT: 'demo-user-storage',
   FIREBASE_DATABASE_EMULATOR_HOST: 'emulators:9000', USER_DATABASE_URL: 'http://emulators:9000?ns=demo-user-storage-default-rtdb' };
@@ -18,8 +18,8 @@ function fixture() {
 }
 test('claims는 권한 요약만 저장하며 기존 관리자·별도 claims를 보존한다', async () => {
   const { state, options } = fixture();
-  assert.deepEqual(await syncMembershipClaims('synthetic', options), { status: 'synced', version: 'one' });
-  assert.deepEqual(state.claims, { role: 'admin', admin: true, unrelated: { keep: 1 }, ygoMembership: { v: 1, active: true, provider: 'youtube', version: 'one' } });
+  assert.deepEqual(await syncMembershipClaims('synthetic', options), { status: 'synced', version: membershipClaim(state.record).version });
+  assert.deepEqual(state.claims, { role: 'admin', admin: true, unrelated: { keep: 1 }, ygoMembership: { v: 1, active: true, provider: 'youtube', version: membershipClaim(state.record).version } });
   assert.doesNotMatch(JSON.stringify(state.claims), /levelName|userChannelId|합성/);
   await syncMembershipClaims('synthetic', options); assert.equal(state.writes, 1); assert.equal(state.lock, 'idle');
 });
@@ -58,7 +58,7 @@ test('Auth 저장 중 RTDB 원본 변경은 최신 버전으로 다시 동기화
   const { state, options } = fixture(); state.write = async next => {
     state.claims = next; state.record = { membership: { status: 'none' }, version: 'two' };
   };
-  assert.deepEqual(await syncMembershipClaims('synthetic', options), { status: 'synced', version: 'two' });
+  assert.deepEqual(await syncMembershipClaims('synthetic', options), { status: 'synced', version: membershipClaim({ membership: { status: 'none' } }).version });
   assert.equal(state.writes, 2); assert.equal(state.claims.ygoMembership.active, false);
 });
 test('같은 UID 멤버십 writer 실행 중 관리자 변경은 거부하고 재시도시 두 claims를 보존한다', async () => {
@@ -105,4 +105,37 @@ test('설정의 대상 권한 검사는 RTDB claims 잠금 안에서 쓰기 직�
   const {state,options}=fixture();state.claims.role='owner';
   await assert.rejects(updateAccountClaims('synthetic',{role:'admin',admin:true},{...options,validateCurrentClaims:require('../services/adminAccounts').roleGuard('none',true)}),{status:403});
   assert.equal(state.writes,0);assert.equal(state.lock,'idle');assert.equal(state.claims.role,'owner');
+});
+
+
+test('완료 증거가 시간초과돼도 불일치 claims의 기존 동기 복구를 유지한다', async () => {
+  const { state, options } = fixture();
+  options.storage.writerTransition = { route: async () => ({ backend: 'rtdb', epoch: 1, phase: 'accepting' }) };
+  options.storage.membership.withReadWindow = (_uid, action) => action({
+    writer: { backend: 'rtdb', epoch: 1, phase: 'accepting' }, read: async () => state.record,
+  });
+  options.storage.customClaims.observe = async () => ({ revision: 1, generation: 0,
+    value: { state: 'idle', operationId: 'a'.repeat(32), startedAt: 1 } });
+  options.storage.customClaims.isSettled = () => new Promise(() => {});
+  const result = await syncMembershipClaims('synthetic', options);
+  assert.equal(result.status, 'synced'); assert.equal(state.writes, 1);
+  assert.equal(state.claims.admin, true); assert.deepEqual(state.claims.unrelated, { keep: 1 });
+  assert.equal(state.lock, 'idle');
+});
+
+test('일치한 claims의 완료 증거 시간초과·늦은 성공은 권한을 확정하거나 저장하지 않는다', async () => {
+  const { state, options } = fixture(); let release;
+  state.claims.ygoMembership = membershipClaim(state.record);
+  options.storage.writerTransition = { route: async () => ({ backend: 'rtdb', epoch: 1, phase: 'accepting' }) };
+  options.storage.membership.withReadWindow = (_uid, action) => action({
+    writer: { backend: 'rtdb', epoch: 1, phase: 'accepting' }, read: async () => state.record,
+  });
+  options.storage.customClaims.observe = async () => ({ revision: 1, generation: 0,
+    value: { state: 'idle', operationId: 'a'.repeat(32), startedAt: 1 } });
+  options.storage.customClaims.acquire = () => assert.fail('읽기 실패 시 잠금 쓰기 금지');
+  options.storage.customClaims.isSettled = () => new Promise(resolve => { release = resolve; });
+  assert.equal((await readMembershipClaimsAfterVerification('synthetic', options)).status, 'pending');
+  release(true); await new Promise(resolve => setTimeout(resolve, 25));
+  assert.equal(state.writes, 0); assert.equal(state.lock, 'idle');
+  assert.equal(state.claims.admin, true);
 });

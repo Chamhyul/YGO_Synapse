@@ -104,10 +104,12 @@
       }
     ]
   },
-  "storage": [{
-    "target": "main",
-    "rules": "storage.rules"
-  }],
+  "storage": [
+    {
+      "target": "main",
+      "rules": "storage.rules"
+    }
+  ],
   "emulators": {
     "functions": {
       "host": "0.0.0.0",

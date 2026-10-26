@@ -21,10 +21,10 @@ async function harness(surface) {
   const service = createMembershipCsvService({ store }); let role = 'admin';
   const handlers = createAdminRouteHandlers({ emulatorDependencies: {
     auth: {
-      async verifyIdToken(token, revoked) { assert.equal(token, 'synthetic-token'); assert.equal(revoked, true); return { uid }; },
-      async getUser() { return { uid, customClaims: { role } }; },
+      async verifyIdToken(token, revoked) { assert.equal(token, 'synthetic-token'); assert.equal(revoked, false); return { uid, auth_time: 1 }; },
+      async getUser() { return { uid, disabled: false, tokensValidAfterTime: new Date(0).toISOString(), customClaims: { role } }; },
       async createSessionCookie() { return session; },
-      async verifySessionCookie(cookie, revoked) { assert.equal(cookie, session); assert.equal(revoked, true); return { uid }; },
+      async verifySessionCookie(cookie, revoked) { assert.equal(cookie, session); assert.equal(revoked, false); return { uid, auth_time: 1 }; },
     }, membershipCsv: service, template: async () => '<html></html>',
   }, productionDependencies() { assert.fail('운영 서비스 생성 금지'); }, proxy() { assert.fail('운영 proxy 호출 금지'); } });
   const app = express(); app.use(express.json()); app.use(handlers[surface]);

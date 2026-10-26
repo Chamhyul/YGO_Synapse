@@ -94,3 +94,32 @@ test('서식·링크·실행 취소·기존 공지·표시 확인·저장·모�
         assert.deepEqual(errors,[]);
     } finally {await browser.close();}
 });
+
+// 저장·서식 조작 없이 서버의 환경 메타정보가 실제 화면에 반영되는지만 검사한다.
+test('공지 환경 안내는 서버가 지정한 운영·로컬 범위를 실제 브라우저에 표시한다', async () => {
+    const browser = await chromium.launch({headless:true});
+    try {
+        for (const environment of ['local','production']) {
+            const page = await browser.newPage(); const methods=[];
+            await page.route('**/*', async route => {
+                if(await fulfillTestWebAsset(route))return;
+                const url=new URL(route.request().url());
+                if(url.origin!==origin)return route.abort();
+                if(url.pathname==='/admin/api/notices') {
+                    methods.push(route.request().method());
+                    return route.fulfill({json:{success:true,revision:'1',environment,notices:[]}});
+                }
+                if(url.pathname==='/admin/notices')return route.fulfill({contentType:'text/html',body:fixture});
+                if(!/^\/(styles\/|vendor\/|admin-notices\.js)/.test(url.pathname))return route.fulfill({status:404});
+                const file=path.join(process.cwd(),'public',url.pathname);
+                return route.fulfill({contentType:file.endsWith('.css')?'text/css':'text/javascript',body:fs.readFileSync(file)});
+            });
+            await page.goto(origin+'/admin/notices');
+            await page.waitForFunction(()=>!document.getElementById('notice-fields').disabled);
+            const text=await page.locator('#notice-environment').textContent();
+            if(environment==='local')assert.match(text,/Storage 에뮬레이터에만 저장하며 운영 공지는 변경하지 않습니다/);
+            else {assert.match(text,/저장·삭제하면 실제 서비스에 반영됩니다/);assert.doesNotMatch(text,/로컬 테스트|변경하지 않습니다/);}
+            assert.deepEqual(methods,['GET']); await page.close();
+        }
+    } finally {await browser.close();}
+});

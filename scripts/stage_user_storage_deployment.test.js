@@ -20,7 +20,7 @@ function fixture(t) {
   put('functions/services/card-service/release.json', { version: 1 }); put('functions/templates/admin/test.html', '<p>관리자</p>');
   for (const name of ['functions/package.json', 'functions/package-lock.json', 'firestore.indexes.json']) put(name, {});
   for (const name of ['functions/index.js', 'functions/server.js', 'firestore.rules', 'storage.rules', 'LICENSE',
-    'scripts/user_writer_job.cjs', 'scripts/manage_user_writer.cjs', 'scripts/reconcile_membership_claims.cjs',
+    'scripts/user_writer_job.cjs', 'scripts/manage_user_writer.cjs', 'scripts/reconcile_membership_claims.cjs', 'scripts/recover_admin_session.cjs',
     'operations/user-storage/Dockerfile', 'operations/user-storage/Dockerfile.dockerignore']) put(name, '// synthetic\n');
   put('operations/user-storage/database.rules.json', { rules: { '.read': false, '.write': false } });
   put('public/index.html', '<p>UI 원본</p>'); put('public/models/example.onnx', Buffer.from([0, 1, 255])); put('public/legal/source.tar.gz', Buffer.from([31, 139, 8]));

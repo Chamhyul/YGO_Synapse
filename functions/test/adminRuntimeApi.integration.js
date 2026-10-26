@@ -48,7 +48,7 @@ function dependencies() {
   let noticeData = { notices: [] }, revision = '0';
   const auth = {
     async verifyIdToken(token, checkRevoked) {
-      counts.token++; assert.equal(checkRevoked, true);
+      counts.token++; assert.equal(checkRevoked, false);
       if (token !== 'synthetic-valid-token') throw Object.assign(new Error('synthetic-private-auth-token'), { code: 'auth/invalid-id-token' });
       return { uid, role: 'owner' };
     },
@@ -58,7 +58,7 @@ function dependencies() {
       const value = `synthetic-runtime-cookie:${id}:${++issue}`; issued.add(value); return value;
     },
     async verifySessionCookie(value, checkRevoked) {
-      assert.equal(checkRevoked, true);
+      assert.equal(checkRevoked, false);
       if (revoked || !issued.has(value)) throw Object.assign(new Error('synthetic-private-revocation'), { code: 'auth/session-cookie-revoked' });
       return { uid };
     },

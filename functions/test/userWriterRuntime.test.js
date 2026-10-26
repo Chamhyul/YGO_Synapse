@@ -5,6 +5,44 @@ const { createUserWriterRuntime } = require('../services/userProfileWriterRuntim
 const target = { id: 'synthetic-user-data', projectId: 'synthetic-runtime', instanceId: 'synthetic-user-data', location: 'asia-southeast1', databaseURL: 'https://synthetic-user-data.asia-southeast1.firebasedatabase.app/', writerRunId: 'a'.repeat(32) };
 const production = () => ({ NODE_ENV: 'production', USER_STORAGE_BACKEND: 'rtdb', USER_STORAGE_MODE: 'production', USER_PROFILE_WRITER_MODE: 'production', USER_PROFILE_WRITER_RUN_ID: 'a'.repeat(32),
   GCLOUD_PROJECT: target.projectId, USER_STORAGE_TARGET: target.id, USER_DATABASE_URL: target.databaseURL, K_SERVICE: 'synthetic-service', K_REVISION: 'synthetic-revision' });
+test('지연 버킷은 존재 검사에서 생성하지 않고 실제 사용 때 같은 인증의 SDK 객체에 위임한다', () => {
+  const { deferredBucket } = require('../services/userProfileWriterRuntime'); let created = 0;
+  const actual = { marker: 'same', file(name) { assert.equal(this, actual); return { name }; }, getFiles() { return [this.marker]; },
+    extra() { return this.marker; }, storage: { sameCredential: true } };
+  const bucket = deferredBucket('synthetic-bucket', () => { created++; return actual; });
+  assert.equal(bucket.name, 'synthetic-bucket'); assert.equal(typeof bucket.file, 'function'); assert.equal(typeof bucket.getFiles, 'function');
+  assert.equal(created, 0); assert.deepEqual(bucket.file('synthetic-file'), { name: 'synthetic-file' });
+  assert.deepEqual(bucket.getFiles(), ['same']); assert.equal(bucket.extra(), 'same'); assert.equal(bucket.storage, actual.storage);
+  assert.equal(created, 1);
+});
+test('worker의 legacy Firestore 참조는 필요할 때만 생성하고 실제 SDK 메서드·종료를 보존한다', async () => {
+  const { deferredFirestore } = require('../services/userProfileWriterRuntime'); let created = 0, closed = 0;
+  const collection = { path: 'synthetic', doc(id) { assert.equal(this, collection); return { id }; },
+    where(...args) { assert.equal(this, collection); return args; } };
+  const actual = { collection(name) { assert.equal(name, 'synthetic'); return collection; },
+    runTransaction(action) { assert.equal(this, actual); return action('transaction'); }, terminate() { closed++; } };
+  const db = deferredFirestore(() => { created++; return actual; });
+  const ref = db.collection('synthetic'); assert.equal(typeof ref.doc, 'function'); assert.equal(typeof db.runTransaction, 'function');
+  await db.terminate(); assert.equal(created, 0); assert.equal(closed, 0);
+  assert.deepEqual(ref.doc('preserved'), { id: 'preserved' }); assert.equal(ref.path, 'synthetic');
+  assert.deepEqual(ref.where('x', '==', 1), ['x', '==', 1]);
+  assert.equal(db.runTransaction(value => value), 'transaction'); assert.equal(created, 1);
+  await db.terminate(); assert.equal(closed, 1);
+});
+test('관리형 worker만 인벤토리 변환기를 지연하고 실패·재사용·일반 실행 계약을 보존한다', async () => {
+  for (const targetName of ['syncMembershipClaimsAfterProfile', 'getUserData']) {
+    let created = 0, options; const env = { ...production(), FUNCTION_TARGET: targetName };
+    const runtime = createUserWriterRuntime({ env, resolveConfig: () => resolveProfileWriterConfig(env, [target]),
+      createConnection: () => ({ database: {}, close: async () => {} }), createProductionServices: () => ({ db: {}, bucket: {}, auth: {} }),
+      createMigration: () => { created++; return { prepareInventoryV2: value => value, inventoryMigrationStatus: () => 'synthetic' }; },
+      createBinding: value => { options = value; return {}; } });
+    runtime.getProfileWriterBinding(); assert.equal(created, targetName === 'syncMembershipClaimsAfterProfile' ? 0 : 1);
+    assert.equal(options.deferOptionalServices, targetName === 'syncMembershipClaimsAfterProfile');
+    assert.equal(options.migration.prepareInventoryV2('preserved'), 'preserved');
+    assert.equal(options.migration.inventoryMigrationStatus(), 'synthetic'); assert.equal(created, 1);
+    await runtime.closeProfileWriterRuntime();
+  }
+});
 test('운영 공통 writer 설정은 같은 프로젝트·명시 run·버킷·등록 대상만 허용한다', () => {
   const env = production(), config = resolveProfileWriterConfig(env, [target]);
   assert.equal(config.mode, 'production'); assert.equal(config.runId, env.USER_PROFILE_WRITER_RUN_ID);
@@ -67,11 +105,14 @@ test('실제 설치된 Firestore/Storage/Auth SDK는 metadata 클라이언트를
   } finally { await runtime.closeProfileWriterRuntime(); }
 });
 
-test('보관 분리는 관리형 운영 등록·제거에만 선택하고 다른 함수·Job·시험 기본값을 보존한다',async()=>{
-  for(const [functionTarget,expected] of [['addCards','deferred'],['discardCards','deferred'],['moveCards','inline'],['compactUserWriterHistory','inline'],['','inline']]){
+test('관리형 운영 함수는 요청 밖 보관을 사용하고 관리 Job·시험은 inline 기본값을 보존한다',async()=>{
+  for(const [functionTarget,managed,mode,expected] of [['addCards',true,'production','deferred'],['discardCards',true,'production','deferred'],
+    ['moveCards',true,'production','deferred'],['adminBackend',true,'production','deferred'],['getUserData',true,'production','deferred'],
+    ['compactUserWriterHistory',true,'production','deferred'],['writer',false,'production','inline'],['synthetic',true,'emulator','inline']]){
     let options;const config=resolveProfileWriterConfig(production(),[target]);
-    const runtime=createUserWriterRuntime({env:{FUNCTION_TARGET:functionTarget,K_SERVICE:'synthetic',K_REVISION:'synthetic'},resolveConfig:()=>config,
-      createConnection:()=>({database:{},close:async()=>{}}),createProductionServices:()=>({db:{},bucket:{},auth:{}}),createMigration:()=>({}),createBinding:value=>{options=value;return {};}});
+    const runtime=createUserWriterRuntime({env:{FUNCTION_TARGET:functionTarget,...(managed?{K_SERVICE:'synthetic',K_REVISION:'synthetic'}:{})},resolveConfig:()=>({...config,mode}),
+      createConnection:()=>({database:{},close:async()=>{}}),createProductionServices:()=>({db:{},bucket:{},auth:{}}),
+      createEmulatorServices:()=>({db:{},bucket:{},auth:{}}),createMigration:()=>({}),createBinding:value=>{options=value;return {};}});
     try{runtime.getProfileWriterBinding();assert.equal(options.historyMaintenance,expected);}finally{await runtime.closeProfileWriterRuntime();}
   }
 });

@@ -479,6 +479,29 @@ html.is-mobile-device #auth-capsule-btn.is-logged-in .auth-text {
   display: none;
 }
 
+/* Discord 대기·완료 상태는 모바일에서도 계정 캡슐 안에 명시한다. */
+#auth-capsule-btn[data-membership-verification] {
+  gap: 6px;
+}
+html.is-mobile-device #auth-capsule-btn[data-membership-verification] :is(.auth-icon, .auth-text) {
+  display: inline-block;
+}
+#auth-capsule-btn.is-membership-resizing {
+  box-sizing: border-box;
+  overflow: hidden;
+}
+#auth-capsule-btn .auth-icon.is-membership-pending {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: 0 0 1.1rem;
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  font-size: 0;
+  animation: spinDash .8s linear infinite;
+}
+
 /* 모바일도 인증 아이콘·문구를 표시하며, 공간 부족 시 JS에서 hidden으로 전환한다. */
 html.is-mobile-device #membership-verify-btn {
   gap: 6px;

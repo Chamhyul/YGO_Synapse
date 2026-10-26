@@ -1,7 +1,11 @@
-const { onRequest } = require('firebase-functions/v2/https');
+const { onRequest: firebaseOnRequest } = require('firebase-functions/v2/https');
 const { setCors, verifyUser, verifyAppCheck } = require('../utils/auth');
 const { safeErrorSummary } = require('../utils/safeError');
-const { isRegisteredUser, completeUserRegistration } = require('../services/registrationService');
+const { isRegisteredUser, readRegistrationProfile, completeUserRegistration } = require('../services/registrationService');
+const { measure, withLoginRequestTiming } = require('../services/inventoryRequestTiming');
+const { withWriterRequestScope, rememberInitialWriterRoute } = require('../services/initialWriterRoute');
+const onRequest = (options, handler) => firebaseOnRequest(options,
+  (req, res) => withWriterRequestScope(() => handler(req, res)));
 
 // 공개 문서의 SHA-256. 문서를 변경할 때 이 버전도 함께 갱신한다.
 const CONSENT_VERSIONS = Object.freeze({
@@ -16,7 +20,9 @@ async function prepare(req, res, method) {
   if (process.env.USER_PROFILE_WRITER_MODE || process.env.USER_STORAGE_MODE === 'production') {
     try {
       if (require('../config/userProfileWriter').resolveProfileWriterConfig().mode !== 'production') throw Error('test only');
-      await require('../services/userWriterSelection').selectProductionWriter().initialize();
+      const binding = measure('login.binding', () => require('../services/userWriterSelection').selectProductionWriter());
+      const route = await measure('storage.initialize', () => binding.initialize());
+      rememberInitialWriterRoute(binding.transition, route);
     } catch (_) {
       res.status(503).json({ success: false, code: 'USER_STORAGE_FEATURE_UNAVAILABLE', message: '이 환경에서는 사용자 저장소에 접근할 수 없습니다.' });
       return null;
@@ -24,19 +30,41 @@ async function prepare(req, res, method) {
   }
   if (req.method !== method) { res.status(405).json({ success: false, message: `${method} 요청을 사용하세요.` }); return null; }
   if (!(await verifyAppCheck(req, res))) return null;
-  return verifyUser(req, res);
+  return measure('auth.verify', () => verifyUser(req, res, { includeAccountRole: req.query?.includeUserData === 'true' || req.query?.includeAccountData === 'true' }));
 }
 
-exports.getRegistrationStatus = onRequest({ invoker: 'public' }, async (req, res) => {
+exports.getRegistrationStatus = onRequest({ invoker: 'public' }, withLoginRequestTiming('getRegistrationStatus', async (req, res) => {
   const uid = await prepare(req, res, 'GET');
   if (!uid) return;
   try {
-    return res.json({ success: true, registered: await isRegisteredUser(uid), consentVersions: CONSENT_VERSIONS });
+    const includeUserData = req.query?.includeUserData === 'true';
+    const includeAccountData = !includeUserData && req.query?.includeAccountData === 'true';
+    const registration = await measure('registration.check', () => includeUserData || includeAccountData
+      ? readRegistrationProfile(uid) : isRegisteredUser(uid).then(registered => ({ registered })));
+    const { registered } = registration;
+    const result = { success: true, registered, consentVersions: CONSENT_VERSIONS };
+    if (registered && includeAccountData) {
+      result.initialAccount = await require('../services/loginUserData').readLoginAccountData(req, uid,
+        { initialProfile: registration.profile });
+    }
+    // 기존 호출은 동일 응답을 유지한다. 미가입 계정에는 사용자 본문을 조회하지 않는다.
+    if (registered && includeUserData) {
+      try {
+        result.initialData = await require('../services/loginUserData').readLoginUserData(req, uid,
+          { initialProfile: registration.profile });
+      } catch (error) {
+        // 가입 판정과 본문 장애를 구분하고 자동 중복 조회/claims 쓰기를 피한다.
+        console.error('Initial user data failed:', safeErrorSummary(error));
+        result.initialData = { success: false, code: error.code === 'ACCOUNT_ROLE_UNAVAILABLE'
+          ? error.code : 'INITIAL_USER_DATA_UNAVAILABLE', message: '회원 정보를 불러오지 못했습니다. 다시 시도해 주세요.' };
+      }
+    }
+    return measure('login.response', () => res.json(result));
   } catch (error) {
     console.error('Registration status failed:', safeErrorSummary(error));
     return res.status(503).json({ success: false, message: '가입 상태를 확인하지 못했습니다. 다시 시도해 주세요.' });
   }
-});
+}));
 
 exports.completeRegistration = onRequest({ invoker: 'public' }, async (req, res) => {
   const uid = await prepare(req, res, 'POST');

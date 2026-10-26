@@ -1,4 +1,5 @@
 const { resolveAccountRole, normalizeSourceMembership, resolveEffectiveMembership } = require('./membershipPolicy');
+const { measure } = require('./inventoryRequestTiming');
 const { randomBytes, createHash } = require('node:crypto');
 const { createFirestoreMembershipCsvStore } = require('./membershipCsvService');
 const { resolveMembershipProviderRuntime, syncProviderMembershipClaims, providerStateError } = require('./membershipProviderRuntime');
@@ -44,9 +45,18 @@ function createYoutubeMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
     try {
       if (typeof body !== 'object' || Array.isArray(body)) throw fail(400, 'YOUTUBE_INVALID_REQUEST', '인증 요청 형식이 올바르지 않습니다.');
       if ('userChannelId' in body || req.query?.userChannelId) throw fail(400, 'YOUTUBE_PROOF_REQUIRED', '채널 ID 대신 YouTube 인증을 진행해 주세요.');
+      if (body.membershipPrepare === true) return measure('membership.prepare', () =>
+        require('./membershipReadiness').respondMembershipReadiness(req, res, operation));
       if (!runtime && isLocal()) {
         // 로컬은 자격증명 없이 고정 운영 API에서 검증하고, 결과만 로컬에 저장한다.
-        const result = await forward(operation, { ...body, localOnly: true }, req.headers);
+        const result = await forward(operation, { ...body, localOnly: true }, req.headers, undefined, {
+          onResult(value) {
+            if (value.uid !== uid || value.sourceMembership?.type !== 'csv'
+                || value.sourceMembership?.verificationProvider !== 'youtube' || value.sourceMembership?.verificationVersion !== 2
+                || !CHANNEL.test(value.sourceMembership?.userChannelId)) throw fail(503, 'YOUTUBE_UNAVAILABLE', '검증 결과를 확인하지 못했습니다.');
+            require('./authenticationResult').publishAuthenticationResult(value);
+          }
+        });
         if (result.uid !== uid) throw fail(403, 'YOUTUBE_SESSION_CHANGED', '인증한 서비스 계정이 변경되었습니다.');
         if (operation === 'verifyYoutubeMembership') {
           if (result.sourceMembership?.type !== 'csv' || result.sourceMembership?.verificationProvider !== 'youtube' || result.sourceMembership?.verificationVersion !== 2 || !CHANNEL.test(result.sourceMembership?.userChannelId)) throw fail(503, 'YOUTUBE_UNAVAILABLE', '검증 결과를 확인하지 못했습니다.');
@@ -61,7 +71,7 @@ function createYoutubeMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
         const startedAt = now();
         const state = { nonceHash: hash(verificationId), startedAt, expiresAt: startedAt + 300000,
           consumed: false, localOnly: body.localOnly === true };
-        if (runtime) await runtime.storage.membership.start(uid, 'youtube', state);
+        if (runtime) await measure('membership.start', () => runtime.storage.membership.start(uid, 'youtube', state));
         else await db.runTransaction(async tx => {
           const previous = (await tx.get(ref)).data();
           if (previous && startedAt - previous.startedAt < 3000) throw fail(429, 'YOUTUBE_TOO_MANY_REQUESTS', '잠시 후 다시 인증해 주세요.');
@@ -77,7 +87,7 @@ function createYoutubeMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
       const verify = async () => {
       const nonceHash = hash(verificationId);
       let localOnly;
-      if (runtime) localOnly = (await runtime.storage.membership.consume(uid, 'youtube', nonceHash, now)).localOnly;
+      if (runtime) localOnly = (await measure('membership.consume', () => runtime.storage.membership.consume(uid, 'youtube', nonceHash, now))).localOnly;
       else await db.runTransaction(async tx => {
         const state = (await tx.get(ref)).data();
         if (!state || state.nonceHash !== nonceHash || state.consumed || state.expiresAt <= now()) {
@@ -87,19 +97,27 @@ function createYoutubeMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
         tx.update(ref, { consumed: true });
       });
       // 토큰은 이 요청에서만 사용하며 DB·오류 로그에 저장하지 않는다.
-      const channelId = await getOwnedYoutubeChannel(accessToken, fetchImpl);
-      const account = await auth.getUser(uid);
+      const channelId = await measure('youtube.channel', () => getOwnedYoutubeChannel(accessToken, fetchImpl));
+      const csvStore = runtime ? runtime.storage.membershipCsv : createFirestoreMembershipCsvStore(db);
+      const accountResult = measure('membership.account', () => auth.getUser(uid))
+        .then(value => ({ value }), error => ({ error }));
+      const finish = async (csv, { refreshAccount = false } = {}) => {
+      const checked = await accountResult;
+      if (checked.error) throw checked.error;
+      const account = refreshAccount ? await measure('membership.account', () => auth.getUser(uid)) : checked.value;
       if (account.disabled) throw fail(401, 'AUTH_INVALID', '사용할 수 없는 계정입니다.');
       const claims = account.customClaims || {};
       const role = resolveAccountRole(claims);
-      const csvStore = runtime ? runtime.storage.membershipCsv : createFirestoreMembershipCsvStore(db);
-      const csv = await csvStore.readMember(channelId);
       const active = !!csv;
       const membership = { status: active ? 'active' : 'none', type: 'csv',
         levelName: csv ? csv.levelName || '유튜브 멤버십' : '일반',
         userChannelId: channelId, verificationVersion: 2, verificationProvider: 'youtube', lastChecked: now() };
+      const effective = resolveEffectiveMembership(role, membership);
+      const immediate = { success: true, uid, membership: effective, sourceMembership: membership,
+        isMemberActive: effective.status === 'active', claimsPending: true, membershipClaims: { status: 'pending' } };
+      require('./authenticationResult').prepareAuthenticationResult(immediate);
       let stored = false;
-      if (runtime) stored = (await runtime.storage.membership.complete(uid, 'youtube', nonceHash, membership, now)).stored;
+      if (runtime) stored = (await measure('membership.complete', () => runtime.storage.membership.complete(uid, 'youtube', nonceHash, membership, now))).stored;
       else await db.runTransaction(async tx => {
         const state = (await tx.get(ref)).data();
         if (!state || state.nonceHash !== nonceHash || !state.consumed || state.expiresAt <= now()) {
@@ -107,12 +125,18 @@ function createYoutubeMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
         }
         if (!localOnly) tx.set(db.collection('users').doc(uid), { settings: { membership } }, { merge: true });
       });
+      require('./authenticationResult').publishAuthenticationResult(immediate);
       const claimState = runtime && stored ? await syncProviderMembershipClaims(uid, runtime, auth, syncClaims) : {};
-      const effective = resolveEffectiveMembership(role, membership);
       return { success: true, uid, membership: effective, sourceMembership: membership, isMemberActive: effective.status === 'active', ...claimState };
       };
+      try {
+        return csvStore.withMember ? await csvStore.withMember(channelId, finish)
+          : await finish(await measure('youtube.csv', () => csvStore.readMember(channelId)));
+      } finally { await accountResult; }
+      };
       const response = runtime?.storage.membership.withVerification
-        ? await runtime.storage.membership.withVerification(uid, 'youtube', verify) : await verify();
+        ? await measure('membership.verification', () => runtime.storage.membership.withVerification(uid, 'youtube', verify,
+          { consume: { nonceHash: hash(verificationId), at: now }, deferClaims: runtime.deferClaims === true })) : await verify();
       return res.json(response);
     } catch (error) {
       error = providerStateError(error, 'YOUTUBE');
@@ -125,7 +149,8 @@ function createYoutubeMembershipHandlers({ db, auth, isLocal, verifyAppCheck, ve
   }
   return {
     startYoutubeMembershipVerification: (req, res) => handle(req, res, 'startYoutubeMembershipVerification'),
-    verifyYoutubeMembership: (req, res) => handle(req, res, 'verifyYoutubeMembership')
+    verifyYoutubeMembership: (req, res) => require('./authenticationResult').withAuthenticationResult(req, res, 'membership',
+      response => handle(req, response, 'verifyYoutubeMembership'))
   };
 }
 // 소유 확인 없이 저장된 과거 CSV 결과는 조회 시 재인증 대상으로 반환한다.

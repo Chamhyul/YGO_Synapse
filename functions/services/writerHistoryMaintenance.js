@@ -10,7 +10,7 @@ function createWriterHistoryMaintenanceHandler({
     const started = clock(), runtime = createRuntime();
     let passes = 0, moved = 0, removedEvents = 0;
     try {
-      const { transition } = runtime.getProfileWriterBinding();
+      const { transition, maintainMembershipReceipts } = runtime.getProfileWriterBinding();
       do {
         // 각 묶음은 새 SDK 조회 범위다. 다른 writer/복구와의 경합은 기존
         // historyVersion/본문 대조/CAS가 보호하고 미확정 작업은 보관하지 않는다.
@@ -18,7 +18,16 @@ function createWriterHistoryMaintenanceHandler({
         passes++; moved += result.moved; removedEvents += result.removedEvents;
         if (!result.moved && !result.removedEvents) break;
       } while (passes < 4 && clock() - started < 45000);
-      const result = { event: 'writer_history_maintenance', passes, moved, removedEvents, durationMs: clock() - started };
+      let nativePages = 0, nativeScanned = 0, nativeMoved = 0;
+      if (typeof maintainMembershipReceipts === 'function') {
+        while (nativePages < 4 && clock() - started < 45000) {
+          const archived = await maintainMembershipReceipts({ limit: 32 });
+          nativePages++; nativeScanned += archived.scanned; nativeMoved += archived.moved;
+          if (archived.complete) break;
+        }
+      }
+      const result = { event: 'writer_history_maintenance', passes, moved, removedEvents,
+        ...(nativePages ? { nativePages, nativeScanned, nativeMoved } : {}), durationMs: clock() - started };
       log(result); return result;
     } catch (error) {
       // 사용자 자료/ID/오류 원문은 로그에 남기지 않는다. 실패는 Scheduler가

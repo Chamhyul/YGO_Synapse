@@ -4,7 +4,7 @@
  * [모듈화 적용됨]
  */
 
-const { setGlobalOptions } = require("firebase-functions/v2");
+const { setGlobalOptions } = require("firebase-functions/v2/options");
 
 // Firebase 초기화를 보장하기 위해 config를 가장 먼저 불러옵니다.
 require("./config/firebase");
@@ -12,6 +12,36 @@ require("./config/firebase");
 // 전역 옵션 설정
 setGlobalOptions({ region: "asia-northeast3", maxInstances: 10 });
 
+// 관리형 인스턴스는 아래에서 지정한 대상 라우트만 준비한다.
+// 배포 탐색·로컬 에뮬레이터는 전체 export와 기존 메타정보를 유지한다.
+const inventoryRuntime = process.env.K_SERVICE && process.env.K_REVISION
+  && !process.env.FUNCTIONS_EMULATOR && !process.env.FIREBASE_EMULATOR_HUB
+  && ['addCards', 'discardCards'].includes(process.env.FUNCTION_TARGET);
+const claimsWorkerRuntime = process.env.K_SERVICE && process.env.K_REVISION
+  && !process.env.FUNCTIONS_EMULATOR && !process.env.FIREBASE_EMULATOR_HUB
+  && process.env.FUNCTION_TARGET === 'syncMembershipClaimsAfterProfile';
+const authenticationRouteModules = Object.freeze({
+  adminPages: './routes/admin/pages',
+  adminBackend: './routes/admin/pages',
+  startYoutubeMembershipVerification: './routes/youtubeMembership',
+  verifyYoutubeMembership: './routes/youtubeMembership',
+  startDiscordMembershipVerification: './routes/discordMembership',
+  verifyDiscordMembership: './routes/discordMembership',
+  getUserData: './routes/user',
+});
+const authenticationRuntime = process.env.K_SERVICE && process.env.K_REVISION
+  && !process.env.FUNCTIONS_EMULATOR && !process.env.FIREBASE_EMULATOR_HUB
+  && Object.hasOwn(authenticationRouteModules, process.env.FUNCTION_TARGET);
+if (claimsWorkerRuntime) {
+  exports.syncMembershipClaimsAfterProfile = require('./tasks/membershipClaims').syncMembershipClaimsAfterProfile;
+} else if (inventoryRuntime) {
+  const inventoryRoutes = require('./routes/inventory');
+  exports[process.env.FUNCTION_TARGET] = inventoryRoutes[process.env.FUNCTION_TARGET];
+} else if (authenticationRuntime) {
+  // 같은 SDK 진입점을 그대로 사용하며 현재 인증·저장·복구 검사는 생략하지 않는다.
+  const target = process.env.FUNCTION_TARGET;
+  exports[target] = require(authenticationRouteModules[target])[target];
+} else {
 // HTTP 라우트 등록. 실제 처리 로직은 서비스·크롤러에서 수행합니다.
 
 // 1. 카드 기능 모음
@@ -76,6 +106,7 @@ const crawlerSchedules = require("./schedules/autoCrawler");
 exports.autoCrawlFull = crawlerSchedules.autoCrawlFull;
 exports.autoCrawlQuick = crawlerSchedules.autoCrawlQuick;
 exports.compactUserWriterHistory = require('./schedules/userWriterHistory').compactUserWriterHistory;
+exports.syncMembershipClaimsAfterProfile = require('./tasks/membershipClaims').syncMembershipClaimsAfterProfile;
 exports.processCardIndexTask = require("./tasks/cardIndexes").processCardIndexTask;
 exports.autoCrawlTask = require("./tasks/autoCrawler").autoCrawlTask;
 exports.migrateCardNumbersTask = require("./tasks/cardNumbers").migrateCardNumbersTask;
@@ -119,3 +150,8 @@ exports.verifyDiscordMembership = discordMembershipRoutes.verifyDiscordMembershi
 
 // 제삼자용 API 키 기반 DB 전용 카드 조회.
 exports.getCardInfo = require('./routes/cardInfo').getCardInfo;
+
+// Cloud IAM 전용: 승인된 운영 보조 색인 준비/읽기 대조. 사용자 API가 아니다.
+exports.membershipCsvPrepareLookup = require('./routes/membershipCsvLookup').membershipCsvPrepareLookup;
+
+}

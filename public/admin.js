@@ -22,6 +22,7 @@
     let redirectPending = true;
     let signingIn = false;
     let observedUid = null;
+    let entry = null;
     function show(message, options = {}) {
         if (content) content.hidden = true;
         if (settings) settings.hidden = true;
@@ -45,8 +46,10 @@
         expired = true; expiryMessage = '30분 동안 활동이 없어 로그아웃되었습니다. 다시 로그인해 주세요.'; signOut();
     } });
     async function enter(user, manual = false) {
-        const current = ++generation;
         if (redirectPending) return;
+        // 최초 Auth 알림·리다이렉트 복원·재시도가 겹쳐도 같은 계정의 발급은 공유한다.
+        if (user && entry?.uid === user.uid) return entry.promise;
+        const current = ++generation;
         if (!user) {
             session.stop();
             show(expired ? expiryMessage : '관리자 계정으로 로그인해 주세요.', { providers: true });
@@ -69,19 +72,39 @@
             return;
         }
         show('관리자 권한을 확인하고 있습니다.');
-        try {
-            const response = await window.adminSession.establish(user);
-            if (current !== generation || auth.currentUser?.uid !== user.uid) {
-                await window.adminSession.clear(); return;
+        const previous = entry?.promise;
+        const task = { uid: user.uid };
+        entry = task;
+        task.promise = (async () => {
+            try {
+                // 계정 변경 때 이전 발급의 쿠키 정리가 끝난 뒤 새 계정의 발급을 시작한다.
+                await previous;
+                if (current !== generation || auth.currentUser?.uid !== user.uid) return;
+                const response = await window.adminSession.establish(user);
+                if (current !== generation || auth.currentUser?.uid !== user.uid) {
+                    await window.adminSession.clear(); return;
+                }
+                if (response.status === 401) { await signOut(); return; }
+                if ([403, 503].includes(response.status)) {
+                    let code;
+                    try { code = (await response.json()).code; } catch (_) {}
+                    const messages = { ADMIN_ROLE_REQUIRED: '관리자 권한이 없는 계정입니다.',
+                        ADMIN_REQUEST_REJECTED: '요청 출처 또는 형식을 확인하지 못했습니다. 서비스 주소에서 다시 접속해 주세요.',
+                        ADMIN_SESSION_BUSY: '관리자 세션 작업이 진행 중입니다. 잠시 후 다시 시도해 주세요.',
+                        ADMIN_SESSION_RECOVERY_REQUIRED: '관리자 세션 복구가 필요합니다. 운영 담당자에게 문의해 주세요.' };
+                    show((Object.hasOwn(messages, code) ? messages[code] : null) || (response.status === 403 ? '관리자 요청이 거부되었습니다. 접속 주소와 권한을 확인해 주세요.'
+                        : '관리자 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'), { retry: true, switchAccount: true }); return;
+                }
+                if (!response.ok) throw new Error('session-unavailable');
+                // 다음 문서는 요청에 실린 세션을 서버가 검증한 뒤 완성해서 제공한다.
+                location.replace(returnPath);
+            } catch (_) {
+                if (current === generation) show('관리자 서버에 연결하지 못했습니다. 다시 시도해 주세요.', { retry: true, switchAccount: true });
+            } finally {
+                if (entry === task) entry = null;
             }
-            if (response.status === 401) { await signOut(); return; }
-            if (response.status === 403) { show('관리자 권한이 없는 계정입니다.', { switchAccount: true }); return; }
-            if (!response.ok) throw new Error('session-unavailable');
-            // 다음 문서는 요청에 실린 세션을 서버가 검증한 뒤 완성해서 제공한다.
-            location.replace(returnPath);
-        } catch (_) {
-            if (current === generation) show('관리자 서버에 연결하지 못했습니다. 다시 시도해 주세요.', { retry: true, switchAccount: true });
-        }
+        })();
+        return task.promise;
     }
     async function signIn(name) {
         if (signingIn || !auth || auth.currentUser) return;

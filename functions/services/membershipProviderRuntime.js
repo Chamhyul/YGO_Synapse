@@ -1,6 +1,8 @@
 'use strict';
 
 const { resolveUserStorageConfig, sameConnectionConfig } = require('../config/userStorage');
+const { measure } = require('./inventoryRequestTiming');
+const { withWriterRequestScope, rememberInitialWriterRoute } = require('./initialWriterRoute');
 
 const unavailable = () => Object.assign(new Error('이 환경에서는 멤버십 인증을 사용할 수 없습니다.'),
   { code: 'USER_STORAGE_FEATURE_UNAVAILABLE', status: 503 });
@@ -13,7 +15,7 @@ function resolveMembershipProviderRuntime({ env = process.env, storage, rtdbTest
     if (config.mode === 'production') storage = require('./userWriterSelection').selectProductionWriter({ env }).claimsStorage;
     if (config.mode === 'emulator' && !rtdbTestDependencies || !storage?.membership || storage?.writerTransition?.runId !== config.runId
         || !sameConnectionConfig(config, storage.config)) throw unavailable();
-    return { storage, config };
+    return { storage, config, deferClaims: env.MEMBERSHIP_CLAIMS_MODE === 'deferred' };
   }
   const backend = env.USER_STORAGE_BACKEND;
   if (backend === undefined || backend === '' || backend === 'storage') return null;
@@ -27,11 +29,16 @@ function resolveMembershipProviderRuntime({ env = process.env, storage, rtdbTest
 }
 
 function guardMembershipProviderRoute(handler, { env = process.env } = {}) {
-  return async (req, res) => {
+  return (req, res) => withWriterRequestScope(async () => {
     if (req.method === 'POST') {
       try {
-        const selected = resolveMembershipProviderRuntime({ env });
-        if (selected?.config.mode === 'production' && selected.storage.writerTransition) await selected.storage.writerTransition.route();
+        await measure('membership.guard', async () => {
+          const selected = resolveMembershipProviderRuntime({ env });
+          if (selected?.config.mode === 'production' && selected.storage.writerTransition) {
+            const transition = selected.storage.writerTransition;
+            rememberInitialWriterRoute(transition, await transition.route());
+          }
+        });
       } catch (_) {
         res.set('Cache-Control', 'no-store');
         return res.status(503).json({ success: false, code: 'USER_STORAGE_FEATURE_UNAVAILABLE',
@@ -39,11 +46,17 @@ function guardMembershipProviderRoute(handler, { env = process.env } = {}) {
       }
     }
     return handler(req, res);
-  };
+  });
 }
 
 async function syncProviderMembershipClaims(uid, runtime, auth, syncClaims) {
   try {
+    // 운영의 재시도 가능한 profile 이벤트 구독자를 먼저 배포한 경우만 선택한다.
+    // 최소 원본 저장 ACK는 앞에서 완료했으므로 OAuth를 재사용할 필요가 없다.
+    if (runtime.deferClaims && (runtime.storage.membership.verificationWriter?.()
+        || runtime.storage.membership.writerLease?.()?.writer)?.backend === 'rtdb') {
+      return { claimsPending: true, membershipClaims: { status: 'pending' } };
+    }
     if (runtime.config.mode === 'emulator' && !syncClaims) return { claimsPending: true, membershipClaims: { status: 'pending' } };
     const result = syncClaims ? await syncClaims(uid)
       : await require('./membershipClaims').syncMembershipClaims(uid, { auth, storage: runtime.storage });

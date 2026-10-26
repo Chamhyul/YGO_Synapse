@@ -28,7 +28,7 @@ case "${1:-dev}" in
     export MEMBERSHIP_TEST_BROWSER="${MEMBERSHIP_TEST_BROWSER:-chromium}"
     export TEST_WEB_ASSETS="${TEST_WEB_ASSETS:-/opt/browser-assets}"
     export TEST_ARTIFACT_DIR="${TEST_ARTIFACT_DIR:-/test-results}"
-    exec node --test --test-concurrency=1 scripts/admin_notice_editor.browser.test.js scripts/admin_membership_csv.browser.test.js scripts/admin_settings.browser.test.js scripts/admin_cards.browser.test.js scripts/local_api_endpoints.browser.test.js
+    exec node --test --test-concurrency=1 scripts/admin_notice_editor.browser.test.js scripts/admin_membership_csv.browser.test.js scripts/admin_settings.browser.test.js scripts/admin_cards.browser.test.js scripts/admin_activity.browser.test.js scripts/local_api_endpoints.browser.test.js
     ;;
   *) exec "$@" ;;
 esac

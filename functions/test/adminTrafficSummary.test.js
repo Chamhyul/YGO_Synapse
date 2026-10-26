@@ -29,3 +29,29 @@ test('GA4 제한 메타데이터는 표시용 플래그만 전달한다',async()
  const r=result();r.reports[0].metadata.subjectToThresholding=true;r.reports[0].metadata.private='secret';
  const data=await createTrafficSummaryService({now:()=>time,run:async()=>r})();assert.equal(data.limited,true);assert.doesNotMatch(JSON.stringify(data),/private|secret/);
 });
+
+test('반환된 지표 열 순서가 달라도 이름으로 값을 연결한다',async()=>{
+ const permutations=[[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]];
+ for(const order of permutations){
+  const r=result(), current=r.reports[0];
+  current.metricHeaders=order.map(i=>({name:['activeUsers','sessions','screenPageViews'][i]}));
+  current.rows[0].metricValues=order.map(i=>({value:String([11,22,33][i])}));
+  assert.deepEqual((await createTrafficSummaryService({now:()=>time,run:async()=>r})()).current,{activeUsers:11,sessions:22,screenPageViews:33});
+ }
+});
+test('이름 매핑은 누락·중복·예상 외·형식 오류를 완화하지 않는다',async()=>{
+ for(const headers of [[],[{name:'activeUsers'},{name:'sessions'}],[{name:'activeUsers'},{name:'sessions'},{name:'sessions'}],[{name:'activeUsers'},{name:'sessions'},{name:'totalUsers'}],[{name:'activeUsers'},{name:'sessions'},{}],{}]){
+  const r=result();r.reports[0].metricHeaders=headers;
+  await assert.rejects(createTrafficSummaryService({now:()=>time,run:async()=>r})(),{message:'traffic-summary-unavailable'});
+ }
+});
+
+test('정식 GA의 헤더/행 생략 0행 보고서만 정상 빈 집계로 취급한다',async()=>{
+ const empty=()=>({kind:'analyticsData#runReport',metadata:{timeZone:'Asia/Seoul'}});
+ const r=result();r.reports[0]=empty();r.reports[1]={...empty(),rowCount:0,rows:[],metricHeaders:[],dimensionHeaders:[]};r.reports[2]=empty();
+ const data=await createTrafficSummaryService({now:()=>time,run:async()=>r})();
+ assert.deepEqual(data.current,{activeUsers:0,sessions:0,screenPageViews:0});assert.equal(data.daily.length,30);assert.ok(data.daily.every(row=>row.value===0));
+ for(const change of [x=>delete x.kind,x=>x.kind='invalid',x=>x.rowCount=1,x=>x.rowCount=null,x=>x.rows={},x=>x.rows=[{metricValues:[{value:'4'}]}],x=>x.metricHeaders=null,x=>x.metricHeaders=[{name:'activeUsers'}],x=>x.metadata.timeZone='UTC',x=>x.totals=[{metricValues:[{value:'4'}]}]]){
+  const bad=result();bad.reports[0]=empty();change(bad.reports[0]);await assert.rejects(createTrafficSummaryService({now:()=>time,run:async()=>bad})(),{message:'traffic-summary-unavailable'});
+ }
+});

@@ -27,8 +27,8 @@ function fixture(api) {
     getProviderInstance: name => ({ name }), IS_LOCAL_DEV: true,
     setTimeout: callback => { calls.push('retry-delay'); callback(); },
   });
-  vm.runInContext('let authStateRevision = 0, pendingRegistrationUser = null, pendingConsentVersions = null, registrationSaving = false, loginInProgress = false, registrationCheckPending = false, pendingServiceAuthUser = null, serviceLoginPending = false;', c);
-  for (const name of ['showLoading', 'setServiceLoginPending', 'reportAuthFailure', 'checkAndHideInitialLoading', 'awaitApiPreparation', 'getServiceRegistrationStatus', 'handleFirebaseAuthState', 'toggleAuthModal', 'toggleLoginBtn', 'retryServiceLoginConfirmation', 'signInWithProvider', 'toggleRegistrationButton', 'setRegistrationSaving', 'completeServiceRegistration', 'cancelServiceRegistration']) {
+  vm.runInContext('const serviceUiReady = Promise.resolve(); let serviceAuthStarted = false; let authStateRevision = 0, pendingRegistrationUser = null, pendingConsentVersions = null, registrationSaving = false, loginInProgress = false, registrationCheckPending = false, pendingServiceAuthUser = null, serviceLoginPending = false, serviceLoginFailureCode = null;', c);
+  for (const name of ['showLoading', 'setServiceLoginPending', 'reportAuthFailure', 'checkAndHideInitialLoading', 'awaitApiPreparation', 'getServiceRegistrationStatus', 'handleFirebaseAuthState', 'toggleAuthModal', 'toggleLoginBtn', 'retryServiceLoginConfirmation', 'getServiceSignInMode', 'signInWithProvider', 'toggleRegistrationButton', 'setRegistrationSaving', 'completeServiceRegistration', 'cancelServiceRegistration']) {
     const start = source.search(new RegExp(`^(?:async )?function ${name}\\(`, 'm'));
     const rest = source.slice(start), end = rest.slice(1).search(/\n(?:async )?function /);
     vm.runInContext(rest.slice(0, end + 1), c);
@@ -164,7 +164,7 @@ test('가입 상태 확인 중에는 개인 기능과 로그인 버튼을 열지
 
 function requestFixture({authError, appError}={}) {
   const calls=[];
-  const c=vm.createContext({URL,AbortSignal,console:{error(){},warn(){}},
+  const c=vm.createContext({requireInventoryReady:()=>true,URL,AbortSignal,console:{error(){},warn(){}},
     localStorage:{getItem:()=>null},STORAGE_KEY:'fixture',UserStore:{user:null},
     FIREBASE_CONFIG:{ENDPOINTS:{getRegistrationStatus:'http://127.0.0.1:5001/getRegistrationStatus'}},
     firebase:{auth:()=>({currentUser:{getIdToken:async()=>{if(authError)throw authError;return 'fixture-auth';}}}),
@@ -172,6 +172,7 @@ function requestFixture({authError, appError}={}) {
     fetch:async(_url,options)=>{calls.push(['request',options]);return{ok:true,json:async()=>({success:true,registered:true})};},
   });
   vm.runInContext('let _cachedAuthToken=null;',c);
+  c.IS_LOCAL_DEV = true;
   for(const name of ['getApiAppCheckToken','awaitApiPreparation','requestApi']) {
     const start=source.search(new RegExp(`^(?:async )?function ${name}\\(`,'m'));
     const rest=source.slice(start),end=rest.slice(1).search(/\n(?:async )?function /);
@@ -286,7 +287,8 @@ test('가입 조회 재시도 중에는 로딩을 유지하고 최종 실패 때
   });
   await f.c.handleFirebaseAuthState(f.auth.currentUser);
   assert.equal(attempt,3);assert.equal(f.nodes.get('loading-overlay').style.display,'none');
-  assert.equal(f.c.UserStore.user,null);assert.ok(f.calls.some(call=>call[0]==='toast'));
+  assert.equal(f.c.UserStore.user,null);assert.equal(f.calls.some(call=>call[0]==='toast'),false);
+  assert.match(f.nodes.get('login-guide-msg').textContent,/다시 시도/);
 });
 test('인증 팝업 취소는 최종 실패로 로딩을 해제하고 초기 비로그인 알림은 팝업을 중단하지 않는다',async()=>{
   let cancel;
@@ -356,6 +358,7 @@ for (const code of ['auth/operation-not-supported-in-this-environment', 'auth/ne
   test(`운영 redirect 시작 실패 ${code}는 안전한 분류와 기존 안내만 남긴다`, async () => {
     const f = fixture(async () => assert.fail('OAuth 실패 뒤 가입 API를 호출하지 않는다'));
     f.c.IS_LOCAL_DEV = false;
+    f.c.navigator = { userAgent: 'iPhone' };
     f.auth.currentUser = null;
     f.nodes.get('google-login-btn').disabled = false;
     f.auth.signInWithRedirect = async () => {
@@ -396,6 +399,7 @@ test('인증 진단은 원문 오류 속성과 허용하지 않은 code/name/sta
 test('브라우저 저장소·통신 예외의 종류를 구분하고 콘솔 장애가 로그인 UI 복원을 막지 않는다', async () => {
   const f = fixture(async () => assert.fail('가입 API 호출 금지'));
   f.c.IS_LOCAL_DEV = false;
+  f.c.navigator = { userAgent: 'iPhone' };
   f.auth.currentUser = null;
   f.nodes.get('google-login-btn').disabled = false;
   for (const name of ['SecurityError', 'QuotaExceededError', 'TypeError']) {
@@ -474,4 +478,94 @@ test('redirect 복귀 뒤 가입 확인 실패는 OAuth 오류로 기록하거�
   assert.equal(f.calls.includes('sign-out'), false);
   assert.equal(f.calls.includes('popup'), false);
   assert.equal(f.diagnostics.length, 0);
+});
+
+for (const httpStatus of [400,403,404]) test(`App Check 설정 거부${httpStatus}는 토큰·SDK 원문 없이 구분한다`,async()=>{
+ const f=requestFixture({appError:{code:'appCheck/fetch-status-error',customData:{httpStatus,token:'secret'},message:'secret-token-url'}});
+ await assert.rejects(f.c.getApiAppCheckToken(),e=>e.code==='APPCHECK_CONFIGURATION_REJECTED'&&!JSON.stringify(e).includes('secret'));
+ assert.equal(f.calls.some(c=>c[0]==='request'),false);
+});
+test('결정적인 앱 설정 거부는 가입 조회 재시도·강제 갱신·중복 토스트 없이 안내한다',async()=>{
+ const f=fixture(async()=>{throw Object.assign(Error('secret'),{code:'APPCHECK_CONFIGURATION_REJECTED'});});
+ await f.c.handleFirebaseAuthState(f.auth.currentUser);
+ assert.equal(f.calls.filter(c=>c[0]==='api').length,1);
+ assert.equal(f.calls.some(c=>c[0]==='appcheck-refresh'),false);
+ assert.equal(f.calls.some(c=>c[0]==='toast'),false);
+ assert.match(f.nodes.get('login-guide-msg').textContent,/디버그 토큰 등록/);
+});
+
+test('회원 로그인은 초기 조회 통합 옵션을 보내고 같은 응답만 현재 계정에 전달한다', async () => {
+  const initialData = { success: true, allCards: [] };
+  const f = fixture(async () => ({ success: true, registered: true, initialData }));
+  let received; const apply = f.c.applyServiceAuthState;
+  f.c.applyServiceAuthState = (user, data) => { apply(user); if (user) received = data; };
+  await f.c.handleFirebaseAuthState(f.auth.currentUser);
+  assert.equal(received, initialData);
+  assert.equal(f.calls.find(c => c[0] === 'api')[2].includeUserData, 'true');
+});
+
+test('UI 준비 전에도 가입·초기 조회를 시작하되 계정 적용은 준비 뒤에 수행한다',async()=>{
+ const f=fixture(async()=>({success:true,registered:true,initialData:{success:true}}));let ready;
+ f.c.window.YgoAuthBootstrap={whenUiReady:()=>new Promise(resolve=>{ready=resolve;})};
+ const checking=f.c.handleFirebaseAuthState(f.auth.currentUser);await new Promise(setImmediate);
+ assert.equal(f.calls.filter(x=>x[0]==='api').length,1);assert.equal(f.c.UserStore.user,null);
+ ready();await checking;assert.equal(f.c.UserStore.user.uid,'new');
+});
+test('UI 준비 중 로그아웃하면 늦은 결과를 적용하거나 로그인 화면을 되살리지 않는다',async()=>{
+ const f=fixture(async()=>({success:true,registered:true}));let ready;
+ f.c.window.YgoAuthBootstrap={whenUiReady:()=>new Promise(resolve=>{ready=resolve;})};
+ const checking=f.c.handleFirebaseAuthState(f.auth.currentUser);await new Promise(setImmediate);
+ f.auth.currentUser=null;await f.c.handleFirebaseAuthState(null);ready();await checking;
+ assert.equal(f.c.UserStore.user,null);assert(!f.calls.some(x=>x[0]==='service-user'&&x[1]==='new'));
+});
+test('UI 준비 실패는 사용자 데이터를 적용하거나 인증을 지우지 않고 기존 재확인 경로로 닫는다',async()=>{
+ const f=fixture(async()=>({success:true,registered:true}));f.c.window.YgoAuthBootstrap={whenUiReady:()=>Promise.reject(Error('synthetic UI failure'))};
+ await f.c.handleFirebaseAuthState(f.auth.currentUser);assert.equal(f.c.UserStore.user,null);assert.equal(f.auth.currentUser.uid,'new');assert(!f.calls.includes('sign-out'));assert.equal(f.nodes.get('service-login-retry-btn').hidden,false);
+});
+
+for (const [label,nav,expected] of [
+ ['desktop',{userAgent:'Mozilla Macintosh',maxTouchPoints:0},'popup'],
+ ['Android',{userAgent:'Mozilla Android'},'redirect'],
+ ['iPhone',{userAgent:'Mozilla iPhone'},'redirect'],
+ ['iPad desktop UA',{userAgent:'Mozilla Macintosh',maxTouchPoints:5},'redirect'],
+ ['mobile client hint',{userAgent:'Mozilla',userAgentData:{mobile:true}},'redirect']]) {
+ test(`Google ${label}은 ${expected}을 사용하고 X 운영 경로는 유지한다`,async()=>{
+  const f=fixture(async()=>assert.fail('OAuth 결과만으로 가입 API를 호출하지 않는다'));
+  f.c.IS_LOCAL_DEV=false;f.c.navigator=nav;f.auth.currentUser=null;
+  f.nodes.get('google-login-btn').disabled=false;
+  f.auth.signInWithRedirect=async()=>f.calls.push('redirect');
+  assert.equal(f.c.getServiceSignInMode('twitter'),'redirect');
+  await f.c.signInWithProvider('google');assert.equal(f.calls.includes(expected),true);
+  assert.equal(f.calls.includes(expected==='popup'?'redirect':'popup'),false);
+  assert.equal(f.c.UserStore.user,null);
+ });
+}
+for(const code of ['auth/popup-blocked','auth/popup-closed-by-user','auth/cancelled-popup-request','auth/network-request-failed','auth/unauthorized-domain']){
+ test(`데스크톱 ${code}의 fallback·버튼 복구`,async()=>{
+  const f=fixture(async()=>assert.fail('가입 우회 금지'));f.c.IS_LOCAL_DEV=false;f.auth.currentUser=null;
+  f.nodes.get('google-login-btn').disabled=false;
+  f.c.window.YgoLoginTiming={provider:(...v)=>f.calls.push(['timing',...v]),cancelProvider:()=>f.calls.push('cancel-timing')};
+  f.auth.signInWithPopup=async()=>{f.calls.push('popup');throw {code};};
+  f.auth.signInWithRedirect=async()=>f.calls.push('redirect');
+  await f.c.signInWithProvider('google');
+  assert.equal(f.calls.filter(v=>v==='popup').length,1);
+  assert.equal(f.calls.filter(v=>v==='redirect').length,code==='auth/popup-blocked'?1:0);
+  assert.equal(f.calls.includes('cancel-timing'),code!=='auth/popup-blocked');
+  assert.equal(f.nodes.get('google-login-btn').disabled,false);
+  if(code==='auth/popup-blocked')assert(f.calls.some(v=>v[0]==='timing'&&v[1]==='redirect'&&v[2]===true));
+ });
+}
+test('팝업 진행 중 중복 클릭은 추가 인증을 열지 않으며 실패 후 재시도 가능하다',async()=>{
+ const f=fixture(async()=>{});f.c.IS_LOCAL_DEV=false;f.auth.currentUser=null;f.nodes.get('google-login-btn').disabled=false;
+ let reject;f.auth.signInWithPopup=()=>{f.calls.push('popup');return new Promise((_,r)=>reject=r);};
+ const first=f.c.signInWithProvider('google');await f.c.signInWithProvider('google');assert.equal(f.calls.filter(v=>v==='popup').length,1);
+ reject({code:'auth/popup-closed-by-user'});await first;assert.equal(f.nodes.get('google-login-btn').disabled,false);
+});
+
+test('계정 요약이 확인되면 전체 동기화 본문 없이 로그인 진입에 전달한다',async()=>{
+ const account={success:true,nickname:'fixture',settings:{theme:'dark'}};
+ const f=fixture(async()=>({success:true,registered:true,initialAccount:account}));let received;
+ f.c.applyServiceAuthState=(user,data,summary)=>{f.c.UserStore.user=user;if(user)received={data,summary};};
+ await f.c.handleFirebaseAuthState(f.auth.currentUser);assert.equal(received.summary,account);assert.equal(received.data,undefined);
+ assert.equal(f.calls.filter(x=>x[0]==='api').length,1);
 });

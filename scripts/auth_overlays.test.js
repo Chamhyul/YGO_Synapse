@@ -28,6 +28,7 @@ function fixture(extra = {}) {
     M: { Modal: { getInstance: () => ({ close() { calls.push('close'); } }) } },
     saveUserSetting: async (...args) => calls.push(args),
     syncMembershipHeader: eligible => calls.push(['header', eligible]),
+    prepareMembershipEntry() {},
     showToast: message => calls.push(['toast', message]),
     ...extra,
   });

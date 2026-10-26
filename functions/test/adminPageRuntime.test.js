@@ -28,6 +28,7 @@ function loadRuntime(resolveUserStorageConfig, validateAdminSessionEnvironment =
     './adminSessionRepository': { validateAdminSessionEnvironment,
       createConfiguredAdminPageHandler: () => assert.fail('저장소는 이 시험에 명시적으로 주입해야 합니다.') },
     './adminTransport': transport,
+    './adminRequestTiming': require('../services/adminRequestTiming'),
   };
   loaded.filename = filename;
   loaded.require = name => { assert.ok(Object.hasOwn(mocks, name), `격리되지 않은 모듈: ${name}`); return mocks[name]; };
@@ -131,4 +132,17 @@ test('실제 공유 저장소와 주입 env의 불일치는 운영 서비스 준
   const { res } = await call(handlers);
   assert.equal(res.code, 503); assert.deepEqual(res.body, { success: false });
   assert.equal(checked, 1); assert.equal(prepared, 0);
+});
+
+
+test('운영 관리자 첫 결과 중계는 명시적 세션 발급에만 선택하고 문서·구형 JSON은 기존 handler를 사용한다', async () => {
+  let direct = 0, relayed = 0;
+  const handlers = createAdminRouteHandlers({ env: {}, productionDependencies: () => ({}),
+    createPageHandler: () => (_req, res) => { direct++; return res.json({ success: true }); },
+    authenticationProxy: (_req, res) => { relayed++; return res.json({ success: true }); } });
+  const req = body => ({ method: 'POST', url: '/admin/session', headers: {}, body });
+  await handlers.adminPages(req({ authenticationResultStream: true }), response());
+  assert.equal(relayed, 1); assert.equal(direct, 0);
+  await handlers.adminPages(req({}), response());
+  await call(handlers); assert.equal(relayed, 1); assert.equal(direct, 2);
 });

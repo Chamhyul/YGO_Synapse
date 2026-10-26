@@ -88,8 +88,8 @@ for (const backend of ['legacy', 'rtdb']) test(`${backend} logout·재발급 뒤
   const f = await setup(), key = hash(id()); let release, entered;
   const gate = new Promise(resolve => { release = resolve; }), ready = new Promise(resolve => { entered = resolve; });
   try { if (backend === 'rtdb') await flip(f); const initial = fixture(); await f.adminSessions.set(key, initial);
-    const prepare = f.transition.prepare; let once = true;
-    f.transition.prepare = async (...args) => { if (once && args[4]?.details.action === 'touch') { once = false; entered(); await gate; } return prepare(...args); };
+    const prepare = f.transition.prepareAndExecuteWithReceipt; let once = true;
+    f.transition.prepareAndExecuteWithReceipt = async (...args) => { if (once && args[4]?.details.action === 'touch') { once = false; entered(); await gate; } return prepare(...args); };
     const pending = f.adminSessions.touch(key, initial.uid, initial.lastActivity + 100); await ready;
     await f.adminSessions.remove(key); await f.adminSessions.set(key, fixture(initial.uid, initial.lastActivity + 10));
     release(); assert.equal(await pending, false); assert.equal((await f.adminSessions.get(key)).lastActivity, initial.lastActivity + 10);
@@ -128,17 +128,17 @@ test('기본 RTDB 세션 writer는 공통 commit receipt가 있는 head를 조�
     assert.ok(await f.adminSessions.get(key));
   } finally { await f.close(); }
 });
-async function httpHarness(surface = 'adminPages') {
+async function httpHarness(surface = 'adminPages', services = {}) {
   let now = Date.now(), role = 'owner', disabled = false, revoked = false, issueHook, index = 0;
   const f = await setup({ sessionNow: () => now }), uid = 'synthetic-http-admin', issued = new Set();
-  const auth = { verifyIdToken: async token => { if (token !== 'synthetic-token') throw new Error('synthetic-only'); return { uid }; },
+  const auth = { verifyIdToken: async token => { if (token !== 'synthetic-token') throw new Error('synthetic-only'); return { uid, auth_time: Math.floor(Date.now()/1000) }; },
     getUser: async () => ({ uid, disabled, customClaims: { role } }),
     createSessionCookie: async () => { if (issueHook) await issueHook(); const value = 'synthetic-cookie-' + ++index; issued.add(value); return value; },
-    verifySessionCookie: async cookie => { if (revoked || !issued.has(cookie)) throw Object.assign(new Error('synthetic-only'), { code: 'auth/session-cookie-revoked' }); return { uid }; },
+    verifySessionCookie: async cookie => { if (revoked || !issued.has(cookie)) throw Object.assign(new Error('synthetic-only'), { code: 'auth/session-cookie-revoked' }); return { uid, auth_time: Math.floor(Date.now()/1000) }; },
   };
   const forbidden = () => assert.fail('운영 연결 금지');
   const handlers = createAdminRouteHandlers({ env: { ...process.env, USER_PROFILE_WRITER_MODE: 'emulator', USER_PROFILE_WRITER_RUN_ID: f.runId }, writerBinding: f,
-    emulatorDependencies: { auth, now: () => now, template: name => fs.readFile(path.join(__dirname, '../templates/admin', name + '.html'), 'utf8') },
+    emulatorDependencies: { auth, now: () => now, template: name => fs.readFile(path.join(__dirname, '../templates/admin', name + '.html'), 'utf8'), ...services },
     productionDependencies: forbidden, proxy: forbidden });
   const app = express(); app.use(express.json()); app.use(handlers[surface]); const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve)); const base = `http://127.0.0.1:${server.address().port}`; let cookie = '';
@@ -212,4 +212,89 @@ test('같은 관리자 cookie의 병렬 문서 요청은 기존 요청 종료를
     assert.ok(results.every(result => result.text.includes('id="admin-content"')));
     assert.equal((await f.transition.inspect()).unresolved, 0);
   } finally { await f.close(); }
+});
+
+for(const backend of ['legacy','rtdb']) test(`${backend} 새 세션은 fresh route·통합 CAS·확정 receipt를 같은 요청에서 재사용한다`,async()=>{
+  const f=await setup();
+  try{
+    if(backend==='rtdb')await flip(f);
+    const lean=createUserInventoryWriterBinding({db:f.connection.db,database:f.connection.targetDatabase,bucket:f.connection.bucket,
+      FieldValue,runId:f.runId,config:f.connection.config,migration,initializeMissing:false});
+    const route=lean.transition.route;let routes=0,receiptReads=0;
+    lean.transition.route=async()=>{routes++;return route();};
+    lean.transition.prepare=async()=>assert.fail('세션의 준비와 실행을 별도 CAS로 반복하지 않는다');
+    lean.transition.execute=async()=>assert.fail('통합 실행 뒤 추가 execute를 하지 않는다');
+    const receipt=lean.sessionAdapters[backend].receipt;
+    lean.sessionAdapters[backend].receipt=async(...args)=>{receiptReads++;return receipt(...args);};
+    const key=hash(id()),value=fixture();
+    await lean.adminSessions.withRequest({},async()=>{
+      await lean.adminSessions.beginLogin(value.uid);await lean.adminSessions.set(key,value);
+    });
+    assert.equal(routes,1);assert.equal(receiptReads,0);
+    routes=0;
+    await lean.adminSessions.withRequest({},async()=>assert.deepEqual(await lean.adminSessions.get(key),value));
+    assert.equal(routes,2,'요청 최초 fresh 선택과 최종 epoch 검사는 유지한다');
+    assert.deepEqual(await f.adminSessions.get(key),value);
+    assert.equal((await f.transition.inspect()).unresolved,0);
+  }finally{await f.close();}
+});
+
+function deferred() { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; }
+function waitingRead() { const entered = deferred(), release = deferred(); return { entered, release, run: async () => { entered.resolve(); await release.promise; return { syntheticPrivate: 'protected-read-result' }; } }; }
+for (const backend of ['legacy', 'rtdb']) test(`${backend} 긴 읽기2개와 페이지 이동·activity는 외부 조회 동안 서로 잠그지 않는다`, { timeout: 60000 }, async () => {
+  const errors = waitingRead(), traffic = waitingRead();
+  const f = await httpHarness('adminPages', { getErrorSummary: errors.run, getTrafficSummary: traffic.run });
+  let first, second;
+  try {
+    if (backend === 'rtdb') await flip(f);
+    await f.call('/admin/session', 'POST', {}, { Authorization: 'Bearer synthetic-token' });
+    first = f.call('/admin/api/errors'); await errors.entered.promise;
+    second = f.call('/admin/api/traffic'); await traffic.entered.promise;
+    assert.equal((await f.transition.inspect()).externalUnresolved, 0,'조회 중에는 세션 잠금이 없다');
+    assert.match((await f.call('/admin/cards')).text, /id="admin-content"/);
+    f.advance(1000);assert.equal((await f.call('/admin/session/activity','POST',{uid:f.uid})).status,204);
+    errors.release.resolve();traffic.release.resolve();
+    assert.deepEqual((await Promise.all([first,second])).map(r=>r.status),[200,200]);
+    assert.equal((await f.transition.inspect()).externalUnresolved,0);
+  } finally { errors.release.resolve();traffic.release.resolve();await Promise.allSettled([first,second].filter(Boolean));await f.close(); }
+});
+for (const backend of ['legacy','rtdb']) for (const change of ['logout','role','disabled','revoked','idle','replacement']) test(`${backend} 읽기 중 ${change} 변경 뒤에는 결과를 응답하지 않는다`, { timeout: 60000 },async()=>{
+  const read=waitingRead(),f=await httpHarness('adminPages',{getErrorSummary:read.run});let pending;
+  try {
+    if(backend==='rtdb')await flip(f);
+    await f.call('/admin/session','POST',{}, {Authorization:'Bearer synthetic-token'});
+    const cookie=f.cookie().slice('__session='.length);
+    pending=f.call('/admin/api/errors');await read.entered.promise;
+    if(change==='logout')assert.equal((await f.call('/admin/session/logout','POST')).status,204);
+    if(change==='role')f.setRole('none');
+    if(change==='disabled')f.disable();
+    if(change==='revoked')f.revoke();
+    if(change==='idle')f.advance(IDLE_MS);
+    if(change==='replacement') { await f.adminSessions.remove(hash(cookie));await f.adminSessions.set(hash(cookie),fixture(f.uid)); }
+    read.release.resolve();const response=await pending;
+    assert.equal(response.status,401);assert.doesNotMatch(response.text,/protected-read-result/);
+    assert.equal((await f.transition.inspect()).externalUnresolved,0);
+  } finally {read.release.resolve();if(pending)await Promise.allSettled([pending]);await f.close();}
+});
+for(const surface of ['adminPages','adminBackend']) test(`${surface} 조회 중 전환은 잠금 때문에 막히지 않고 이전 epoch의 결과는 차단한다`,{timeout:60000},async()=>{
+  const read=waitingRead(),f=await httpHarness(surface,{getErrorSummary:read.run});let pending;
+  try {
+    await f.call('/admin/session','POST',{}, {Authorization:'Bearer synthetic-token'});
+    pending=f.call('/admin/api/errors');await read.entered.promise;
+    await flip(f);read.release.resolve();const response=await pending;
+    assert.equal(response.status,503);assert.doesNotMatch(response.text,/protected-read-result/);
+    assert.match((await f.call('/admin')).text,/id="admin-content"/);
+    assert.equal((await f.transition.inspect()).externalUnresolved,0);
+  } finally {read.release.resolve();if(pending)await Promise.allSettled([pending]);await f.close();}
+});
+test('조회 중 drain이 시작되면 새 잠금으로 응답을 승인하지 않는다',{timeout:60000},async()=>{
+  const read=waitingRead(),f=await httpHarness('adminPages',{getErrorSummary:read.run});let pending;
+  try {
+    await f.call('/admin/session','POST',{}, {Authorization:'Bearer synthetic-token'});
+    pending=f.call('/admin/api/errors');await read.entered.promise;
+    const writer=await f.transition.route();await f.transition.copy(writer);await f.transition.drain(writer);
+    read.release.resolve();const response=await pending;
+    assert.equal(response.status,503);assert.doesNotMatch(response.text,/protected-read-result/);
+    assert.equal((await f.transition.inspect()).externalUnresolved,0);
+  } finally {read.release.resolve();if(pending)await Promise.allSettled([pending]);await f.close();}
 });

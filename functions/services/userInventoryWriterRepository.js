@@ -24,7 +24,9 @@ const { createCsvWriterAdapters } = require('./membershipCsvWriterAdapters');
 const { createCsvWriterRepository } = require('./membershipCsvWriterRepository');
 const { checkCsvKey, checkCsvCommand } = require('./membershipCsvWriterContract');
 const { createAdminWriterRequests, checkAdminResource } = require('./adminWriterRequests');
-const { createNoticeWriterService } = require('./noticeWriterService');
+// 공지 정제기·Storage SDK는 멤버십 worker의 claims 처리에 필요하지 않다.
+const createNoticeWriterService = options => require('./noticeWriterService').createNoticeWriterService(options);
+const { deferredWriterService, deferredWriterAdapters } = require('./deferredWriterService');
 const { createWriterHistoryStore } = require('./user-storage/writerHistoryStore');
 const { createWriterPlanStore } = require('./user-storage/writerPlanStore');
 const isAdminResource = key => key.startsWith('adminRequest/') || key.startsWith('notice/');
@@ -37,15 +39,18 @@ const checkRequestKey = key => { if (!/^sessionRequest\/[a-f0-9]{32}$/.test(key)
 const isVerification = key => key.startsWith('verification/');
 const isInventory = key => key.startsWith('inventory/');
 const keyFor = uid => { if (typeof uid !== 'string') throw fail('INVENTORY_WRITER_INVALID_KEY'); const key = `inventory/${uid}`; checkInventoryKey(key); return key; };
-function createUserInventoryWriterBinding({ db, database, bucket, FieldValue, runId, migration,
+function createUserInventoryWriterBinding({ db, database, bucket, FieldValue, runId, migration, deferOptionalServices = false,
   config, historyMaintenance = 'inline', sessionNow = Date.now, apiClock = Date.now, csvNow = Date.now, noticeNow = Date.now, noticeStorage, timeoutMs = 10000, onAmbiguousWrite, onCheckpoint, initializeMissing = true, now = () => new Date().toISOString() } = {}) {
   if (typeof migration?.prepareInventoryV2 !== 'function' || typeof migration?.inventoryMigrationStatus !== 'function') throw fail('USER_STORAGE_INVALID_CONFIG');
+  const service = (create, passiveLease = false) => deferOptionalServices ? deferredWriterService(create, { passiveLease }) : create();
+  const adapters = create => deferOptionalServices ? deferredWriterAdapters(create) : create();
   const inventories = createInventoryWriterAdapters({ db, FieldValue, database, bucket, timeoutMs, onAmbiguousWrite });
   const profiles = createProfileWriterAdapters({ db, database, FieldValue, timeoutMs, onAmbiguousWrite });
-  const membershipAdapters = createMembershipWriterAdapters({ db, database, FieldValue, profiles, timeoutMs, onAmbiguousWrite });
-  const sessionAdapters = createSessionWriterAdapters({ db, database, timeoutMs, onAmbiguousWrite, now: sessionNow });
-  const apiAdapters = createApiWriterAdapters({ db, database, timeoutMs, onAmbiguousWrite, now: apiClock });
-  const csvAdapters = createCsvWriterAdapters({ db, database, timeoutMs, onAmbiguousWrite, now: csvNow });
+  const history = createWriterHistoryStore({ database, runId, timeoutMs, onAmbiguousWrite });
+  const membershipAdapters = createMembershipWriterAdapters({ db, database, FieldValue, profiles, history, timeoutMs, onAmbiguousWrite });
+  const sessionAdapters = adapters(() => createSessionWriterAdapters({ db, database, timeoutMs, onAmbiguousWrite, now: sessionNow }));
+  const apiAdapters = adapters(() => createApiWriterAdapters({ db, database, timeoutMs, onAmbiguousWrite, now: apiClock }));
+  const csvAdapters = adapters(() => createCsvWriterAdapters({ db, database, timeoutMs, onAmbiguousWrite, now: csvNow }));
   let adminRequests;
   const stores = Object.fromEntries(['legacy', 'rtdb'].map(backend => {
     const dispatch = key => isCsv(key) ? csvAdapters[backend] : isApi(key) ? apiAdapters[backend] : isSession(key) ? sessionAdapters[backend] : isInventory(key) ? inventories[backend] : isVerification(key) ? membershipAdapters[backend] : profiles[backend];
@@ -60,10 +65,10 @@ function createUserInventoryWriterBinding({ db, database, bucket, FieldValue, ru
       commit: (op, onConfirmedReceipt) => (op.details?.kind === 'membership' ? membershipAdapters[backend] : dispatch(op.changes[0].key)).commit(op, onConfirmedReceipt), receipt: op => (op.details?.kind === 'membership' ? membershipAdapters[backend] : dispatch(op.changes[0].key)).receipt(op),
       fence: op => (op.details?.kind === 'membership' ? membershipAdapters[backend] : dispatch(op.changes[0].key)).fence(op), cancellationReason: op => (op.details?.kind === 'membership' ? membershipAdapters[backend] : dispatch(op.changes[0].key)).cancellationReason(op),
       apply: (id, entry, expected) => dispatch(entry.key).apply(id, entry, expected),
+      ...(backend === 'rtdb' ? { archiveConfirmedReceipts: membershipAdapters[backend].archiveConfirmedReceipts } : {}),
     }];
   }));
   const journal = createWriterJournalStore({ database, path: 'profileWriterTransitions', maxAttempts: 10, timeoutMs, onAmbiguousWrite });
-  const history = createWriterHistoryStore({ database, runId, timeoutMs, onAmbiguousWrite });
   const plans = createWriterPlanStore({ database, runId, timeoutMs, onAmbiguousWrite });
   const transition = createUserWriterTransition({ journal, history, plans, runId, stores, onCheckpoint, historyMaintenance,
     checkKey: key => isAdminResource(key) ? checkAdminResource(key) : isCsv(key) ? checkCsvKey(key) : key.startsWith('csvRequest/') ? checkCsvRequest(key) : isApi(key) ? checkApiKey(key) : key.startsWith('apiCors/') || key.startsWith('apiRequest/') ? checkApiResource(key) : key.startsWith('account/') ? checkAccountResource(key) : isSession(key) ? checkSessionKey(key) : key.startsWith('sessionRequest/') ? checkRequestKey(key) : isInventory(key) ? checkInventoryKey(key) : isVerification(key) ? checkVerificationKey(key) : checkProfileKey(key),
@@ -77,28 +82,32 @@ function createUserInventoryWriterBinding({ db, database, bucket, FieldValue, ru
   });
   const initialize = profile.initialize;
   const membership = createMembershipWriterRepository({ transition, adapters: membershipAdapters, profiles, initialize, initializeMissing, timeoutMs });
-  const adminSessions = createSessionWriterRepository({ transition, adapters: sessionAdapters, initialize, timeoutMs });
-  adminRequests = createAdminWriterRequests({ transition, initialize, db, database, timeoutMs });
-  const notices = createNoticeWriterService({ requests: adminRequests, transition, bucket, ...(noticeStorage ? { storage: noticeStorage } : {}), timeoutMs, now: noticeNow,
-    parentLease: () => adminRequests.writerLease() || adminSessions.writerLease() });
-  const membershipCsv = createCsvWriterRepository({ transition, adapters: csvAdapters, initialize, now: csvNow, timeoutMs,
-    parentLease: () => membership.writerLease() || adminSessions.writerLease() || adminRequests.writerLease() });
-  const apiAccess = createApiWriterRepository({ transition, adapters: apiAdapters, initialize, timeoutMs, clock: apiClock });
+  const adminSessions = service(() => createSessionWriterRepository({ transition, adapters: sessionAdapters, initialize, initializeMissing, timeoutMs }), true);
+  adminRequests = service(() => createAdminWriterRequests({ transition, initialize, initializeMissing, db, database, timeoutMs }), true);
+  const notices = service(() => createNoticeWriterService({ requests: adminRequests, transition, bucket, ...(noticeStorage ? { storage: noticeStorage } : {}), timeoutMs, now: noticeNow,
+    parentLease: () => adminRequests.writerLease() || adminSessions.writerLease(),
+    environment: config?.mode === 'emulator' ? 'local' : 'production' }));
+  const membershipCsv = service(() => createCsvWriterRepository({ transition, adapters: csvAdapters, initialize, initializeMissing, now: csvNow, timeoutMs,
+    parentLease: () => membership.writerLease() || adminSessions.writerLease() || adminRequests.writerLease() }));
+  const apiAccess = service(() => createApiWriterRepository({ transition, adapters: apiAdapters, initialize, initializeMissing, timeoutMs, clock: apiClock }));
   const customClaims = require('./userClaimsWriterStore').createClaimsWriterStore({ transition, initialize, initializeMissing, database, timeoutMs, onAmbiguousWrite, writerLease: () => membership.writerLease() || adminSessions.writerLease() || adminRequests.writerLease() });
   const claimsStorage = { membership, membershipCsv, customClaims, config, writerTransition: transition };
   const requestWriter = new AsyncLocalStorage();
+  const imports = require('./inventoryImportRequests').createInventoryImportRequests({ transition });
   function publish(writer, uid, current, value, blobs = []) {
     return measure('inventory.publish', () => transition.withSession(() => publishInSession(writer, uid, current, value, blobs)));
   }
   async function publishInSession(writer, uid, current, value, blobs = []) {
-    const key = keyFor(uid), id = randomBytes(16).toString('hex');
+    const importAttempt = imports.current(uid);
+    const key = keyFor(uid), id = importAttempt?.operationId || randomBytes(16).toString('hex');
+    const result = importAttempt ? importAttempt.result() : null;
     const changes = [{ key, exists: true, token: current.token, value }];
-    const options = { resources: [`fs/users/${uid}`], details: { kind: 'inventory', blobs: blobs.map(({ hash, token, value: body }) => ({ hash, token, value: body })) } };
+    const options = { resources: [`fs/users/${uid}`], details: { kind: 'inventory', ...(importAttempt ? { importDigest: importAttempt.digest } : {}), blobs: blobs.map(({ hash, token, value: body }) => ({ hash, token, value: body })) } };
     let operation; const deadline = Date.now() + timeoutMs;
     if (writer.backend === 'rtdb') {
       while (true) {
         try {
-          const completed = await transition.prepareAndExecuteWithReceipt(writer, id, changes, null,
+          const completed = await transition.prepareAndExecuteWithReceipt(writer, id, changes, result,
             { ...options, onPrepared: op => { operation = op; } });
           return measure('writer.receipt_final', () => completed.receipt.changes[0]);
         } catch (error) {
@@ -112,7 +121,7 @@ function createUserInventoryWriterBinding({ db, database, bucket, FieldValue, ru
       }
     }
     while (!operation) {
-      try { operation = await transition.prepare(writer, id, changes, null, options); }
+      try { operation = await transition.prepare(writer, id, changes, result, options); }
       catch (error) { if (error.code !== 'WRITER_RESOURCE_BUSY' || Date.now() >= deadline) throw error; await new Promise(resolve => setTimeout(resolve, 20)); }
     }
     let completed;
@@ -154,6 +163,13 @@ function createUserInventoryWriterBinding({ db, database, bucket, FieldValue, ru
     return initializeMissing ? transition.route() : initialized;
   }
   const inventoryRepository = {
+    readInventoryForSync: require('./inventoryConditionalSync').createInventorySyncReader({
+      route, metadata: uid => rtdbStore.readMetadata(uid, { forSync: true }),
+      snapshot: (uid, writer) => requestWriter.run(writer, () => rtdbRepository.readInventorySnapshot(uid)),
+      migrationStatus: migration.inventoryMigrationStatus,
+    }),
+    importStatus: imports.status,
+    withImportAttempt: imports.run,
     async downloadInventory(uid) {
       const writer = await route();
       if (writer.backend === 'rtdb') return rtdbRepository.downloadInventory(uid);
@@ -162,6 +178,12 @@ function createUserInventoryWriterBinding({ db, database, bucket, FieldValue, ru
     },
     async updateInventoryWithRetry(uid, mutate, maxRetries = 3, options = {}) {
       if (typeof mutate !== 'function' || !Number.isSafeInteger(maxRetries) || maxRetries < 1 || maxRetries > 10) throw fail('USER_STORAGE_INVALID_UPDATE');
+      const attempt = imports.current(uid);
+      if (attempt) {
+        if (typeof options.importResult !== 'function') throw fail('IMPORT_REQUEST_INVALID');
+        attempt.result = options.importResult;
+        maxRetries = 1; // 확정 취소 후에는 새로운 HTTP 시도로만 다시 계산한다.
+      }
       const writer = await route();
       if (writer.backend === 'rtdb') return requestWriter.run(writer, () => rtdbRepository.updateInventoryWithRetry(uid, mutate, maxRetries, options));
       const memo = new Map(); let firstReset;
@@ -186,6 +208,13 @@ function createUserInventoryWriterBinding({ db, database, bucket, FieldValue, ru
       await publish(writer, uid, current, { exists: false, manifest: clearedManifest(current.value?.manifest) });
     },
   };
-  return { repository: profile.repository, inventoryRepository, transition, stores, inventories, membership, membershipAdapters, claimsStorage, adminSessions, sessionAdapters, apiAccess, apiAdapters, membershipCsv, csvAdapters, adminRequests, notices, initialize };
+  async function archiveMembershipReceipts({ cursor, limit = 16, apply = false } = {}) {
+    const batch = await history.page('operations', { cursor, limit });
+    const result = await membershipAdapters.rtdb.archiveConfirmedReceipts(batch.items.map(item => item.value), { apply });
+    return { scanned: batch.items.length, ...result, cursor: batch.cursor };
+  }
+  const maintainMembershipReceipts = require('./membershipReceiptMaintenance').createMembershipReceiptMaintenance({
+    database, runId, archivePage: archiveMembershipReceipts, timeoutMs, onAmbiguousWrite });
+  return { repository: profile.repository, inventoryRepository, transition, stores, inventories, membership, membershipAdapters, claimsStorage, adminSessions, sessionAdapters, apiAccess, apiAdapters, membershipCsv, csvAdapters, adminRequests, notices, initialize, archiveMembershipReceipts, maintainMembershipReceipts };
 }
 module.exports = { createUserInventoryWriterBinding };

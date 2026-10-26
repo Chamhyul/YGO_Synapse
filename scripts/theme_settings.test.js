@@ -35,9 +35,13 @@ function fixture({ stored = {}, dark = false, blocked = false } = {}) {
                 toggle(value, enabled) { if (enabled) classes.add(value); else classes.delete(value); },
             } },
             getElementById: id => id === 'checkbox-theme' ? checkbox : null,
+            querySelectorAll: () => [],
             write(markup) { metaColor = markup.match(/content="([^"]+)"/)[1]; },
         },
         UserStore: { user: null, settings: {} },
+        UIStore: {},
+        followMembershipClaims() {}, applyMembershipStatus() {}, updateAuthUI() {},
+        updateUserInfoCard() {}, applyUserData() {}, checkAndHideInitialLoading() {},
         IS_DETAIL_MODE_KEY: 'yugioh_modal_detail_mode',
         updateMetaThemeColor(mode) { metaColor = mode === 'dark' ? '#1e1e1e' : '#f0f0f0'; },
         callApi: async (...args) => { apiCalls.push(args); return { success: true }; },
@@ -144,8 +148,10 @@ test('계정 변경 뒤 도착한 이전 사용자 응답은 테마와 화면을
     f.context.callApi = () => new Promise(resolve => { resolveResponse = resolve; });
     f.context.showLoading = () => {};
     f.context.UserStore.user = { uid: 'account-a' };
-    vm.runInContext(source.slice(source.indexOf('async function loadUserData()'), source.indexOf('/**\n * 유튜브 멤버십 상태 적용')), f.context);
+    vm.runInContext(source.slice(source.indexOf('let userDataSyncTask = null;'), source.indexOf('/**\n * 유튜브 멤버십 상태 적용')), f.context);
     const pending = f.context.loadUserData();
+    await new Promise(setImmediate); // 실제 요청을 시작한 뒤 다른 계정으로 바꾼다.
+    assert.equal(typeof resolveResponse, "function");
     f.context.UserStore.user = { uid: 'account-b' };
     f.context.loadUserSettings({ theme: 'light' });
     resolveResponse({ success: true, settings: { theme: 'dark' } });
@@ -168,7 +174,7 @@ test('서버 조회 실패는 초기 표시를 유지하고 계정 기록을 만
         console: { error() {} },
     });
     f.context.UserStore.user = { uid: 'new-account' };
-    vm.runInContext(source.slice(source.indexOf('async function loadUserData()'), source.indexOf('/**\n * 유튜브 멤버십 상태 적용')), f.context);
+    vm.runInContext(source.slice(source.indexOf('let userDataSyncTask = null;'), source.indexOf('/**\n * 유튜브 멤버십 상태 적용')), f.context);
     await f.context.loadUserData();
     assert.equal(f.checkbox.checked, true);
     assert.equal(f.records.has('yugioh_theme_mode_user:new-account'), false);

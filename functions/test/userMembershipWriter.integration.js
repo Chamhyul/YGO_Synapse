@@ -258,3 +258,35 @@ test('Auth와 UID 잠금은 완료됐지만 공통 종료 기록이 유실돼도
     await f.transition.activate(writer); assert.equal((await f.transition.inspect()).externalUnresolved, 0);
   } finally { await f.close(); }
 });
+
+for (const backend of ['legacy', 'rtdb']) test(`${backend} 멤버십 정상 저장은 합성 실행과 확정 영수증으로 별도 조회 없이 완료한다`, async () => {
+  const f = await setup();
+  try {
+    if (backend === 'rtdb') await switchTo(f);
+    const adapter = f.membershipAdapters[backend], read = adapter.receipt; let lookups = 0, fused = 0;
+    adapter.receipt = async (...args) => { lookups++; return read(...args); };
+    const execute = f.transition.prepareAndExecuteWithReceipt;
+    f.transition.prepareAndExecuteWithReceipt = async (...args) => { fused++; return execute(...args); };
+    f.transition.prepare = f.transition.execute = () => assert.fail('분리 실행 경로 사용 금지');
+    const saved = await verified(f, 'fusion');
+    assert.equal(saved.stored, true); assert.equal(fused, 3); assert.equal(lookups, 0);
+    assert.equal((await f.transition.inspect()).unresolved, 0);
+    assert.equal((await f.repository.read('fusion')).value.settings.membership.verificationProvider, 'discord');
+    await switchTo(f);
+  } finally { await f.close(); }
+});
+for (const backend of ['legacy', 'rtdb']) test(`${backend} 전달된 영수증 변조는 성공으로 처리하지 않고 영구 영수증으로 복구한다`, async () => {
+  const f = await setup();
+  try {
+    if (backend === 'rtdb') await switchTo(f);
+    const s = state('youtube'); await f.membership.start('receipt', 'youtube', s); await f.membership.consume('receipt', 'youtube', s.nonceHash);
+    const adapter = f.membershipAdapters[backend], commit = adapter.commit; let operation;
+    adapter.commit = (op, confirmed) => { operation = op; return commit(op, value => confirmed({ ...value, digest: '0'.repeat(64) })); };
+    await assert.rejects(f.membership.complete('receipt', 'youtube', s.nonceHash, member('youtube')), { code: 'WRITER_RECEIPT_REQUIRED' });
+    assert.equal((await f.transition.inspect()).unresolved, 1);
+    adapter.commit = commit;
+    assert.equal((await f.transition.recover(operation.id)).stored, true);
+    assert.equal((await f.transition.inspect()).unresolved, 0);
+    await assert.rejects(f.membership.complete('receipt', 'youtube', s.nonceHash, member('youtube')), { code: 'MEMBERSHIP_VERIFICATION_EXPIRED' });
+  } finally { await f.close(); }
+});

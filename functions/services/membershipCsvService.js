@@ -206,7 +206,10 @@ function createMembershipCsvService({ store, now = Date.now }) {
     }
   };
   if (!store.withRequest) return service;
-  return Object.fromEntries(Object.entries(service).map(([method, action]) => [method, (...args) => store.withRequest(null, () => action(...args))]));
+  return Object.fromEntries(Object.entries(service).map(([method, action]) => [method, (...args) => {
+    const scope = ['summary', 'preview'].includes(method) && store.withReadRequest ? store.withReadRequest : store.withRequest;
+    return scope(null, () => action(...args));
+  }]));
 }
 module.exports = { membershipCsvParseMembers, membershipCsvValidateMembers, createMembershipCsvService,
   createFirestoreMembershipCsvStore, MAX_BYTES, MAX_MEMBERS };

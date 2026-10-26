@@ -130,7 +130,7 @@ test('사용자 응답의 원본과 동기화한 claims 버전이 같을 때만 
   await store.update(uid, value => { mutators.processAddCards(value, groups('CLAIM-VERSION', '합성 위치')); });
   const membership = { status: 'active', type: 'discord', levelName: '대원', discordId: '123456789012345678',
     verificationVersion: 2, verificationProvider: 'discord', lastChecked: 12345678 };
-  const version = require('../services/user-storage/membershipStore').membershipVersion(membership);
+  const version = require('../services/user-storage/membershipStore').membershipPermissionVersion(membership);
   const profileValue = { Nickname: '합성 이름', settings: { theme: 'dark', membership } };
   for (const claimVersion of [version, 'different-source-version']) {
     const call = legacyRoutes(store, uid, { profileValue, membershipClaims: { status: 'synced', version: claimVersion } });

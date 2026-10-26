@@ -14,7 +14,7 @@ function load(file, mocks, env = {}) {
     module, exports: module.exports, process: { env }, Buffer, __dirname: path.dirname(path.join(__dirname, '..', file)),
     console: { log() {}, error() {}, warn() {} },
     require(name) {
-      if (name === '../services/inventoryRequestTiming') return require('../services/inventoryRequestTiming');
+      if (name === '../services/requestAccount') return require('../services/requestAccount'); if (name === '../services/inventoryRequestTiming') return require('../services/inventoryRequestTiming');
       if (name === '../services/userStorageRequestGuard') return { withUserStorageRequestGuard: handler => handler }; if (name === '../../services/membershipClaims') return { updateAccountClaims: (uid, patch, options) => require('../services/membershipClaims').updateAccountClaims(uid, JSON.parse(JSON.stringify(patch)), options) }; if (name === '../services/publicReadTransport' && !Object.hasOwn(mocks, name)) return { withPublicReadRequest: handler => handler }; assert.ok(Object.hasOwn(mocks, name), `격리되지 않은 의존성: ${name}`); return mocks[name]; },
   });
   return module.exports;
@@ -55,6 +55,29 @@ function fixture({ env = {}, claims = { role: 'admin' }, tokenError, disabled = 
   return { auth, config, helpers, calls, writes, env };
 }
 
+test('서명 검증 뒤 서버 accountWindow가 읽은 계정에도 철회·disabled 검사를 적용한다', async () => {
+  for (const mode of ['valid', 'disabled', 'revoked', 'failure']) {
+    const f = fixture(), res = response(); let windows = 0;
+    f.auth.verifyIdToken = async () => ({ uid: 'verified-user', auth_time: 1 });
+    f.auth.getUser = async uid => { f.calls.push(['user', uid]);
+      if (mode === 'failure') throw Error('synthetic');
+      return { uid, disabled: mode === 'disabled', tokensValidAfterTime: new Date(mode === 'revoked' ? 2000 : 0).toISOString() }; };
+    const result = await f.helpers.verifyRegisteredUser(request(), res, { accountWindow: async ({ uid, read }) => {
+      windows++; assert.equal(uid, 'verified-user'); return read();
+    } });
+    assert.equal(windows, 1); assert.equal(f.calls.filter(c => c[0] === 'user').length, 1);
+    assert.equal(result, mode === 'valid' ? 'verified-user' : null);
+    if (mode !== 'valid') assert.equal(res.code, mode === 'failure' ? 503 : 401);
+  }
+});
+test('무효 서명은 accountWindow를 실행하지 않고 본문의 가짜 window를 인증에 사용하지 않는다', async () => {
+  const f = fixture({ tokenError: 'auth/id-token-expired' }), res = response();
+  await f.helpers.verifyUser(request(), res, { accountWindow: () => assert.fail('무인증 창 실행 금지') });
+  assert.equal(res.code, 401);
+  const g = fixture(), ok = response(); await g.helpers.verifyUser(request({ accountWindow: () => assert.fail('본문 권한 주입 금지') }), ok);
+  assert.equal(g.calls.filter(c => c[0] === 'user').length, 1);
+});
+
 test('로컬에서 본문 UID가 있어도 위조·만료·철회 토큰은 거부한다', async () => {
   const forged = 'header.' + Buffer.from(JSON.stringify({ sub: 'owner', uid: 'owner' })).toString('base64url') + '.fake';
   for (const env of [{FUNCTIONS_EMULATOR:'true'}, {FIREBASE_EMULATOR_HUB:'localhost:5007'}, {}]) {
@@ -63,7 +86,7 @@ test('로컬에서 본문 UID가 있어도 위조·만료·철회 토큰은 거�
       req.headers.authorization='Bearer '+forged;
       assert.equal(await f.helpers.verifyUser(req,res),null);
       assert.equal(res.code,401);
-      assert.equal(f.calls.find(c=>c[0]==='verify')[2],true);
+      assert.equal(f.calls.find(c=>c[0]==='verify')[2],!!(env.FUNCTIONS_EMULATOR || env.FIREBASE_EMULATOR_HUB));
     }
   }
 });
@@ -100,6 +123,26 @@ test('로컬 관리자 권한 확인은 직접 실행할 수 없다',async()=>{
     const f=fixture({env:{[key]:'true'}}),res=response();assert.equal(await f.helpers.verifyAdmin(request(),res),null);
     assert.equal(res.code,503);assert.equal(f.calls.length,0);
   }
+});
+
+test('현재 Auth 한 번으로 SDK 철회 검사와 관리자 역할 확인을 공유하고 다음 요청에는 다시 조회한다',async()=>{
+  const f=fixture({claims:{role:'owner'}});
+  for(let i=0;i<2;i++){
+    const res=response();assert.equal((await f.helpers.verifyAdmin(request(),res)).role,'owner');
+    assert.equal(f.calls.filter(c=>c[0]==='user').length,i+1);
+    assert.equal(f.calls.filter(c=>c[0]==='verify').at(-1)[2],false);
+  }
+});
+
+test('서명 검증 뒤 가입 읽기를 현재 계정 읽기와 병렬 시작하되 둘 다 통과해야 허용한다',async()=>{
+  let registrationStarted=false,accounts=0;
+  const auth={verifyIdToken:async()=>({uid:'synthetic',auth_time:100}),getUser:async()=>{
+    accounts++;assert.equal(registrationStarted,true);return{disabled:false,tokensValidAfterTime:new Date(0).toISOString()};
+  }};
+  const h=load('utils/auth.js',{'../config/firebase':{admin:{auth:()=>auth}},'./safeError':{safeErrorSummary},
+    '../services/publicReadTransport':{isLocal:()=>false},
+    '../services/registrationService':{isRegisteredUser:async()=>{registrationStarted=true;return true;}}});
+  assert.equal(await h.verifyRegisteredUser(request(),response()),'synthetic');assert.equal(accounts,1);
 });
 
 function noticeRoutes(f, forward = async()=>false) {

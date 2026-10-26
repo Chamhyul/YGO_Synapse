@@ -50,6 +50,7 @@ for (const provider of ['discord', 'youtube']) {
       '../services/discordMembership': require('../services/discordMembership'),
       '../services/youtubeMembership': require('../services/youtubeMembership'),
       '../services/membershipProviderRuntime': { guardMembershipProviderRoute: handler => runtime.guardMembershipProviderRoute(handler, { env }) },
+      '../services/inventoryRequestTiming': { withMembershipRequestTiming: (name, handler) => require('../services/inventoryRequestTiming').withMembershipRequestTiming(name, handler, { emit() {} }) },
     };
     const exports = {};
     vm.runInNewContext(source, { exports, require(name) { assert.ok(Object.hasOwn(modules, name), name); return modules[name]; } });
@@ -82,4 +83,27 @@ test('공통 전환에 아직 참여하지 않는 관리자·키·CSV 도구는 
   assert.throws(() => require('../services/adminSessionRepository').validateAdminSessionEnvironment(env), { code: 'USER_STORAGE_CONFIG_INVALID' });
   assert.throws(() => require('../../scripts/upload_membership_csv').validateTarget({ emulator: true }, env));
   assert.throws(() => require('../../scripts/manage_card_api_keys').validateTarget({ rtdbEmulator: true }, env));
+});
+
+test('운영 진입 route는 요청별 첫 선택에만 전달하고 다음 route·동시 요청에 재사용하지 않는다', async () => {
+  const routes = require('../services/initialWriterRoute');
+  let count = 0;
+  const transition = { route: async () => ({ backend: 'rtdb', epoch: ++count, phase: 'accepting' }) };
+  const storage = { membership: {}, writerTransition: transition }, env = { USER_STORAGE_MODE: 'production' };
+  const context = { require: key => key === '../config/userStorage' ? { sameConnectionConfig: () => true }
+    : key === './inventoryRequestTiming' ? { measure: (_, work) => work() }
+    : key === './initialWriterRoute' ? routes
+    : key === '../config/userProfileWriter' ? { resolveProfileWriterConfig: () => ({ mode: 'production' }) }
+    : key === './userWriterSelection' ? { selectProductionWriter: () => ({ claimsStorage: storage }) }
+    : assert.fail(key), module: { exports: {} } };
+  vm.createContext(context); vm.runInContext(fs.readFileSync(path.join(__dirname, '../services/membershipProviderRuntime.js'), 'utf8'), context);
+  const used = [];
+  const handler = context.module.exports.guardMembershipProviderRoute(async () => {
+    await Promise.resolve();
+    const first = routes.takeInitialWriterRoute(transition); assert(first); used.push(first.epoch);
+    assert.equal(routes.takeInitialWriterRoute(transition), undefined);
+    const final = await transition.route(); assert(final.epoch > first.epoch);
+  }, { env });
+  await Promise.all([handler({ method: 'POST' }, response()), handler({ method: 'POST' }, response())]);
+  assert.equal(new Set(used).size, 2); assert.equal(count, 4); assert.equal(routes.takeInitialWriterRoute(transition), undefined);
 });

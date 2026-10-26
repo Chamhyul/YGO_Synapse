@@ -2,6 +2,7 @@
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
+const { randomBytes } = require('node:crypto');
 const path = require('node:path');
 const { initializeApp, deleteApp } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
@@ -18,8 +19,9 @@ after(async () => { await Promise.all(stores.map(store => store.close())); await
 const deps = (storage = stores[0], selectedAuth = auth) => ({ storage, auth: selectedAuth, env: process.env, allowEmulator: true });
 const source = { status: 'active', type: 'discord', levelName: '합성 회원', discordId: '123456789012345678', verificationVersion: 2, verificationProvider: 'discord' };
 let sequence = 0;
+const testRun = randomBytes(8).toString('hex');
 async function setup(state = 'uncertain') {
-  const uid = `synthetic-claims-recovery-${++sequence}`;
+  const uid = `synthetic-claims-recovery-${testRun}-${++sequence}`;
   await auth.createUser({ uid }); await auth.setCustomUserClaims(uid, { role: 'admin', admin: true, separate: { preserve: 1 } });
   await stores[0].profile.createIfAbsent(uid, { settings: { theme: 'dark', membership: source } });
   const operationId = await stores[0].customClaims.acquire(uid);

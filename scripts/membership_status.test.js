@@ -6,11 +6,11 @@ function fixture({fail=false,switchUser=false,errorCode='ACCOUNT_ROLE_UNAVAILABL
  const ctx={authStateRevision:1,UserStore:{user:{uid:'user-a'},settings:{membership:{status:'active',type:'account',levelName:'관리자'}}},UIStore:{},
   callApi:async()=>{if(switchUser)ctx.UserStore.user={uid:'user-b'};if(fail)throw Object.assign(Error('현재 권한 확인 실패'),{code:errorCode});return{success:true,settings:{membership:{status:'active',type:'account',levelName:'소유자'}},sourceMembership:{status:'none',type:'discord'}};},
   applyMembershipStatus:mem=>applied.push(mem),showToast:msg=>toasts.push(msg),
-  showLoading(){},updateAuthUI(){},updateUserInfoCard(){},applyUserData(){},loadUserTheme(){},checkAndHideInitialLoading(){},
-  console:{error(){}},resetMembershipVerifyModal(){},
-  document:{getElementById:id=>{if(!elements.has(id))elements.set(id,{});return elements.get(id);}},getAppModal:()=>({open(){}})
+  followMembershipClaims(){},showLoading(){},updateAuthUI(){},updateUserInfoCard(){},applyUserData(){},loadUserTheme(){},loadUserSettings(){},checkAndHideInitialLoading(){},
+  console:{error(){}},resetMembershipVerifyModal(){},prepareMembershipEntry(){},
+  document:{getElementById:id=>{if(!elements.has(id))elements.set(id,{querySelector:()=>null});return elements.get(id);},querySelectorAll:()=>[]},getAppModal:()=>({open(){}})
  };
- vm.createContext(ctx);vm.runInContext(extract('async function loadUserData()','function applyMembershipStatus('),ctx);
+ vm.createContext(ctx);vm.runInContext(extract('let userDataSyncTask = null;','function applyMembershipStatus('),ctx);
  vm.runInContext(extract('function openMembershipAuthModal(','let discordMembershipStarting'),ctx);
  return{ctx,applied,toasts,elements};
 }

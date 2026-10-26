@@ -21,13 +21,14 @@
     <link rel="stylesheet" href="/styles/base.css?v=142-common-ui">
     <link rel="stylesheet" href="/styles/components.css?v=172-text-links">
     <link rel="stylesheet" href="/styles/layout.css?v=154-ui-structure">
-    <link rel="stylesheet" href="/styles/admin.css?v=3">
-    <script defer src="/__/firebase/10.12.0/firebase-app-compat.js"></script>
-    <script defer src="/__/firebase/10.12.0/firebase-auth-compat.js"></script>
+    <link rel="stylesheet" href="/styles/admin.css?v=4">
+    <script defer src="/__/firebase/13.0.0/firebase-app-compat.js"></script>
+    <script defer src="/__/firebase/13.0.0/firebase-auth-compat.js"></script>
     <script defer src="/__/firebase/init.js"></script>
     <script defer src="/auth-session.js?v=2"></script>
-    <script defer src="/admin-session.js?v=2"></script>
-    <script defer src="/admin.js?v=6"></script>
+    <script defer src="/authentication-result.js?v=2"></script>
+    <script defer src="/admin-session.js?v=5"></script>
+    <script defer src="/admin.js?v=7"></script>
 </head>
 <body>
         <section id="admin-login" class="admin-login" aria-labelledby="admin-title">
@@ -59,7 +60,7 @@
                 </header>
                 <main id="admin-main" class="admin-main" tabindex="-1" aria-labelledby="admin-page-title">
                     <h1 id="admin-page-title">관리자 작업 기록</h1>
-                    <p class="admin-placeholder color-text-001">관리 기능을 준비 중입니다.</p>
+                    <div class="admin-empty-state color-surface-001 shape-rounded-lg"><i class="material-icons color-text-002" aria-hidden="true">history</i><p class="admin-placeholder color-text-001">관리 기능을 준비 중입니다.</p></div>
                 </main>
             </div>
             <nav class="app-navi--mobile admin-bottom-nav" aria-label="관리자 하단 메뉴">

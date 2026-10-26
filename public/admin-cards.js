@@ -44,7 +44,7 @@
             const input = document.createElement(key.startsWith('text') ? 'textarea' : 'input');
             if (input.tagName === 'TEXTAREA') { input.rows = 5; label.className = 'admin-cards-field--wide'; }
             else input.type = 'text';
-            input.className = 'ui-input--filled color-surface-002 shape-rounded-lg';
+            input.className = 'ui-input--filled color-surface-000 ' + (input.tagName === 'TEXTAREA' ? 'shape-rounded003' : 'shape-capsule');
             input.dataset.field = key;
             const value = source[key];
             input.value = Array.isArray(value) ? value.join(', ') : value ?? '';
@@ -131,7 +131,7 @@
             for (const card of cards) {
                 const li = document.createElement('li'), button = document.createElement('button'), name = document.createElement('span'), detail = document.createElement('small');
                 button.type = 'button'; button.dataset.cid = card.cid; button.setAttribute('aria-pressed', 'false');
-                button.className = 'ui-button color-navi shape-rounded-lg admin-cards-result';
+                button.className = 'ui-button color-navi shape-rounded003 admin-cards-result';
                 name.textContent = card.data.info.ko?.name || card.data.names[0] || `CID ${card.cid}`;
                 detail.textContent = `CID ${card.cid} · ${card.data.numbers.join(' · ') || '수록 번호 미등록'}`;
                 button.append(name, detail); button.addEventListener('click', () => select(card)); li.append(button); el('results').append(li);

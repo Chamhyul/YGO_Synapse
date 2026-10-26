@@ -23,12 +23,23 @@ function fields(value, required, optional = []) {
     && own(Object.getOwnPropertyDescriptor(value, key), 'value'));
 }
 
-// 속성 순서와 일반 설정 변경은 claim 원본 버전을 바꾸지 않는다.
+// 원본 버전은 확인 시각을 포함한 모든 변경을 감지한다. 순서는 영향이 없다.
 function membershipVersion(membership) {
   if (membership === undefined) return '0';
   const canonical = value => value !== null && typeof value === 'object'
     ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
   return createHash('sha256').update(JSON.stringify(canonical(encodeValue(membership)))).digest('hex');
+}
+
+// 권한 버전은 확인 시각만 제외한다. 신원·제공자·상태·등급과 알 수 없는
+// 미래 필드는 모두 포함하여 만료/정책 필드의 추가도 새 권한으로 대조한다.
+// 원본 버전은 별도로 유지해 처리 중 lastChecked 변경도 충돌로 감지한다.
+function membershipPermissionVersion(membership) {
+  if (membership === undefined) return '0';
+  const source = plain(membership)
+    ? Object.fromEntries(Object.entries(membership).filter(([key]) => key !== 'lastChecked')) : membership;
+  return createHash('sha256').update('ygo-membership-permission-v1\0')
+    .update(membershipVersion(source)).digest('hex');
 }
 
 function validateMembership(membership, provider) {
@@ -176,4 +187,4 @@ function createMembershipStore({ database, now = Date.now, ...options } = {}) {
   };
 }
 
-module.exports = { createMembershipStore, membershipVersion, validateMembership, validateVerificationState: validateState };
+module.exports = { createMembershipStore, membershipVersion, membershipPermissionVersion, validateMembership, validateVerificationState: validateState };

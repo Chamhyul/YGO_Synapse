@@ -11,7 +11,7 @@ function fixture(value = state(), legacy = false, createStore = createWriterJour
     payload: legacy ? encodeValue(value) : { version: 2, value: encodeValue(value).value, control: projection(value, 1, id) } };
   let raw = legacy ? record : encodeJournalRecord(record, id, path);
   const reads = []; let hook;
-  const database = { ref: key => ({ get: async () => {
+  const database = { ref: key => ({ on: (_event, listener) => queueMicrotask(listener), off() {}, get: async () => {
     reads.push(key); const parts = key === path ? [] : key.slice(path.length + 1).split('/');
     let v = raw; for (const part of parts) v = v?.[part]; const saved = structuredClone(v ?? null);
     hook?.(key); return { val: () => saved };
@@ -112,4 +112,24 @@ test('같은 조회의 해시 계산은 줄이고 다음 조회에는 다시 수
   f.raw = { format: 1, revision: 1, generation: 0, tombstone: false,
     payload: { version: 2, value: encodeValue(state()).value, control: projection(state(), 1, id) } };
   hashes = 0; await f.store.read(id); assert.equal(hashes, 2);
+});
+
+test('최초 journal·보관 조회는 병렬이며 hot 우선·세션 재사용·실패 원형을 유지한다', async () => {
+  const f = fixture(); let release, began = false;
+  const gate = new Promise(resolve => { release = resolve; });
+  f.hook = () => { began = true; };
+  const task = f.store.withSession(async () => {
+    const found = await f.store.readWithFallback(id, r => r.value.operations.pending, async () => {
+      assert(began, '전체 읽기가 이미 시작돼야 한다'); await gate; throw Error('보관 장애');
+    });
+    assert.equal(found.record.value.operations.pending.body.length, 100000);
+    await f.store.readWithFallback(id, r => r.value.operations.pending, () => assert.fail('hot ACK가 있으면 추가 GET 금지'));
+  });
+  await new Promise(resolve => setImmediate(resolve)); release(); await task;
+  assert.equal(f.reads.length, 1);
+  const error = Error('보관 장애');
+  await assert.rejects(f.store.withSession(() => f.store.readWithFallback(id, () => undefined, async () => { throw error; })), e => e === error);
+  const corrupt = fixture(); corrupt.raw.head.digest = '0'.repeat(64); let recovered = false;
+  await assert.rejects(corrupt.store.readWithFallback(id, () => undefined, async () => { await new Promise(r => setImmediate(r)); recovered = true; }), { code: 'WRITER_STATE_INVALID' });
+  assert(recovered, 'hot 실패에도 시작한 보관 작업을 회수한다');
 });

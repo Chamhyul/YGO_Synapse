@@ -13,6 +13,8 @@ const { encodeKey } = require('../services/user-storage/codec');
 
 // HTTP·프로필·nonce·CSV는 실제 RTDB 에뮬레이터, Auth·OAuth·claims 쓰기는 합성 의존성이다.
 const storage = createEmulatorUserStorage(), inspector = createUserStorageConnection(), servers = [];
+// 같은 demo 에뮬레이터의 반복 실행에서도 고정 시각의 과거 nonce와 충돌하지 않는다.
+const testRun = randomBytes(8).toString('hex');
 let sequence = 0;
 const channel = 'UC' + 'x'.repeat(22), discordId = '123456789012345678';
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -22,13 +24,13 @@ after(async () => {
 });
 
 async function harness({ roles = ['1462257396020809800'], active = true, accountRole = 'user', claimsFail = false,
-  localOnly = false, disabled = false, omitSync = false, csvFail = false } = {}) {
-  const id = ++sequence, uid = `synthetic-membership-http-${id}`;
+  localOnly = false, disabled = false, omitSync = false, csvFail = false, csvPinRefresh = false, disableAfterPin = false } = {}) {
+  const id = ++sequence, uid = `synthetic-membership-http-${testRun}-${id}`;
   let time = 90000000, authCalls = 0, providerCalls = 0, claimsCalls = 0, providerHook;
   const secret = 'synthetic-sensitive-oauth-value';
   await storage.profile.createIfAbsent(uid, { uid, displayName: '합성 사용자', settings: { theme: 'dark', inventoryView: 'grid' } });
   const csv = createMembershipCsvStore({
-    database: { ref: name => inspector.database.ref(`syntheticMembershipHttpCsv/${id}/${name}`) }, now: () => time,
+    database: { ref: name => inspector.database.ref(`syntheticMembershipHttpCsv/${testRun}/${id}/${name}`) }, now: () => time,
   });
   const members = [{ channelId: active ? channel : 'UC' + 'z'.repeat(22), memberName: '합성 회원', levelName: '간부' }];
   const revision = (await csv.read()).revision, operation = randomBytes(16).toString('hex');
@@ -36,13 +38,13 @@ async function harness({ roles = ['1462257396020809800'], active = true, account
   await csv.stage(operation, members);
   await csv.commit(operation, revision, { revision: operation, count: 1, updatedAt: time, tiers: [{ levelName: '간부', count: 1 }] });
   const forbidden = () => assert.fail('운영 DB·프록시·실제 Auth 접근 금지');
-  const auth = { async getUser(actual) { authCalls++; assert.equal(actual, uid); return { uid, disabled, customClaims: { role: accountRole } }; } };
+  const auth = { async getUser(actual) { authCalls++; assert.equal(actual, uid); return { uid, disabled: disabled || (disableAfterPin && authCalls > 1), customClaims: { role: accountRole } }; } };
   const syncClaims = omitSync ? undefined : async actual => {
     claimsCalls++; assert.equal(actual, uid);
     if (claimsFail) throw new Error(secret);
     return { status: 'synced', version: (await storage.membership.read(uid)).version };
   };
-  const common = { storage: { ...storage, membershipCsv: csvFail ? { readMember: async () => { throw new Error(secret); } } : csv }, rtdbTestDependencies: true,
+  const common = { storage: { ...storage, membershipCsv: csvPinRefresh ? { withMember: async (key, action) => action(await csv.readMember(key), { refreshAccount: true }) } : csvFail ? { readMember: async () => { throw new Error(secret); } } : csv }, rtdbTestDependencies: true,
     auth, now: () => time, env: process.env, isLocal: forbidden, forward: forbidden,
     db: { collection: forbidden, runTransaction: forbidden }, syncClaims, setCors() {},
     verifyAppCheck: async (req, res) => { if (req.headers['x-synthetic-app'] === 'denied') { res.status(401).json({ success: false }); return false; } return true; },
@@ -178,4 +180,15 @@ test('HTTP RTDB 제공자 전환은 마지막 검증 원본을 저장하고 새 
   assert.equal((await app.profile()).settings.membership.type, 'csv');
   assert.notEqual(discord.body.membershipClaims.version, youtube.body.membershipClaims.version);
   assert.equal(app.calls().claimsCalls, 2);
+});
+
+test('HTTP YouTube CSV 고정 대기 후 계정을 다시 확인하고 회수된 계정의 저장을 막는다', async () => {
+  const good = await harness({ csvPinRefresh: true });
+  const ok = await good.complete('youtube', (await good.start('youtube')).body.verificationId);
+  assert.equal(ok.status, 200); assert.equal(good.calls().authCalls, 2);
+  const denied = await harness({ csvPinRefresh: true, disableAfterPin: true });
+  const no = await denied.complete('youtube', (await denied.start('youtube')).body.verificationId);
+  assert.equal(no.status, 401); assert.equal(denied.calls().authCalls, 2);
+  assert.equal((await denied.profile()).settings.membership, undefined);
+  assert.equal(denied.calls().claimsCalls, 0);
 });

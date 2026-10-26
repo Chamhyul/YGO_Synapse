@@ -35,7 +35,7 @@
         get('list').replaceChildren(...filtered.map((notice,index) => {
             const row = document.createElement('li'), label = document.createElement('span'), detail = document.createElement('span');
             label.className = 'admin-home-error-rank';label.textContent = String(index+1).padStart(2,'0');
-            const button = document.createElement('button');button.type = 'button';button.className = `ui-button ${selected === notice.id ? 'color-theme' : 'color-type000'} shape-rounded-lg admin-home-record-link`;
+            const button = document.createElement('button');button.type = 'button';button.className = `ui-button ${selected === notice.id ? 'color-tint-theme' : 'color-type004'} shape-rounded003 admin-home-record-link`;
             const title = document.createElement('span');title.textContent = notice.title;
             button.setAttribute('aria-pressed', String(selected === notice.id));button.addEventListener('click',()=>{if(!busy && leave())select(notice);});
             const info = document.createElement('span');info.textContent = `${notice.date} ${notice.id.slice(11)}${notice.isPinned>0?' · 고정 '+notice.isPinned:''}`;

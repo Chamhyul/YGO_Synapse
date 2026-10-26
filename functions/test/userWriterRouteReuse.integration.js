@@ -94,12 +94,12 @@ for (const initializeMissing of [false, true]) test(`멤버십·claims initializ
     const begin = f.transition.beginExternal, prepare = f.transition.prepare;
     f.transition.beginExternal = async (selected, externalId, resources, options) => {
       const parent = f.membership.writerLease();
-      if (parent) { assert.equal(selected, parent.writer); assert.equal(options.parentId, parent.id); }
+      if (parent) { assert.deepEqual(selected, parent.writer); assert.equal(options.parentId, parent.id); }
       return begin(selected, externalId, resources, options);
     };
     f.transition.prepare = async (selected, operationId, changes, result, options) => {
       const parent = f.membership.writerLease();
-      assert.ok(parent); assert.equal(selected, parent.writer); assert.equal(options.parentExternal, parent.id);
+      assert.ok(parent); assert.deepEqual(selected, parent.writer); assert.equal(options.parentExternal, parent.id);
       return prepare(selected, operationId, changes, result, options);
     };
     await f.membership.withVerification('member', 'discord', async () => {

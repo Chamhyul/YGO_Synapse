@@ -9,6 +9,7 @@ const { serverTimestampPaths } = require('./user-storage/profileCodec');
 const { createUserWriterTransition } = require('./userWriterTransition');
 const { createProfileWriterAdapters, checkProfileKey, profileReceiptMatches, reserveProfileChange } = require('./userProfileWriterAdapters');
 const { encodeValue, decodeValue } = require('./user-storage/codec');
+const { takeInitialWriterRoute } = require('./initialWriterRoute');
 const fail = code => Object.assign(new Error('프로필 writer가 변경되었습니다. 저장 상태를 확인한 뒤 다시 요청해 주세요.'), { code });
 const plain = value => value && typeof value === 'object' && !Array.isArray(value)
   && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
@@ -31,7 +32,8 @@ function createProfileWriterBinding({ db, database, FieldValue, runId, inventory
   const transition = sharedTransition || createUserWriterTransition({ journal, history, plans, stores, runId, checkKey: checkProfileKey,
     receiptMatches: profileReceiptMatches, reserveChange: reserveProfileChange, onCheckpoint });
   let ready;
-  const initialize = () => initializeMissing ? ready ||= transition.route().catch(error => { if (error.code !== 'WRITER_NOT_INITIALIZED') throw error; return transition.initialize(); }) : transition.route();
+  const initialize = () => initializeMissing ? ready ||= transition.route().catch(error => { if (error.code !== 'WRITER_NOT_INITIALIZED') throw error; return transition.initialize(); })
+    : Promise.resolve(takeInitialWriterRoute(transition) || transition.route());
   const keyFor = uid => { if (typeof uid !== 'string') throw fail('PROFILE_WRITER_INVALID_KEY'); const key = `fs/users/${uid}`; checkProfileKey(key); return key; };
   async function stableRead(uid, checkInventory = false) {
     const initialized = await measure('registration.route_before', initialize), key = keyFor(uid);
@@ -61,22 +63,26 @@ function createProfileWriterBinding({ db, database, FieldValue, runId, inventory
       if (current.exists && !plain(current.value)) throw fail('USER_STORAGE_INVALID_PROFILE_PATCH');
       if (onlyAbsent && (current.exists || await inventoryExists(writer.backend, uid))) return;
       const final = mergeProfile(current.value, stable), id = randomBytes(16).toString('hex'); let operation;
+      const options = { details: { kind: 'profile', serverTimestampPaths: paths }, resources: [key, ...registrationResources(uid)] };
       try {
-        operation = await transition.prepare(writer, id, [{ key, exists: true, token: current.token, value: final }], null,
-          { details: { kind: 'profile', serverTimestampPaths: paths }, resources: [key, ...registrationResources(uid)] });
-      } catch (error) {
-        if (error.code !== 'WRITER_RESOURCE_BUSY') throw error;
-        // 같은 UID의 기존 요청이 끝날 때만 기다린다. epoch 변경/미확정 상태를 새 요청으로 우회하지 않는다.
-        await new Promise(resolve => setTimeout(resolve, 20)); continue;
-      }
-      try {
+        const changes = [{ key, exists: true, token: current.token, value: final }];
+        // 가입 생성은 잠금 뒤 인벤토리 부재 재검사가 필요하므로 기존 두 단계를 유지한다.
+        if (!onlyAbsent && typeof transition.prepareAndExecuteWithReceipt === 'function') {
+          await transition.prepareAndExecuteWithReceipt(writer, id, changes, null,
+            { ...options, onPrepared: value => { operation = value; } });
+          return;
+        }
+        operation = await transition.prepare(writer, id, changes, null, options);
         // 인벤토리 writer와 같은 UID 자원을 확보한 뒤 가입 의존성을 다시 확인한다.
         if (onlyAbsent && await inventoryExists(writer.backend, uid)) { await transition.cancelPrepared(writer, id); return; }
         await transition.execute(writer, id); return;
       }
       catch (error) {
+        if (error.code === 'WRITER_RESOURCE_BUSY' && !operation) {
+          await new Promise(resolve => setTimeout(resolve, 20)); continue;
+        }
         // 업무 transaction의 영구 취소 receipt가 있는 CAS 충돌만 새 원본으로 재시도한다.
-        if (error.code !== 'WRITER_CANCELLED'
+        if (error.code !== 'WRITER_CANCELLED' || !operation
             || await stores[writer.backend].cancellationReason(operation) !== 'conflict'
             || ++conflicts >= maxAttempts) throw error;
       }
@@ -86,6 +92,12 @@ function createProfileWriterBinding({ db, database, FieldValue, runId, inventory
   const repository = {
     async read(uid) { const { record } = await stableRead(uid); return { exists: record.exists, value: record.exists ? record.value : undefined }; },
     async isRegistered(uid) { return (await stableRead(uid, true)).registered; },
+    // 가입 판정의 전후 route·프로필 token 검사를 통과한 같은 snapshot이다.
+    // 로그인 진입점에서 즉시 소비하며 다음 요청이나 claims의 재검사에 사용하지 않는다.
+    async readRegistrationProfile(uid) {
+      const { record, registered } = await stableRead(uid, true);
+      return { registered, profile: { exists: record.exists, value: record.exists ? record.value : undefined } };
+    },
     async completeRegistration(uid, versions) {
       await mutate(uid, { createdAt: null, registration: { completed: true, consent: {
         terms: versions.terms, privacy: versions.privacy, acceptedAt: null,

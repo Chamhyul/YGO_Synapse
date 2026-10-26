@@ -8,7 +8,7 @@ function load(file, mocks, env={}) {
   const module={exports:{}};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'), {
     module,exports:module.exports,process:{env},console:{log(){},warn(){},error(){}},
-    require(name){ if (['../services/inventoryRequestTiming', './inventoryRequestTiming'].includes(name)) return require('../services/inventoryRequestTiming'); assert.ok(Object.hasOwn(mocks,name),name);return mocks[name];}
+    require(name){ if (name === '../services/requestAccount') return require('../services/requestAccount');  if (name === '../services/loginUserData') return load('services/loginUserData.js', Object.fromEntries(Object.entries(mocks).map(([key,value])=>[key.replace('../services/', './'),value])), env); if (['../services/inventoryRequestTiming', './inventoryRequestTiming'].includes(name)) return require('../services/inventoryRequestTiming'); assert.ok(Object.hasOwn(mocks,name),name);return mocks[name];}
   });
   return module.exports;
 }
@@ -56,8 +56,8 @@ test('로그인 데이터 조회만으로 관리자 혜택을 적용하고 외�
   }
   const res=await userFixture({role:'owner'}).run();assert.equal(res.body.settings.membership.levelName,'소유자');assert.equal(res.body.sourceMembership.status,'none');
 });
-test('현재 권한 조회 실패는503이며 로컬 사용자·인벤토리 읽기와 쓰기 전에 종료한다',async()=>{
-  const f=userFixture({fail:true}),res=await f.run();assert.equal(res.code,503);assert.equal(res.body.code,'ACCOUNT_ROLE_UNAVAILABLE');assert.deepEqual(f.counts(),[0,0,0]);
+test('현재 권한 조회 실패는 병렬 읽기를 회수하고503으로 닫으며 사용자 정보를 반환하거나 쓰지 않는다',async()=>{
+  const f=userFixture({fail:true}),res=await f.run();assert.equal(res.code,503);assert.equal(res.body.code,'ACCOUNT_ROLE_UNAVAILABLE');assert.deepEqual(f.counts(),[1,1,0]);assert.equal(res.body.settings,undefined);
 });
 function authFixture({local=false,result={uid:'user-a',accountRole:'none',accountRoleVersion:1},claims={},disabled=false}={}) {
   let calls=0;

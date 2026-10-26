@@ -1,6 +1,8 @@
 'use strict';
 
 const { randomBytes } = require('node:crypto');
+const { AsyncLocalStorage } = require('node:async_hooks');
+const { isDeepStrictEqual: same } = require('node:util');
 const { createRecordStore } = require('./recordStore');
 const failure = code => Object.assign(new Error('계정 권한 동기화 상태를 확인해야 합니다.'), { code });
 
@@ -8,6 +10,7 @@ const failure = code => Object.assign(new Error('계정 권한 동기화 상태�
 // 응답 미확정 작업은 자동 만료시키지 않는다. 늦은 Auth 쓰기와 새 권한 변경의 역전을 막는다.
 function createCustomClaimsStore(options = {}) {
   const records = createRecordStore({ ...options, path: 'customClaimsSync' });
+  const sessions = new AsyncLocalStorage();
   function check(value) {
     if (value === undefined) return;
     if (!value || typeof value !== 'object' || Array.isArray(value)
@@ -20,6 +23,9 @@ function createCustomClaimsStore(options = {}) {
     }
   }
   return {
+    withSession(action) {
+      return sessions.getStore() ? action() : sessions.run(new Map(), () => records.withSession(action));
+    },
     async observe(uid) {
       const record = await records.read(uid); check(record.value);
       return { revision: record.revision, generation: record.generation, value: record.value };
@@ -28,11 +34,14 @@ function createCustomClaimsStore(options = {}) {
     async acquire(uid, { operationId = randomBytes(16).toString('hex') } = {}) {
       if (typeof operationId !== 'string' || !/^[a-f0-9]{32}$/.test(operationId)) throw failure('MEMBERSHIP_CLAIMS_INVALID');
       const startedAt = Date.now();
-      await records.update(uid, value => {
+      sessions.getStore()?.delete(uid);
+      const saved = await records.update(uid, value => {
         check(value);
         if (value && value.state !== 'idle') throw failure('MEMBERSHIP_CLAIMS_BUSY');
         return { value: { state: 'running', operationId, startedAt } };
       });
+      // 서버가 승인한 잠금만 이 요청의 종료 CAS에 재사용한다. 요청 밖 캐시는 없다.
+      sessions.getStore()?.set(uid, saved.record);
       return operationId;
     },
     async beginRecovery(uid, expectedOperationId, { writersDrained = false, operationId = randomBytes(16).toString('hex'), allowIdle = false } = {}) {
@@ -55,11 +64,28 @@ function createCustomClaimsStore(options = {}) {
       return operationId;
     },
     async finish(uid, operationId, uncertain = false) {
-      await records.update(uid, value => {
+      const finish = value => {
         check(value);
         if (!value || value.operationId !== operationId || value.state !== 'running') throw failure('MEMBERSHIP_CLAIMS_BUSY');
         return { value: { ...value, state: uncertain ? 'uncertain' : 'idle' } };
-      });
+      };
+      const saved = sessions.getStore()?.get(uid);
+      sessions.getStore()?.delete(uid);
+      if (saved?.value?.operationId === operationId) {
+        try {
+          await records.compareAndSet(uid, saved.revision, finish(saved.value).value, {
+            validateCurrent(current) {
+              if (current.generation !== saved.generation || !same(current.value, saved.value)) throw failure('USER_STORAGE_CONFLICT');
+              finish(current.value);
+            },
+          });
+          return;
+        } catch (error) {
+          // 확정 충돌만 fresh 재조회한다. 미확정 쓰기·시간초과는 재제출하지 않는다.
+          if (error.code !== 'USER_STORAGE_CONFLICT') throw error;
+        }
+      }
+      await records.update(uid, finish);
     },
   };
 }

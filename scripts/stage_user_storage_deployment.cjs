@@ -8,7 +8,7 @@ const fail = code => Object.assign(new Error('로컬 배포 묶음의 입력과 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const json = value => JSON.stringify(value, null, 2) + '\n';
 const FUNCTION_DIRS = ['config', 'integrations', 'routes', 'schedules', 'scrapers', 'services', 'tasks', 'utils', 'templates'];
-const JOB_FILES = ['scripts/user_writer_job.cjs', 'scripts/manage_user_writer.cjs', 'scripts/reconcile_membership_claims.cjs',
+const JOB_FILES = ['scripts/user_writer_job.cjs', 'scripts/manage_user_writer.cjs', 'scripts/reconcile_membership_claims.cjs', 'scripts/recover_admin_session.cjs',
   'operations/user-storage/Dockerfile', 'operations/user-storage/Dockerfile.dockerignore', 'operations/user-storage/database.rules.json'];
 function excluded(name) {
   const lower = name.toLowerCase();

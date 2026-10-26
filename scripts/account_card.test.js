@@ -40,7 +40,7 @@ test('membership updates replace the previous account label and premium border',
   for (const [membership, expected, premium] of [
     [{ status: 'active', levelName: '대원' }, '대원', true],
     [{ status: 'active', levelName: '관리자' }, '관리자', true],
-    [{ status: 'active', levelName: '소유자' }, '관리자', true],
+    [{ status: 'active', levelName: '소유자' }, '소유자', true],
     [{ status: 'expired', levelName: '대원' }, '일반', false],
     [{ status: 'active', levelName: '디스코드 멤버십 회원' }, '유튜브 멤버십', true],
     [{ status: 'active' }, '유튜브 멤버십', true],

@@ -20,8 +20,9 @@ function getMembershipCsvStore({ db, env = process.env, writerBinding } = {}) {
       return writerBinding.membershipCsv;
     };
     check();
-    return Object.fromEntries(['read', 'readMember', 'status', 'begin', 'stage', 'commit', 'fail', 'expire', 'withRequest']
-      .map(method => [method, async (...args) => check()[method](...args)]));
+    const methods = ['read', 'readMember', 'status', 'begin', 'stage', 'commit', 'fail', 'expire', 'withRequest'];
+    if (typeof check().withReadRequest === 'function') methods.push('withReadRequest');
+    return Object.fromEntries(methods.map(method => [method, async (...args) => check()[method](...args)]));
   }
   if (env !== process.env) throw invalid();
   const backend = backendOf(); let firestore;

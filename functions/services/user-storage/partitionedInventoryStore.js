@@ -3,7 +3,7 @@
 const { measure } = require('../inventoryRequestTiming');
 const { isDeepStrictEqual } = require('node:util');
 const { encodeKey, encodeValue, decodeValue } = require('./codec');
-const { buildApiSummary, readApiSummary, patchApiSummary, migrationStatus } = require('./inventoryApiSummary');
+const { buildApiSummary, readApiSummary, patchApiSummary, migrationStatus, readSyncMigration } = require('./inventoryApiSummary');
 const { createRecordStore, DEFAULT_MAX_ATTEMPTS } = require('./recordStore');
 const { createInventoryOperations } = require('./inventoryOperations');
 const { createStorageAccess, validateStoragePath, DEFAULT_TIMEOUT_MS } = require('./storageAccess');
@@ -95,16 +95,23 @@ function createPartitionedInventoryStore({ database, path = 'inventories', parts
     const loaded = {};
     // 큰 전체 읽기에서도 SDK에 무제한 동시 요청을 만들지 않는다.
     const targets = entries(uid, manifest).filter(entry => !wanted || wanted.has(entry.hash));
-    for (let start = 0; start < targets.length; start += 16) {
-      await Promise.all(targets.slice(start, start + 16).map(async entry => {
-        const value = await access.read(entry.path);
-        if (value === null || value === undefined) {
-          throw fail('USER_STORAGE_MISSING_CARD_VERSION', '현재 인벤토리가 참조하는 카드 내용이 없습니다. 원본을 보존합니다.');
-        }
-        if (verifyBlob) verifyBlob(value, entry.token);
-        loaded[entry.hash] = value;
-      }));
-    }
+    let cursor = 0, failed = false, failure;
+    const workers = await Promise.allSettled(Array.from({ length: Math.min(16, targets.length) }, async () => {
+      while (!failed && cursor < targets.length) {
+        const entry = targets[cursor++];
+        try {
+          const value = await access.read(entry.path);
+          if (value === null || value === undefined) {
+            throw fail('USER_STORAGE_MISSING_CARD_VERSION', '현재 인벤토리가 참조하는 카드 내용이 없습니다. 원본을 보존합니다.');
+          }
+          if (verifyBlob) verifyBlob(value, entry.token);
+          loaded[entry.hash] = value;
+        } catch (error) { if (!failed) { failed = true; failure = error; } throw error; }
+      }
+    }));
+    if (failed) throw failure;
+    const rejected = workers.find(worker => worker.status === 'rejected');
+    if (rejected) throw rejected.reason;
     return loaded;
   }
 
@@ -492,13 +499,20 @@ function createPartitionedInventoryStore({ database, path = 'inventories', parts
       const numbers = selectedNumbers(inputNumbers);
       return selectedSnapshot(uid, numbers);
     },
-    async readMetadata(uid) {
+    async readMetadata(uid, { forSync = false } = {}) {
       const base = root(uid);
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const revision = await access.read(`${base}/revision`);
         const fields = ['format', 'generation', 'tombstone', 'payload/type', 'payload/version',
-          'payload/header/updatedAt', 'payload/cards/count'];
-        const values = await Promise.all(fields.map(field => access.read(`${base}/${field}`)));
+          ...(forSync === true ? [`payload/apiSummary/value/value/${encodeKey('migration')}`] : ['payload/header/updatedAt', 'payload/cards/count'])];
+        let revision, values;
+        if (forSync === true) {
+          // 이미 받은 snapshot의 알려진 revision과 마지막 fresh revision이 같을
+          // 때만 재사용한다. 단조 revision/CAS를 전제로 작은 제어 필드를 병렬 조회한다.
+          [revision, ...values] = await Promise.all(['revision', ...fields].map(field => access.read(`${base}/${field}`)));
+        } else {
+          revision = await access.read(`${base}/revision`);
+          values = await Promise.all(fields.map(field => access.read(`${base}/${field}`)));
+        }
         const after = await access.read(`${base}/revision`);
         if (revision !== after) continue;
         const [format, generation, tombstone, type, version, updatedAt, cardCount] = values;
@@ -518,9 +532,10 @@ function createPartitionedInventoryStore({ database, path = 'inventories', parts
           }
           return { ...record, storageFormat: 'legacy' };
         }
-        if (version !== 1 || (cardCount !== null && (!Number.isSafeInteger(cardCount) || cardCount < 0))) {
+        if (version !== 1 || (forSync !== true && cardCount !== null && (!Number.isSafeInteger(cardCount) || cardCount < 0))) {
           throw fail('USER_STORAGE_INVALID_RECORD', '인벤토리 메타데이터가 올바르지 않습니다.');
         }
+        if (forSync === true) return { ...record, storageFormat: 'parts', syncMigration: readSyncMigration(values[5]) };
         return { ...record, storageFormat: 'parts', ...(cardCount === null ? {} : { cardCount }),
           ...(updatedAt === null ? {} : { updatedAt }) };
       }

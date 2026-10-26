@@ -139,7 +139,8 @@ test('실제 인벤토리 HTTP 추가·이동·폐기·조회·초기화는 nati
     const Module = require('node:module'), path = require('node:path'), fs = require('node:fs');
     const load = (relative, mocks) => {
       const filename = path.join(__dirname, '..', relative), mod = new Module(filename, module); mod.filename = filename;
-      mod.require = name => { if (name === '../services/inventoryRequestTiming') return require('../services/inventoryRequestTiming'); assert.ok(Object.hasOwn(mocks, name), `예상하지 않은 의존성: ${name}`); return mocks[name]; };
+      mod.require = name => { if (name === '../services/loginUserData') return load('services/loginUserData.js', Object.fromEntries(Object.entries(mocks).map(([key,value]) => [key.replace('../services/', './'), value])));
+      if (['../services/inventoryRequestTiming', './inventoryRequestTiming'].includes(name)) return require('../services/inventoryRequestTiming'); assert.ok(Object.hasOwn(mocks, name), `예상하지 않은 의존성: ${name}`); return mocks[name]; };
       mod._compile(`const process={env:{}};\n${fs.readFileSync(filename, 'utf8')}`, filename); return mod.exports;
     };
     // 업무 라우트/mutator/native DB는 실제 구현, Auth/App Check/카드 검색/claims는 합성 경계다.

@@ -5,7 +5,7 @@ const root = path.resolve(__dirname, '../..');
 const { open } = require('../../integration/user-migration/connection.cjs');
 const { resolveProfileWriterConfig } = require('../config/userProfileWriter');
 const { createUserWriterRuntime } = require('../services/userProfileWriterRuntime');
-async function fixture() {
+async function fixture({ realAuthHelpers = false, deferOptionalServices = process.env.TEST_DEFER_OPTIONAL_SERVICES === 'true' } = {}) {
   // 실제 SDK는 open()의 demo guard와 내부 에뮬레이터만 사용한다. 운영 설정/metadata는 합성 주입한다.
   const runId = randomBytes(16).toString('hex'), connection = open(runId);
   const target = { id: 'synthetic-user-data', projectId: 'synthetic-runtime', instanceId: 'synthetic-user-data', location: 'asia-southeast1', databaseURL: 'https://synthetic-user-data.asia-southeast1.firebasedatabase.app/', writerRunId: runId };
@@ -13,20 +13,23 @@ async function fixture() {
     GCLOUD_PROJECT: target.projectId, USER_STORAGE_TARGET: target.id, USER_DATABASE_URL: target.databaseURL, K_SERVICE: 'synthetic-service', K_REVISION: 'synthetic-revision' };
   const resolve = value => resolveProfileWriterConfig(value || env, [target]), config = resolve();
   const auth = { getUser: (...args) => connection.auth.getUser(...args), setCustomUserClaims: (...args) => connection.auth.setCustomUserClaims(...args), listUsers: (...args) => connection.auth.listUsers(...args),
-    verifyIdToken: async token => { if (!['member', 'owner'].includes(token)) throw Object.assign(Error('synthetic'), { code: 'auth/invalid-id-token' }); return { uid: `${runId}-${token}` }; },
+    verifyIdToken: async token => { if (!['member', 'owner'].includes(token)) throw Object.assign(Error('synthetic'), { code: 'auth/invalid-id-token' }); return { uid: `${runId}-${token}`, auth_time: Math.floor(Date.now()/1000) }; },
     createSessionCookie: async () => 'synthetic-session', verifySessionCookie: async () => ({ uid: `${runId}-owner`, auth_time: Math.floor(Date.now()/1000) }) };
   const runtime = createUserWriterRuntime({ resolveConfig: () => resolve(), createConnection: () => ({ database: connection.targetDatabase, close: connection.close }),
-    createProductionServices: () => ({ db: connection.db, bucket: connection.bucket, auth }) });
+    createProductionServices: () => ({ db: connection.db, bucket: connection.bucket, auth }),
+    createBinding: options => require('../services/userInventoryWriterRepository').createUserInventoryWriterBinding({ ...options, deferOptionalServices }) });
   const binding = runtime.getProfileWriterBinding(), cache = new Map(), overrides = new Map();
   const mock = (name, value) => overrides.set(path.join(root, name), value);
   mock('functions/config/userProfileWriter.js', { resolveProfileWriterConfig: resolve, productionWriterRequested: value => (value || env).USER_STORAGE_MODE === 'production' });
   mock('functions/config/userStorage.js', { ...require('../config/userStorage'), resolveUserStorageConfig: () => config });
   mock('functions/services/userProfileWriterRuntime.js', runtime);
+  // 운영과 같이 HTTP guard와 실제 binding이 같은 요청 범위를 사용한다.
+  mock('functions/services/initialWriterRoute.js', require('../services/initialWriterRoute'));
   mock('functions/config/firebase.js', { db: connection.db, admin: { auth: () => auth, storage: () => ({ bucket: () => connection.bucket }) },
     FieldValue: require('firebase-admin/firestore').FieldValue, getBucket: () => connection.bucket,
     DISCORD_CLIENT_ID: 'synthetic', DISCORD_GUILD_ID: 'synthetic', DISCORD_CLIENT_SECRET: { value: () => 'synthetic' } });
   mock('functions/services/publicReadTransport.js', { withPublicReadRequest: handler => handler, isLocal: () => false });
-  mock('functions/utils/auth.js', { setCors() {}, verifyAppCheck: async () => true,
+  if (!realAuthHelpers) mock('functions/utils/auth.js', { setCors() {}, verifyAppCheck: async () => true,
     verifyUser: async req => (await auth.verifyIdToken((req.headers.authorization || '').slice(7))).uid,
     verifyRegisteredUser: async (req, res) => { const uid = (await auth.verifyIdToken((req.headers.authorization || '').slice(7))).uid;
       if (!await binding.repository.isRegistered(uid)) { res.status(403).json({ success: false }); return; } return uid; },

@@ -36,3 +36,13 @@ test('삭제는 확인을 받은 경우에만 선택된 공지 ID와 버전을 �
  const f=fixture();await settle();f.get('list').children[0].children[0].events.click();f.queue.push({success:true,deletedId:notice.id},{success:true,revision:'2',environment:'local',notices:[]});await f.get('delete').events.click();
  const body=JSON.parse(f.calls[1].options.body);assert.equal(body.action,'delete');assert.equal(body.id,notice.id);assert.equal(body.revision,'1');assert.equal(f.get('delete').hidden,true);assert.match(f.get('status').textContent,/삭제했습니다/);
 });
+
+test('환경 안내는 접속 화면 위치와 별개로 서버가 반환한 운영·로컬 저장 범위를 표시한다', async () => {
+ for (const environment of ['local','production']) {
+  const f=fixture({responses:[{success:true,revision:'1',environment,notices:[notice]}]});await settle();
+  const text=f.get('environment').textContent;
+  if(environment==='local')assert.match(text,/Storage 에뮬레이터에만 저장하며 운영 공지는 변경하지 않습니다/);
+  else {assert.match(text,/저장·삭제하면 실제 서비스에 반영됩니다/);assert.doesNotMatch(text,/로컬 테스트|변경하지 않습니다/);}
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0].options.method || 'GET','GET');
+ }
+});

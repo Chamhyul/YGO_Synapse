@@ -12,7 +12,7 @@ function fixture() {
     const section = {};
     const pane = { querySelector: () => section };
     const context = vm.createContext({
-        UIStore: { currentRegion: 'ko' }, UserStore: { user: { uid: 'test-user' } },
+        UIStore: { currentRegion: 'ko' }, UserStore: { user: { uid: 'test-user' }, inventorySyncStatus: 'ready' },
         rarityReverseMap: { SE: 0, 'Secret Rare': 0 },
         rarityColMap: { display: 0, ko: 1, ja: 2, en: 3 },
         rarityRows: [['SE', '시크릿 레어', 'シークレットレア', 'Secret Rare']],

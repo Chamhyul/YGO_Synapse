@@ -12,7 +12,7 @@ const MAX_FILE_BYTES = 100 * 1024 * 1024;
 const FUNCTION_DIRS = new Set(['config', 'integrations', 'routes', 'schedules', 'scrapers', 'services', 'tasks', 'utils', 'templates']);
 const BUNDLE_FILES = new Set(['LICENSE', '.firebaserc', 'firebase.json', 'firestore.rules', 'firestore.indexes.json', 'storage.rules',
   'functions/index.js', 'functions/server.js', 'functions/package.json', 'functions/package-lock.json',
-  'scripts/user_writer_job.cjs', 'scripts/manage_user_writer.cjs', 'scripts/reconcile_membership_claims.cjs',
+  'scripts/user_writer_job.cjs', 'scripts/manage_user_writer.cjs', 'scripts/reconcile_membership_claims.cjs', 'scripts/recover_admin_session.cjs',
   'operations/user-storage/Dockerfile', 'operations/user-storage/Dockerfile.dockerignore', 'operations/user-storage/database.rules.json']);
 const OPERATOR_FILES = new Set(['functions.env.patch.json', 'functions.env.review.json', 'job.env.yaml',
   'target-registration.json', 'runtime-identity.review.json', 'deployment-review.json']);

@@ -87,6 +87,8 @@ async function fixture(browser, origin) {
         window.firebase = { auth: () => ({ currentUser: user }),
             appCheck: () => ({ getToken: async () => ({ token: 'synthetic-app-token' }) }) };
         UserStore.user = user;
+        UserStore.inventorySyncStatus = 'ready';
+        UserStore.isUserDataSyncDone = true;
         document.getElementById('request').onclick = async () => {
             window.requestResult = null;
             try { window.requestResult = await requestApi(window.action, window.params || {}, window.payload || null); }

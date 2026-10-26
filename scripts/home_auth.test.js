@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../public/script.js'), 'utf8');
-const authStart = source.indexOf('function applyServiceAuthState(user) {');
+const authStart = source.indexOf('function applyServiceAuthState(');
 const authEnd = source.indexOf('\nlet currentNoticeIndex', authStart);
 assert.ok(authStart >= 0 && authEnd > authStart, '인증 콜백을 찾을 수 있어야 한다');
 
@@ -27,7 +27,7 @@ function fixture({ mobile = false, withHome = true } = {}) {
   let notifyAuth;
   const context = vm.createContext({
     firebase: { auth: () => ({ onAuthStateChanged(callback) { notifyAuth = callback; } }) },
-    window: {},
+    window: {}, userDataSyncSerial:0,userDataSyncTask:null,setInventorySyncStatus(){},
     document: {
       getElementById: id => nodes.get(id) || null,
       querySelectorAll: selector => selector === '.target-inventory-section' ? [ownedSection] : [],
@@ -105,7 +105,7 @@ test('홈 수량 갱신은 현행 통계 경로로 보유 수량·종류와 보�
   const total = { innerText: '' };
   const kind = { innerText: '' };
   let dashboardUpdates = 0;
-  const context = vm.createContext({
+  const context = vm.createContext({ UserStore:{user:null},
     cardCacheInstance: { getAmount: () => 12, getOwnedNumbers: () => ['a', 'b', 'c'] },
     document: { getElementById: id => ({ 'total-cards': total, 'kind-cards': kind })[id] || null },
     updateDashboardStats: () => { dashboardUpdates++; },

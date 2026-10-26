@@ -12,7 +12,7 @@ COPY --chown=node:node functions/package.json ./functions/package.json
 COPY --chown=node:node functions/config ./functions/config
 COPY --chown=node:node functions/services ./functions/services
 COPY --chown=node:node functions/utils ./functions/utils
-COPY --chown=node:node scripts/user_writer_job.cjs scripts/manage_user_writer.cjs scripts/reconcile_membership_claims.cjs ./scripts/
+COPY --chown=node:node scripts/user_writer_job.cjs scripts/manage_user_writer.cjs scripts/reconcile_membership_claims.cjs scripts/recover_admin_session.cjs ./scripts/
 USER node
 ENTRYPOINT ["node", "scripts/user_writer_job.cjs"]
 CMD ["writer", "--help"]

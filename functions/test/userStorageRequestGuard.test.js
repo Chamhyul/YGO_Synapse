@@ -44,6 +44,7 @@ test('코드에 등록된 production 설정 검증이 성공해야만 실제 han
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../services/userStorageRequestGuard.js'), 'utf8'), {
     module, process: { env: {} }, require(name) { if (['../services/inventoryRequestTiming', './inventoryRequestTiming'].includes(name)) return require('../services/inventoryRequestTiming'); 
       if (name === './userStorageStartup') return { prepareUserStorageStartup() {} };
+      if (name === './initialWriterRoute') return require('../services/initialWriterRoute');
       assert.equal(name, '../config/userStorage'); return { resolveUserStorageConfig(env) {
         checks++; assert.equal(env.USER_STORAGE_BACKEND, 'rtdb'); return { mode: 'production' };
       } };
@@ -91,6 +92,14 @@ test('프로필 writer 플래그는 기본 backend에서도 일반 export의 Aut
     withUserStorageRequestGuard(() => { calls++; }, { env: { USER_STORAGE_BACKEND: backend, USER_PROFILE_WRITER_MODE: 'emulator' } })({ method: 'POST' }, result);
     assert.equal(calls, 0); assert.equal(result.statusCode, 503);
   }
+});
+
+test('멤버십 준비 플래그는 구형 warmup과 섞어도 시험 writer guard를 우회하지 못한다', async () => {
+  const handler = withUserStorageRequestGuard(() => assert.fail('설정 거부 뒤 준비/인증 실행 금지'),
+    { env: demo, allowWarmup: true });
+  const res = response();
+  await handler({ method: 'POST', query: { warmup: 'true' }, body: { warmup: 'true', membershipPrepare: true } }, res);
+  assert.equal(res.statusCode, 503); assert.equal(res.body.code, 'USER_STORAGE_FEATURE_UNAVAILABLE');
 });
 
 test('인벤토리·이식 실제 export도 시험 writer에서 Auth·카드·외부 문서 접근 전에 거부한다', async () => {

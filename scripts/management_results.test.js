@@ -21,7 +21,7 @@ function fixture(operation, callApi) {
       }, remove() { this.removed = true; } };
     cards.push(node); return node;
   }
-  const context = vm.createContext({ AppManagementResults: results,
+  const context = vm.createContext({requireInventoryReady:()=>true, AppManagementResults: results,
     document: { documentElement: { classList: { contains: () => false } },
       getElementById: id => id.includes('cards-list') ? container : id.includes('submit') ? main : { dataset: { hasSuccess: 'true' } } },
     UserStore: { user: { uid: 'synthetic-a' } }, UIStore: { chipState: { add: 'general' } }, addSubMode: 'general', syncCounter: 0,
@@ -114,7 +114,7 @@ test('현재 결과 렌더러는 새 오류 식별자를 표시하고 입력 로
     return nodes.get(id);
   };
   ['add', 'move', 'discard'].forEach(op => attachResultModal(element, `${op}-result-modal`));
-  const context = vm.createContext({ UserStore: { settings: { isDetailMode: false } }, IllustrationImages: require('../public/illustration-images'), getAppModal: () => ({ open() {} }), document: { getElementById: element, createElement: () => element('tr-' + nodes.size) },
+  const context = vm.createContext({requireInventoryReady:()=>true, UserStore: { settings: { isDetailMode: false } }, IllustrationImages: require('../public/illustration-images'), getAppModal: () => ({ open() {} }), document: { getElementById: element, createElement: () => element('tr-' + nodes.size) },
     AppManagementResults: results, escapeHTML: text => String(text ?? ''), getLocalizedRarity: text => text,
     M: { Modal: { getInstance: () => ({ open() {} }) } }, setTimeout() {},
     cardCacheInstance: { getOwnedNumbers() { assert.fail('저장 후 변경된 캐시로 성공 여부를 재판정하지 않는다'); } }

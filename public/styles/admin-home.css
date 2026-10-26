@@ -1,58 +1,71 @@
-/* 관리자 홈의 배치만 담당한다. 표면·글자·버튼은 공통 조합을 사용한다. */
-.admin-main.admin-home { max-width: 1120px; padding-top: 28px; }
-.admin-home-heading, .admin-home-section-heading, .admin-home-chart-heading {
-    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
-}
-.admin-home-heading h1 { margin: 0; font-size: 1.75rem; }
-.admin-home-eyebrow { margin: 0 0 4px; font-size: 0.8rem; }
-.admin-home-intro { margin: 16px 0 32px; max-width: 70ch; line-height: 1.7; }
-.admin-home-section, .admin-home-panel { margin: 0 0 28px; }
-.admin-home-section-heading { margin-bottom: 16px; }
-.admin-home-section-heading h2 { margin: 0; font-size: 1.05rem; line-height: 1.5; }
-.admin-home-section-heading > span { font-size: 0.8rem; }
-.admin-home-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 0; }
-.admin-home-metrics--errors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.admin-home-metric { align-items: flex-start; min-width: 0; }
-.admin-home-metric .ui-stat__value { font-family: inherit; font-size: clamp(1.65rem, 3vw, 2.2rem); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.admin-home-unit { font-size: 0.85rem; font-weight: 500; margin-left: 6px; }
-.admin-home-comparison { margin: 10px 0 0; font-size: 0.8rem; }
-.admin-home-note { font-size: 0.8rem; line-height: 1.6; margin: 12px 0 0; }
-.admin-home-panel { padding: 24px; }
+/* 공통 관리자 패널·제목·작업 줄. 색상과 곡률은 기존 조합에서 제공한다. */
+.admin-home-heading, .admin-home-section-heading, .admin-home-chart-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.admin-home-heading h1 { margin: 0; }
+.admin-home-eyebrow { margin: 0 0 6px; font-size: .75rem; font-weight: 500; }
+.admin-home-intro { margin: 12px 0 28px; max-width: 80ch; font-size: .875rem; line-height: 1.7; }
+.admin-home-section, .admin-home-panel { min-width: 0; margin: 0 0 20px; }
+.admin-home-section-heading { min-height: 44px; margin-bottom: 16px; }
+.admin-home-section-heading h2 { margin: 0; font-size: 1rem; font-weight: 700; line-height: 1.5; letter-spacing: -.015em; }
+.admin-home-section-heading > span { font-size: .75rem; }
+.admin-home-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin: 0; }
+.admin-home-metrics--errors { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.admin-home-metric { align-items: flex-start; padding: 20px; min-width: 0; }
+.admin-home-metric .ui-stat__label { font-size: .8rem; }
+.admin-home-metric .ui-stat__value { font-family: inherit; font-size: 2rem; line-height: 1.25; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.admin-home-unit { font-size: .8rem; font-weight: 500; margin-left: 4px; }
+.admin-home-comparison { margin: 8px 0 0; font-size: .75rem; line-height: 1.6; overflow-wrap: anywhere; }
+.admin-home-note { margin: 12px 0 0; font-size: .8rem; line-height: 1.7; overflow-wrap: anywhere; }
+.admin-home-note:empty { display: none; }
+.admin-home-panel { padding: 24px; box-sizing: border-box; }
 .admin-home-section-heading .admin-home-note { margin-top: 4px; }
-.admin-home-periods { display: flex; gap: 8px; }
-.admin-home-periods button, .admin-home-record-link { min-height: 44px; padding: 10px 16px; font: inherit; font-size: 0.85rem; border: 0; cursor: pointer; }
-.admin-home-record-link { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; box-sizing: border-box; }
-.admin-home-record-link .material-icons { font-size: 18px; }
-.admin-home-chart-heading { font-size: 0.75rem; }
-.admin-home-chart { display: block; width: 100%; height: auto; margin: 16px 0; overflow: visible; }
+.admin-home-periods { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.admin-home-periods button, .admin-home-record-link { min-height: 44px; padding: 10px 16px; font: inherit; font-size: .8rem; line-height: 1.5; border: 0; cursor: pointer; }
+.admin-home-record-link { display: inline-flex; justify-content: center; align-items: center; gap: 8px; text-decoration: none; box-sizing: border-box; }
+.admin-home-record-link .material-icons { flex: none; font-size: 18px; }
+/* 본 서비스 라디오 세그먼트의 외형을 기존 aria-pressed 버튼 계약에도 적용한다. */
+.admin-home-periods.ui-segment { display: inline-flex; flex-wrap: nowrap; gap: 0; flex: none; }
+.admin-home-periods.ui-segment > .ui-segment__option { min-height: 44px; padding: 8px 0; background: transparent; color: var(--text-001); font-weight: 600; }
+.admin-home-periods.ui-segment > .ui-segment__option[aria-pressed="true"] { color: var(--theme-000); }
+.admin-home-periods.ui-segment > .ui-segment__option:disabled { cursor: default; }
+.admin-home-periods:has([data-trend-days="30"][aria-pressed="true"]) > .ui-segment__indicator { transform: translateX(100%); }
+.admin-home-chart-heading { font-size: .75rem; }
+.admin-home-chart { display: block; width: 100%; height: clamp(180px,22vw,280px); margin: 20px 0; overflow: visible; }
 .admin-home-chart-grid { stroke: var(--border-000); stroke-width: 1; }
 .admin-home-chart-line { stroke: var(--theme-000); stroke-width: 3; fill: none; stroke-linejoin: round; stroke-linecap: round; }
 .admin-home-chart-point { fill: var(--theme-000); }
 .admin-home-chart-label { fill: var(--text-001); font-family: inherit; font-size: 12px; }
-.admin-home-table-details summary { width: fit-content; min-height: 44px; display: list-item; align-content: center; cursor: pointer; font-size: 0.85rem; padding: 0 8px; border-radius: 8px; }
-.admin-home-table-details summary:is(:hover, :focus-visible) { background: var(--surface-002); color: var(--theme-000); outline: none; }
+.admin-home-table-details summary { width: fit-content; min-height: 44px; display: list-item; align-content: center; cursor: pointer; font-size: .8rem; padding: 0 8px; border-radius: 8px; }
+.admin-home-table-details summary:is(:hover,:focus-visible) { background: var(--surface-000); color: var(--theme-000); }
 .admin-home-table-scroll { max-height: 300px; overflow: auto; }
-.admin-home-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
-.admin-home-table caption { text-align: left; padding: 12px 0; font-size: 0.8rem; }
-.admin-home-table :is(th, td) { padding: 12px; border-bottom: 1px solid var(--border-000); }
-.admin-home-table :is(th, td):last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.admin-home-table { width: 100%; border-collapse: collapse; text-align: left; font-size: .8rem; }
+.admin-home-table caption { text-align: left; padding: 12px 0; font-size: .75rem; }
+.admin-home-table :is(th,td) { padding: 12px; border-bottom: 1px solid var(--border-000); }
+.admin-home-table :is(th,td):last-child { text-align: right; font-variant-numeric: tabular-nums; }
 .admin-home-errors { list-style: none; margin: 0; padding: 0; }
-.admin-home-errors li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 16px 0; }
+.admin-home-errors li { display: grid; grid-template-columns: 20px minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 16px 0; }
 .admin-home-errors li + li { border-top: 1px solid var(--border-000); }
-.admin-home-error-rank { font-size: 0.8rem; font-variant-numeric: tabular-nums; }
-.admin-home-errors h3 { margin: 0 0 4px; font-size: 0.9rem; line-height: 1.5; overflow-wrap: anywhere; }
-.admin-home-errors p { margin: 0; font-size: 0.8rem; line-height: 1.5; overflow-wrap: anywhere; }
-.admin-home-footer { font-size: 0.8rem; margin: 32px 0 0; }
-@media (max-width: 600px) {
-    .admin-home-metrics { grid-template-columns: 1fr; gap: 12px; }
-    .admin-home-panel { padding: 20px 16px; }
-    .admin-home-errors li { gap: 10px; }
-    .admin-home-heading h1 { font-size: 1.5rem; }
-}
-/* 관리자 홈의 회원 CSV 영역: 기존 버튼·표면 스타일에 배치만 추가한다. */
-.membership-csv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.membership-csv-actions > span { overflow-wrap: anywhere; min-width: 0; }
+.admin-home-error-rank { font-size: .75rem; font-variant-numeric: tabular-nums; }
+.admin-home-errors h3 { margin: 0 0 4px; font-size: .875rem; line-height: 1.5; overflow-wrap: anywhere; }
+.admin-home-errors p { margin: 0; font-size: .75rem; line-height: 1.6; overflow-wrap: anywhere; }
+.admin-home-footer { margin: 28px 0 0; font-size: .75rem; line-height: 1.7; }
+.admin-home-dashboard { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(0,1fr); grid-template-rows: min-content 1fr; gap: 20px; align-items: start; margin-bottom: 20px; }
+.admin-home-dashboard > section { margin-bottom: 0; }
+.admin-home-dashboard > section:first-child { grid-row: span 2; }
+.admin-home-dashboard .admin-home-metric { padding: 16px; }
+.membership-csv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 20px; }
+.membership-csv-actions > span { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .membership-csv-file { position: relative; overflow: hidden; }
 .membership-csv-file input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-.membership-csv-file:focus-within { outline: 2px solid currentColor; outline-offset: 3px; }
+.membership-csv-file:focus-within { outline: 2px solid var(--theme-000); outline-offset: 3px; }
 #membership-csv-tiers { padding-left: 20px; overflow-wrap: anywhere; }
+#membership-csv-preview { margin-top: 20px; }
+@media (max-width: 1199px) { .admin-home-dashboard { grid-template-columns: minmax(0,1fr); } .admin-home-dashboard > section:first-child { grid-row: auto; } }
+@media (max-width: 600px) {
+    .admin-home-metrics { grid-template-columns: minmax(0,1fr); gap: 8px; }
+    .admin-home-metrics--errors { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    .admin-home-metric { padding: 16px; }
+    .admin-home-panel { padding: 20px 16px; }
+    .admin-home-intro { margin-bottom: 24px; }
+    .admin-home-heading h1 { font-size: 1.5rem; }
+    .admin-home-chart { height: 180px; }
+}

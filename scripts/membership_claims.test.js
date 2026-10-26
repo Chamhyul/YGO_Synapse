@@ -22,7 +22,7 @@ const result = (status = 'synced') => ({ success: true, uid: 'synthetic-a', sett
 
 function harness({ response = result(), tokenVersion = 'version-current', readFailure = false, refreshFailure = false,
   readGate, refreshGate, apiGate, mode = 'refresh' } = {}) {
-  const events = [], forced = [], applied = [], toasts = [];
+  const events = [], forced = [], applied = [], toasts = [], requests = [], reloadOptions = [];
   let reads = 0, reloads = 0;
   const user = { uid: 'synthetic-a', async getIdTokenResult() {
     reads++; events.push('token-read'); if (readGate) await readGate.promise;
@@ -34,17 +34,19 @@ function harness({ response = result(), tokenVersion = 'version-current', readFa
   } };
   let currentUser = user;
   const session = new Map([['discord_membership_verification', JSON.stringify({ uid: user.uid, state: 'a'.repeat(64), expiresAt: Date.now() + 300000 })]]);
-  const ctx = { UserStore: { user, settings: {} }, authStateRevision: 5, UIStore: {},
+  const ctx = { requireInventoryReady:()=>true,UserStore: { user, settings: {}, accountRevision:0 }, authStateRevision: 5, UIStore: {},
     firebase: { auth: () => ({ currentUser }) },
-    callApi: async name => {
+    callApi: async (name, params, body) => {
+      if (body?.membershipPrepare) return { success: true, membershipPreparation: { version: 1, target: name, ready: true } };
+      requests.push({ name, body });
       events.push(name);
       if (name === 'startYoutubeMembershipVerification') return { success: true, uid: user.uid, verificationId: 'synthetic-challenge' };
       if (apiGate) await apiGate.promise; return response;
     },
     applyMembershipStatus(value) { events.push('apply'); applied.push(value); }, showToast(message) { toasts.push(message); },
-    showLoading() {}, updateAuthUI() {}, updateUserInfoCard() {}, applyUserData() {}, loadUserTheme() {},
+    followMembershipClaims() {}, setDiscordMembershipHeader() {}, setInventorySyncStatus() {}, showLoading() {}, updateAuthUI() {}, updateUserInfoCard() {}, applyUserData() {}, loadUserSettings() {}, loadUserTheme() {},
     checkAndHideInitialLoading() {}, console: { error() {} }, getYoutubeAccessTokenViaSecondaryApp: async () => 'synthetic-oauth-token',
-    M: { Modal: { getInstance: () => ({ close() {} }) } }, document: { title: '시험', getElementById: () => ({}) },
+    M: { Modal: { getInstance: () => ({ close() {} }) } }, document: { title: '시험', getElementById: () => null,querySelectorAll:()=>[] },
     resetMembershipVerifyModal() {}, waitForDiscordServiceUser: async () => user,
     URL, URLSearchParams, Date, location: { search: '?code=synthetic-oauth-code&state=' + 'a'.repeat(64),
       href: 'http://localhost:5005/?code=synthetic-oauth-code&state=' + 'a'.repeat(64) },
@@ -52,14 +54,14 @@ function harness({ response = result(), tokenVersion = 'version-current', readFa
     window: { history: { replaceState() {} } },
   };
   vm.createContext(ctx);
-  vm.runInContext(extract('async function refreshMembershipClaims(', 'async function loadUserData()'), ctx);
-  if (mode === 'load') vm.runInContext(extract('async function loadUserData()', 'function applyMembershipStatus('), ctx);
+  vm.runInContext(extract('async function refreshMembershipClaims(', 'let userDataSyncTask = null;'), ctx);
+  if (mode === 'load') vm.runInContext(extract('let userDataSyncTask = null;', 'function applyMembershipStatus('), ctx);
   else {
-    ctx.loadUserData = async () => { reloads++; events.push('reload'); };
+    ctx.loadUserData = async (initial, options) => { reloads++; reloadOptions.push({ initial, ...options }); events.push('reload'); return true; };
     if (mode === 'youtube') vm.runInContext(extract('let youtubeMembershipVerificationPending = false;', '/**'), ctx);
-    if (mode === 'discord') vm.runInContext(extract('async function handleDiscordOAuthCallback()', '/**'), ctx);
+    if (mode === 'discord') vm.runInContext(extract('async function handleDiscordOAuthCallback(', '/**'), ctx);
   }
-  return { ctx, user, events, forced, applied, toasts, reads: () => reads, reloads: () => reloads,
+  return { ctx, user, events, forced, applied, toasts, requests, reloadOptions, reads: () => reads, reloads: () => reloads,
     run: () => mode === 'load' ? ctx.loadUserData() : mode === 'youtube' ? ctx.startYoutubeMembershipVerify()
       : mode === 'discord' ? ctx.handleDiscordOAuthCallback() : ctx.refreshMembershipClaims(user, response),
     changeAccount(uid = user.uid) { ctx.authStateRevision++; ctx.UserStore.user = { ...user, uid }; currentUser = ctx.UserStore.user; },
@@ -132,10 +134,11 @@ test('사용자 조회의 토큰 갱신 대기 중 같은 UID 재로그인은 �
 });
 
 for (const mode of ['youtube', 'discord']) {
-  test(`${mode} 검증 성공은 claims 갱신 뒤 API 결과를 표시하고 사용자 데이터를 다시 조회한다`, async () => {
+  test(`${mode} 검증 성공은 API 결과를 먼저 표시하고 claims 갱신·필요한 사용자 조회를 이어간다`, async () => {
     const f = harness({ mode, tokenVersion: 'old' }); await f.run();
     assert.deepEqual(f.forced, [true]); assert.deepEqual(f.applied, [member]); assert.equal(f.reloads(), 1);
-    assert.ok(f.events.indexOf('token-refresh') < f.events.indexOf('apply'));
+    assert.deepEqual(f.reloadOptions, [{ initial: undefined, membershipClaimsReadOnly: true }]);
+    assert.ok(f.events.indexOf('apply') < f.events.indexOf('token-refresh'));
     assert.ok(f.events.indexOf('apply') < f.events.indexOf('reload'));
   });
 
@@ -146,10 +149,21 @@ for (const mode of ['youtube', 'discord']) {
     }
   });
 
-  test(`${mode} 성공 후 토큰 조회 대기 중 Auth revision이 바뀌면 표시·후속 조회를 중단한다`, async () => {
+  test(`${mode} 결과 표시 후 토큰 조회 중 Auth revision이 바뀌면 추가 갱신·후속 조회를 중단한다`, async () => {
     const gate = deferred(), f = harness({ mode, tokenVersion: 'old', readGate: gate });
     const running = f.run(); await new Promise(resolve => setImmediate(resolve)); assert.equal(f.reads(), 1);
     f.changeAccount(); gate.resolve(); await running;
-    assert.deepEqual(f.forced, []); assert.equal(f.applied.length, 0); assert.equal(f.reloads(), 0);
+    assert.deepEqual(f.forced, []); assert.equal(f.applied.length, 1); assert.equal(f.reloads(), 0);
   });
 }
+
+test('조건부 응답을 명시 요청하되 재인증 후 조회만 읽기 전용 claims를 선택한다', async () => {
+  for (const readOnly of [false, true]) {
+    const f = harness({ mode: 'load', response: result('pending') });
+    await f.ctx.loadUserData(undefined, { membershipClaimsReadOnly: readOnly });
+    assert.equal(f.requests.length, 1); assert.equal(f.requests[0].name, 'getUserData');
+    assert.deepEqual(JSON.parse(JSON.stringify(f.requests[0].body ?? null)), readOnly
+      ? { inventoryConditional: true, membershipClaimsReadOnly: true } : { inventoryConditional: true });
+    assert.equal(f.ctx.UserStore.inventorySyncStatus, 'ready'); assert.equal(f.ctx.UserStore.claimsSyncStatus, 'pending');
+  }
+});

@@ -24,15 +24,15 @@ function fixture(extra = {}) {
   };
   const context = vm.createContext({ document: { getElementById: element, createElement: tag => ({ tag }) },
     M: { Modal: { getInstance: instance } }, getAppModal: instance, AppDataTransfer: require('../public/data-transfer'), AppManagementResults: require('../public/management-results'), IllustrationImages: require('../public/illustration-images'), URL, Uint8Array, TextDecoder,
-    UserStore: { user: { uid: 'synthetic-a' } },
+    UserStore: { user: { uid: 'synthetic-a' } }, window: { YgoImportAttempt: { execute: options => options.send({}, options.payload) } },
     setTimeout(fn) { const id = ++clock; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); },
     FileReader: class {
       constructor() { this.readyState = 0; readers.push(this); }
       readAsArrayBuffer(file) { this.readyState = 1; this.file = file; }
       abort() { this.readyState = 2; }
-      finish(csv) { this.readyState = 2; this.onload({ target: { result: new TextEncoder().encode(csv).buffer } }); }
+      finish(csv) { this.readyState = 2; return this.onload({ target: { result: new TextEncoder().encode(csv).buffer } }); }
     },
-    checkAuthBeforeAction: () => !!context.UserStore.user,
+    requireInventoryReady: () => true, checkAuthBeforeAction: () => !!context.UserStore.user,
     getLocalizedRarity: text => text === 'SE' ? '시크릿 레어' : text,
     escapeHTML: text => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
     cardCacheInstance: { clearAll() { calls.push('clear-cache'); } }, loadUserData: async () => calls.push('load-user'),
@@ -46,7 +46,7 @@ function fixture(extra = {}) {
   vm.runInContext(source.slice(deletion, source.indexOf('function signOutCurrentUser()', deletion)), context);
   function choose(csv, name = 'test.csv') {
     const node = element('migration-file-input'); node.files = [{ name }];
-    context.handleMigrationFileUpload({ target: node }); readers.at(-1).finish(csv);
+    context.handleMigrationFileUpload({ target: node }); return readers.at(-1).finish(csv);
   }
   return { context, element, instance, readers, calls, choose, runTimer: async () => {
     const [id, fn] = [...timers].at(-1); timers.delete(id); await fn();
@@ -166,4 +166,59 @@ test('검증 후 계정을 바꾸면 이전 파일로 새 계정 가져오기를
   await f.context.executeMigration();
   assert.equal(f.element('migration-exec-btn').disabled, true);
   assert.match(f.element('migration-status-msg').textContent, /계정이 변경/);
+});
+
+test('CSV는 Excel 도구 없이 검증하고 xls/xlsx는 준비 후 기존 MyCard 양식을 검증한다', async () => {
+  let loads = 0;
+  const f = fixture({ window: { AppSpreadsheet: { async load() { loads++; return {
+    read() { return { SheetNames: ['MyCard'], Sheets: { MyCard: {} } }; },
+    utils: { sheet_to_json() { return require('../public/data-transfer').parseCsv(csv); } }
+  }; } } } });
+  f.context.openMigrationModal('file'); await f.choose(csv); assert.equal(loads, 0);
+  for (const name of ['cards.xls', 'cards.xlsx']) {
+    await f.choose('synthetic workbook bytes', name);
+    assert.equal(f.element('migration-exec-btn').disabled, false);
+    assert.match(f.element('migration-status-msg').textContent, /4장/);
+  }
+  assert.equal(loads, 2);
+});
+
+test('Excel 준비 중 파일·탭·계정이 바뀌면 늦은 성공/실패가 현재 미리보기를 변경하지 않는다', async () => {
+  for (const action of ['file', 'tab', 'account']) for (const success of [true, false]) {
+    let resolve, reject;
+    const f = fixture({ window: { AppSpreadsheet: { load: () => new Promise((yes, no) => { resolve = yes; reject = no; }) } } });
+    f.context.openMigrationModal('file'); const old = f.choose('synthetic', 'old.xlsx');
+    if (action === 'file') await f.choose(csv);
+    if (action === 'tab') f.context.toggleMigrationTab('sheet');
+    if (action === 'account') f.context.UserStore.user = null;
+    const before = f.element('migration-status-msg').textContent;
+    if (success) resolve({ read() { assert.fail('취소한 파일을 파싱하지 않는다'); } });
+    else reject(Object.assign(new Error('synthetic load failure'), { code: 'SPREADSHEET_LOAD_FAILED' }));
+    await old;
+    assert.equal(f.element('migration-status-msg').textContent, before);
+    assert.equal(f.element('migration-exec-btn').disabled, action !== 'file');
+  }
+});
+
+test('Excel 다운로드 장애는 재선택 안내를 표시하고 CSV 검증은 계속 사용할 수 있다', async () => {
+  const f = fixture({ window: { AppSpreadsheet: { async load() {
+    throw Object.assign(new Error('Excel 파일 도구를 불러오지 못했습니다. 파일을 다시 선택해주세요.'), { code: 'SPREADSHEET_LOAD_FAILED' });
+  } } } });
+  f.context.openMigrationModal('file'); await f.choose('synthetic', 'cards.xlsx');
+  assert.equal(f.element('migration-exec-btn').disabled, true);
+  assert.match(f.element('migration-status-msg').textContent, /다시 선택/);
+  await f.choose(csv); assert.equal(f.element('migration-exec-btn').disabled, false);
+});
+
+test('이전 HTML의 기존 XLSX를 재사용하고 로더/API 누락은 새로고침을 안내한다', async () => {
+  const f = fixture({ window: { XLSX: {
+    read() { return { SheetNames: ['MyCard'], Sheets: { MyCard: {} } }; },
+    utils: { sheet_to_json() { return require('../public/data-transfer').parseCsv(csv); } }
+  } } });
+  f.context.openMigrationModal('file'); await f.choose('synthetic', 'old-page.xls');
+  assert.equal(f.element('migration-exec-btn').disabled, false);
+  delete f.context.window.XLSX;
+  await f.choose('synthetic', 'unavailable.xlsx');
+  assert.equal(f.element('migration-exec-btn').disabled, true);
+  assert.match(f.element('migration-status-msg').textContent, /새로고침/);
 });

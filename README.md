@@ -20,7 +20,7 @@ Copyright (C) 2026 참혈 (Chamhyul).
 
 소스 저장소: https://github.com/Chamhyul/YGO_Synapse
 
-배포 소스 다운로드: https://ygo-synapse.web.app/legal/ygo-source-20260908.tar.gz — 함수별 실제 소스 대응표와 인증 비밀값 제외 기록을 포함합니다. [구성 및 실행 안내](legal/DEPLOYED_SOURCE.md)를 참조하십시오. 개발 작업 트리와 운영 배포 소스는 다를 수 있습니다.
+프로젝트 소스는 [GitHub 저장소](https://github.com/Chamhyul/YGO_Synapse)와 Git 이력으로 제공합니다. 별도의 소스 압축본은 게시하지 않습니다. [구성 및 실행 안내](legal/DEPLOYED_SOURCE.md)를 참조하십시오. 저장소의 브랜치·커밋과 운영 배포 소스는 다를 수 있습니다.
 
 개발·통합 검증은 이 저장소 하나에서 진행합니다. 웹 화면과 사용자 기능은 `public/`·`functions/`, 카드 원본은 `card-service/src/`에서 관리합니다. Functions용 카드 생성 패키지는 원본과 해시를 대조하며 직접 수정하지 않습니다.
 

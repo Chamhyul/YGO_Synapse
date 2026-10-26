@@ -16,7 +16,7 @@ function fixture(t) {
   const sources = ['LICENSE', '.firebaserc', 'firebase.json', 'firestore.rules', 'firestore.indexes.json', 'storage.rules',
     'functions/index.js', 'functions/server.js', 'functions/package.json', 'functions/package-lock.json',
     'functions/config/userStorage.js', 'functions/services/card-service/card.js', 'functions/templates/admin/home.html',
-    'scripts/user_writer_job.cjs', 'scripts/manage_user_writer.cjs', 'scripts/reconcile_membership_claims.cjs',
+    'scripts/user_writer_job.cjs', 'scripts/manage_user_writer.cjs', 'scripts/reconcile_membership_claims.cjs', 'scripts/recover_admin_session.cjs',
     'operations/user-storage/Dockerfile', 'operations/user-storage/Dockerfile.dockerignore', 'operations/user-storage/database.rules.json',
     'public/index.html', 'public/licenses.html', 'public/vendor/example.js', 'public/vendor/ygo-card-detector.onnx',
     'public/legal/ASSET_RIGHTS.md', 'public/legal/THIRD_PARTY_NOTICES.md', 'public/legal/DEPLOYED_SOURCE.md',

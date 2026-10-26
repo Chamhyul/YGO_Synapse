@@ -362,3 +362,23 @@ test('등록된 로그인 요청은 drain 뒤 새 cookie hash 자원을 충돌 �
   await assert.rejects(f.tool.addExternalResources(id(80), [extra]), { code: 'WRITER_OUTCOME_UNRESOLVED' });
   await f.tool.copy(writer); assert.equal((await f.tool.activate(writer)).backend, 'rtdb');
 });
+
+test('병렬 조회 뒤 historyVersion이 바뀌면 재조회하고 보관된 완료 ID를 다시 실행하지 않는다', async () => {
+  const f = fixture({ useHistory: true, historyMaintenance: 'deferred' });
+  const writer = await f.tool.initialize(); await write(f, writer, 51, { n: 1 }); await f.tool.compact();
+  let reads = 0;
+  f.journal.readWithFallback = async (run, select, fallback) => {
+    reads++;
+    const record = await f.journal.read(run), value = select(record) ? undefined : await fallback();
+    if (reads === 1) await f.journal.update(run, state => ({ value: { ...state, historyVersion: (state.historyVersion || 0) + 1 } }));
+    return { record, value };
+  };
+  // 이미 완료된 ID는 불변 이력의 결과로 반환하며 업무를 다시 호출하지 않는다.
+  const before = f.stores.legacy.calls;
+  await f.tool.prepare(writer, id(51), [change({ n: 1 })]);
+  assert.equal(f.stores.legacy.calls, before);
+  // 새로운 ID는 변경된 historyVersion을 CAS에서 대조한다.
+  reads = 0;
+  await f.tool.prepare(writer, id(52), [change({ n: 2 }, '1')]);
+  assert(reads >= 2);
+});

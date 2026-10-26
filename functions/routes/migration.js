@@ -6,7 +6,7 @@ const { setCors, verifyRegisteredUser } = require("../utils/auth");
 const { migrationFetchPublicMyCardData, validateImportData } = require("../services/migrationService");
 const { sheetsIsValidSpreadsheetId } = require('../integrations/googleSheets');
 const { resolveCardNumber } = require("../services/inventoryCardLookup");
-const { updateInventoryWithRetry, processAddCards } = require("../utils/inventoryStorage");
+const { updateInventoryWithRetry, processAddCards, getInventoryImportStatus, withInventoryImportAttempt } = require("../utils/inventoryStorage");
 const { findCard } = require('../services/inventoryCardLookup');
 const { resolveGroupCids, inventoryMigrationStatus, normalizeIllustrationId } = require('../services/inventoryMigrationService');
 
@@ -47,7 +47,7 @@ async function buildJpCardCache(items, noExtractor) {
 
 const { safeErrorSummary } = require('../utils/safeError');
 
-async function importValidated(uid, parsed) {
+async function importValidated(uid, parsed, tracked = false) {
   const cacheMap = await buildJpCardCache(parsed.data, item => item.no);
   const cardGroups = Object.create(null);
   for (const item of parsed.data) {
@@ -69,7 +69,11 @@ async function importValidated(uid, parsed) {
     }
   }
   const importedItems = [...deltas.values()];
-  let updatedItems = [];
+  let updatedItems = [], latestInventory;
+  const resultFor = finalData => ({ success: true, importedCount: parsed.data.length, importedCardCount: kinds.size,
+    importedQty: parsed.totalQty, importedItems, updatedItems,
+    skippedZeroCount: parsed.skippedZeroCount, legacyQuantity: parsed.legacyQuantity,
+    inventoryVersion: finalData.version, inventoryMigration: inventoryMigrationStatus(finalData) });
   const finalData = await updateInventoryWithRetry(uid, inventory => {
     if (!Number.isSafeInteger((inventory.amount || 0) + parsed.totalQty)) {
       throw Object.assign(new Error('보유 총수량이 지원 범위를 초과했습니다.'), { code: 'INVALID_IMPORT' });
@@ -82,35 +86,46 @@ async function importValidated(uid, parsed) {
       }
     }
     updatedItems = processAddCards(inventory, cardGroups);
-  });
-  return { success: true, importedCount: parsed.data.length, importedCardCount: kinds.size,
-    importedQty: parsed.totalQty, importedItems, updatedItems,
-    skippedZeroCount: parsed.skippedZeroCount, legacyQuantity: parsed.legacyQuantity,
-    inventoryVersion: finalData.version, inventoryMigration: inventoryMigrationStatus(finalData) };
+    latestInventory = inventory;
+  }, 3, tracked ? { importResult: () => resultFor(latestInventory) } : {});
+  return resultFor(finalData);
 }
 
 function importRoute(source) {
   return onRequest({ invoker: 'public' }, async (req, res) => {
     setCors(res, req);
     if (req.method === 'OPTIONS') return res.status(204).send('');
-    if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'POST 요청만 지원합니다.' });
+    const statusRequest = req.method === 'GET' && req.query?.importRequestId !== undefined;
+    if (req.method !== 'POST' && !statusRequest) return res.status(405).json({ success: false, message: 'POST 요청만 지원합니다.' });
     const uid = await verifyRegisteredUser(req, res);
     if (!uid) return;
     try {
-      let parsed;
-      if (source === 'sheet') {
-        const { spreadsheetId, fingerprint } = req.body || {};
-        if (!sheetsIsValidSpreadsheetId(spreadsheetId)) {
-          return res.status(400).json({ success: false, message: '올바른 시트 ID가 필요합니다.' });
-        }
-        parsed = await migrationFetchPublicMyCardData(spreadsheetId);
-        if (!fingerprint || fingerprint !== parsed.fingerprint) {
-          return res.status(409).json({ success: false, message: '시트 내용이 변경되었습니다. 링크를 다시 확인해주세요.', code: 'SHEET_CHANGED' });
-        }
-      } else parsed = validateImportData(req.body?.data);
-      return res.json(await importValidated(uid, parsed));
+      if (statusRequest) {
+        const state = await getInventoryImportStatus(uid, req.query.importRequestId, req.query.importFingerprint);
+        res.set('Cache-Control', 'no-store');
+        return res.json({ success: true, importRequest: { status: state.status }, ...(state.result ? { result: state.result } : {}) });
+      }
+      const perform = async () => {
+        let parsed;
+        if (source === 'sheet') {
+          const { spreadsheetId, fingerprint } = req.body || {};
+          if (!sheetsIsValidSpreadsheetId(spreadsheetId)) {
+            throw Object.assign(new Error('올바른 시트 ID가 필요합니다.'), { code: 'INVALID_IMPORT' });
+          }
+          parsed = await migrationFetchPublicMyCardData(spreadsheetId);
+          if (!fingerprint || fingerprint !== parsed.fingerprint) {
+            throw Object.assign(new Error('시트 내용이 변경되었습니다. 링크를 다시 확인해주세요.'), { code: 'SHEET_CHANGED' });
+          }
+        } else parsed = validateImportData(req.body?.data);
+        return importValidated(uid, parsed, req.body?.importRequestId !== undefined);
+      };
+      const result = req.body?.importRequestId === undefined ? await perform()
+        : await withInventoryImportAttempt(uid, req.body.importRequestId, source, req.body, perform);
+      return res.json(result);
     } catch (error) {
       console.error('Data import failed:', safeErrorSummary(error));
+      if (error.code === 'SHEET_CHANGED') return res.status(409).json({ success: false, code: error.code, message: error.message });
+      if (['IMPORT_REQUEST_INVALID','IMPORT_REQUEST_CONFLICT','IMPORT_REQUEST_PENDING','IMPORT_REQUEST_CANCELLED','IMPORT_RETRY_UNAVAILABLE'].includes(error.code)) return res.status(error.code === 'IMPORT_REQUEST_INVALID' ? 400 : error.code === 'IMPORT_RETRY_UNAVAILABLE' ? 503 : 409).json({ success: false, code: error.code, message: error.message });
       if (error.code === 'PUBLIC_SHEET_NO_ACCESS') return res.status(403).json({ success: false,
         code: 'PUBLIC_SHEET_NO_ACCESS', message: '공개·링크 공유 및 다운로드 허용 설정을 확인해 주세요.' });
       if (error.code === 'PUBLIC_SHEET_UNAVAILABLE') return res.status(503).json({ success: false,

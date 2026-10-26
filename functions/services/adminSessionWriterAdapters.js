@@ -82,7 +82,9 @@ function createSessionWriterAdapters({ db, database, timeoutMs = 10000, onAmbigu
         }
         return Promise.all([...keys].sort().map(key => this.read(key)));
       },
-      async commit(op) { const entry = checkSessionCommand(op); await write(op.id, op.digest, entry, { token: entry.token }, op); },
+      async commit(op, onConfirmedReceipt) { const entry = checkSessionCommand(op);
+        const confirmed = await write(op.id, op.digest, entry, { token: entry.token }, op);
+        onConfirmedReceipt?.(decode(confirmed)); },
       async receipt(op) { const raw = (await access.guarded(receipts.doc(op.id).get(), false)).data(); return raw ? decode(proof(raw, op.id, op.digest)) : null; },
       async cancellationReason(op) { const raw = (await access.guarded(receipts.doc(op.id).get(), false)).data(); return raw ? proof(raw, op.id, op.digest).reason : undefined; },
       async fence(op) { const entry = checkSessionCommand(op); return decode(await write(op.id, op.digest, entry, null, op, true)); },
@@ -93,22 +95,35 @@ function createSessionWriterAdapters({ db, database, timeoutMs = 10000, onAmbigu
   const rtdb = (() => {
     const archive = createRecordStore({ database, path: 'adminSessionWriterReceipts', timeoutMs, onAmbiguousWrite });
     const receiptId = (hash, id) => `${hash}:${id}`;
+    async function archiveReceipt(hash, header) {
+      const key = receiptId(hash, header.id);
+      // 불변 영수증의 최초 생성은 사전 GET을 생략한다. 충돌은 fresh 원문을 대조하고
+      // ACK 미확정은 성공으로 취급하지 않아 기존 복구 경계에 남긴다.
+      try { await archive.createIfAbsent(key, header); }
+      catch (error) {
+        if (error.code !== 'USER_STORAGE_CONFLICT') throw error;
+        const prior = await archive.read(key);
+        if (!prior.exists || fingerprint(prior.value) !== fingerprint(header)) throw fail('SESSION_WRITER_RECEIPT_CONFLICT');
+      }
+    }
     const records = createRecordStore({ database, path: 'adminSessions', timeoutMs, onAmbiguousWrite,
       payloadCodec: { encode: (value, context) => encodeValue(sessionValue(value), context), decode: (value, context) => sessionValue(decodeValue(value, context)) },
-      archiveReceipt: async (hash, header) => archive.update(receiptId(hash, header.id), prior => {
-        if (prior && fingerprint(prior) !== fingerprint(header)) throw fail('SESSION_WRITER_RECEIPT_CONFLICT'); return { value: header };
-      }),
+      archiveReceipt,
     });
     const convert = (key, record) => ({ key, exists: record.exists, token: record.revision ? `${record.revision}:${record.generation}` : '0', ...(record.exists ? { value: record.value } : {}) });
     async function inspect(key) { const record = await records.read(checkSessionKey(key)); return { entry: convert(key, record), revision: record.revision, generation: record.generation }; }
-    async function header(key, id, digest, planned) {
-      const hash = checkSessionKey(key), record = await records.read(hash), archived = await archive.read(receiptId(hash, id));
-      const found = record.commitReceipt?.id === id ? record.commitReceipt : archived.value;
+    // 같은 fresh snapshot으로 영수증과 현재 세션을 함께 대조한다. 요청 간 캐시는 없다.
+    async function receiptFromRecord(key, record, id, digest, planned) {
+      const hash = checkSessionKey(key);
+      const found = record.commitReceipt?.id === id ? record.commitReceipt : (await archive.read(receiptId(hash, id))).value;
       if (!found) return null;
       if (found.id !== id || found.digest !== digest || !checkCommitReceipt(found, found.revision, found.generation)) throw fail('SESSION_WRITER_RECEIPT_CONFLICT');
       if (planned && found.outcome === 'committed' && record.commitReceipt?.id === id && record.revision === found.revision
           && content(convert(key, record)) !== content(planned)) throw fail('SESSION_WRITER_UNTRACKED_CHANGE');
       return found;
+    }
+    async function header(key, id, digest, planned) {
+      return receiptFromRecord(key, await records.read(checkSessionKey(key)), id, digest, planned);
     }
     function decode(op, found) {
       if (!found) return null;
@@ -125,18 +140,23 @@ function createSessionWriterAdapters({ db, database, timeoutMs = 10000, onAmbigu
       }
     }
     async function write(id, digest, entry, expected, op) {
-      const found = await header(entry.key, id, digest, entry); if (found) return found;
-      const hash = checkSessionKey(entry.key), current = await inspect(entry.key);
+      const hash = checkSessionKey(entry.key), observed = await records.read(hash);
+      const found = await receiptFromRecord(entry.key, observed, id, digest, entry); if (found) return found;
+      const current = { entry: convert(entry.key, observed), revision: observed.revision };
       const conflict = current.entry.token !== expected.token || expected.exists !== undefined && content(current.entry) !== content(expected);
       const expired = op && inactive(op, current.entry, now);
       if (conflict || expired) {
         if (!op) throw fail('SESSION_WRITER_TARGET_CONFLICT'); await fence(op, expired ? 'inactive' : 'conflict'); return header(entry.key, id, digest);
       }
       try {
-        await records[entry.exists ? 'compareAndSet' : 'delete'](hash, current.revision, ...(entry.exists ? [entry.value] : []), {
+        const committed = await records[entry.exists ? 'compareAndSet' : 'delete'](hash, current.revision, ...(entry.exists ? [entry.value] : []), {
           operationId: id, operationDigest: digest,
           ...(op ? { validateCurrent: record => { if (inactive(op, convert(entry.key, record), now)) throw fail('SESSION_WRITER_INACTIVE'); } } : {}),
         });
+        // 서버 CAS ACK의 snapshot만 사용한다. 충돌·미확정·복구는 아래 fresh 경로를 유지한다.
+        const confirmed = await receiptFromRecord(entry.key, committed, id, digest, entry);
+        if (!confirmed) throw fail('SESSION_WRITER_RECEIPT_CONFLICT');
+        return confirmed;
       } catch (error) {
         if (!op || !['USER_STORAGE_CONFLICT', 'SESSION_WRITER_INACTIVE'].includes(error.code)) throw error;
         await fence(op, error.code === 'SESSION_WRITER_INACTIVE' ? 'inactive' : 'conflict');
@@ -144,6 +164,9 @@ function createSessionWriterAdapters({ db, database, timeoutMs = 10000, onAmbigu
       return header(entry.key, id, digest, entry);
     }
     return { inspect, read: async key => (await inspect(key)).entry,
+      // 최초 서버 get과 구독 준비를 겹치되 판정은 fresh get/서버 CAS로 한다.
+      // 요청 종료 시 두 저장소의 listener를 성공·실패와 무관하게 해제한다.
+      withSession: action => records.withSession(() => archive.withSession(action)),
       async snapshot() {
         const entries = []; let last;
         while (true) { let query = database.ref('adminSessions').orderByKey().limitToFirst(25); if (last) query = query.startAfter(last);
@@ -153,7 +176,9 @@ function createSessionWriterAdapters({ db, database, timeoutMs = 10000, onAmbigu
         }
         return entries.sort((a, b) => a.key.localeCompare(b.key));
       },
-      async commit(op) { const entry = checkSessionCommand(op); await write(op.id, op.digest, entry, { token: entry.token }, op); },
+      async commit(op, onConfirmedReceipt) { const entry = checkSessionCommand(op);
+        const confirmed = await write(op.id, op.digest, entry, { token: entry.token }, op);
+        onConfirmedReceipt?.(decode(op, confirmed)); },
       async receipt(op) { const entry = checkSessionCommand(op); return decode(op, await header(entry.key, op.id, op.digest, entry)); },
       cancellationReason: async op => (await header(op.changes[0].key, op.id, op.digest))?.reason, fence,
       async apply(id, entry, expected) { checkSessionKey(entry.key); if (entry.exists) sessionValue(entry.value);

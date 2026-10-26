@@ -53,8 +53,9 @@ data/models/
 # Local-only UI previews and their server
 /previews/
 
-# 별도 GitHub 저장소 게시 준비본은 현재 저장소에 중복 포함하지 않는다.
-/main-service/
-
 # 실제 대상의 로컬 운영 준비값과 검토용 배포 묶음
 /operations/user-storage/local/
+
+# 소스는 GitHub에서 제공하며 웹용 소스 압축본은 게시하지 않는다.
+/public/legal/ygo-source-*.tar.gz
+/public/legal/ygo-source-*.sha256

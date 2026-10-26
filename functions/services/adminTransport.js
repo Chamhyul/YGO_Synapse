@@ -55,7 +55,7 @@ function createLocalAdminRenderer(template) {
     return renderAdminDocument({ template, pathname, access, code, expired: $('body').attr('data-admin-expired') === 'true' });
   };
 }
-function createAdminProxy({ fetchImpl = fetch, renderDocument } = {}) {
+function createAdminProxy({ fetchImpl = fetch, renderDocument, authenticationResultOnly = false } = {}) {
   return async (req, res) => {
     res.set('Cache-Control', 'private, no-store');
     res.set('X-Robots-Tag', 'noindex, nofollow');
@@ -66,7 +66,7 @@ function createAdminProxy({ fetchImpl = fetch, renderDocument } = {}) {
     if (req.method === 'POST' && (req.headers.origin !== sourceOrigin
         || !(sourceOrigin.startsWith('https://') || localHttp(sourceOrigin))
         || !String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json'))) {
-      return res.status(403).json({ success: false });
+      return res.status(403).json({ success: false, code: 'ADMIN_REQUEST_REJECTED' });
     }
     const headers = {};
     // 사용자 인증 정보만 전달한다. 로컬 서비스 계정 키·역할·UID 주장으로 인증하지 않는다.
@@ -89,7 +89,11 @@ function createAdminProxy({ fetchImpl = fetch, renderDocument } = {}) {
       });
       // 미배포·이전 서버·로그인 리다이렉트 등을 관리자 인증 성공으로 해석하지 않는다.
       if (response.headers.get(BACKEND_HEADER) !== '1') return unavailable(res, selected.pathname);
-      let body = await response.text();
+      const streamed = req.body?.authenticationResultStream === true
+        && response.headers.get('Content-Type')?.startsWith('application/x-ndjson')
+        && typeof res.write === 'function' && typeof res.end === 'function';
+      let body;
+      if (!streamed) body = await response.text();
       if (renderDocument && PAGES.has(selected.pathname) && String(response.headers.get('Content-Type') || '').includes('html')) {
         body = await renderDocument(body, selected.pathname, response.status);
       }
@@ -101,8 +105,35 @@ function createAdminProxy({ fetchImpl = fetch, renderDocument } = {}) {
         // 루프백 HTTP 개발에만 Secure를 제거하며 HttpOnly/SameSite/Path는 유지한다.
         res.set('Set-Cookie', localHttp(sourceOrigin) ? setCookie.replace(/;\s*Secure\b/gi, '') : setCookie);
       }
+      if (streamed && authenticationResultOnly && selected.pathname === '/admin/session' && response.ok) {
+        // Hosting은 응답을 모아 전달할 수 있다. 고정 backend가 업무 저장을
+        // 확정한 첫 결과만 같은 출처의 HttpOnly 쿠키와 함께 완결 응답한다.
+        // 기록은 별도 backend의 열린 HTTP 요청에서 끝까지 await한다.
+        if (!/^__session=[^;]+;/.test(setCookie || '') || !/;\s*HttpOnly\b/i.test(setCookie)
+            || !/;\s*Path=\/admin(?:;|$)/i.test(setCookie) || !/;\s*SameSite=Strict\b/i.test(setCookie)
+            || !/;\s*Secure\b/i.test(setCookie)) throw Error('Missing protected administrator cookie');
+        res.set('Content-Type', 'application/json; charset=utf-8');
+        await require('./authenticationResult').readAuthenticationResponse(response, value => {
+          if (!['admin', 'owner'].includes(value.role)) throw Error('Invalid administrator result');
+          clearTimeout(timer);
+          res.set('X-YGO-Admin-Result-Ready', '1');
+          res.status(200).json(value);
+        });
+        return;
+      }
+      if (streamed) {
+        res.status(response.status).set('Cache-Control', 'private, no-store, no-transform');
+        res.set('X-Accel-Buffering', 'no');
+        for await (const chunk of response.body) { if (!res.destroyed) res.write(chunk); }
+        return res.end();
+      }
       return res.status(response.status).send(body);
     } catch (_) {
+      if (res.headersSent) {
+        if (authenticationResultOnly) console.warn(JSON.stringify({ severity: 'WARNING', event: 'admin_session_recording', status: 'pending' }));
+        if (!res.writableEnded) res.end();
+        return;
+      }
       return unavailable(res, selected.pathname);
     } finally { clearTimeout(timer); }
   };

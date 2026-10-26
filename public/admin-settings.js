@@ -5,11 +5,11 @@
     if(!content || content.hidden || content.dataset.adminRole!=='owner')return;
     const get=name=>document.getElementById('admin-accounts-'+name);
     const endpoint='https://asia-northeast3-ygo-synapse.cloudfunctions.net/manageAdminRole';
-    let selected=null, busy=false, uncertain=false, pageToken=null;
+    let selected=null, busy=false, uncertain=false, pageToken=null, authReady=false;
     const controllers=new Set();
     const label={none:'일반 계정',admin:'관리자',owner:'소유자'};
     function controls(){
-        const blocked=busy || content.hidden;
+        const blocked=busy || !authReady || content.hidden;
         get('fields').disabled=blocked;
         get('refresh').disabled=blocked;
         get('more').disabled=blocked;
@@ -55,7 +55,7 @@
             if(!append)get('list').replaceChildren();
             for(const account of data.accounts){
                 const li=document.createElement('li'),button=document.createElement('button'),name=document.createElement('span'),description=document.createElement('span');
-                button.type='button';button.className='ui-button ui-control--disabled color-disabled color-type000 shape-rounded-lg admin-account-row';
+                button.type='button';button.className='ui-button ui-control--disabled color-disabled color-type004 shape-rounded003 admin-account-row';
                 name.textContent=account.displayName || account.email || account.uid;
                 description.textContent=`${label[account.role]}${account.disabled?' · 사용 중지':''} · ${account.email || account.uid}`;
                 button.append(name,description);button.addEventListener('click',()=>lookup('uid',account.uid));li.append(button);get('list').append(li);
@@ -89,5 +89,10 @@
     get('refresh').addEventListener('click',()=>loadList());get('more').addEventListener('click',()=>loadList(true));
     get('grant').addEventListener('click',()=>change(true));get('revoke').addEventListener('click',()=>change(false));
     new MutationObserver(()=>{if(content.hidden){for(const controller of controllers)controller.abort();showAccount(null);}}).observe(content,{attributes:true,attributeFilter:['hidden']});
-    loadList();
+    controls();
+    // 서버 세션으로 제공된 본문은 유지하고 Firebase의 최초 로그인 복원을 기다린다.
+    firebase.auth().onAuthStateChanged(user=>{
+        if(!user || user.uid!==content.dataset.adminUid){content.hidden=true;return;}
+        if(!authReady && !content.hidden){authReady=true;loadList();}
+    });
 })();

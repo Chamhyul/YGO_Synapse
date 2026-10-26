@@ -13,7 +13,18 @@ function createRtdbInventoryRepository({ storage, migration } = {}) {
     throw Object.assign(new Error('인벤토리 저장소와 변환 구현이 필요합니다.'), { code: 'USER_STORAGE_INVALID_CONFIG' });
   }
   const store = storage.inventory;
+  async function updateFull(uid, mutate, maxRetries, expectedGeneration) {
+    const memo = new Map();
+    return store.update(uid, async inventory => {
+      await migration.prepareInventoryV2(inventory, memo);
+      await mutate(inventory);
+      inventory.version = migration.inventoryMigrationStatus(inventory).status === 'complete' ? 3 : 1;
+    }, { maxAttempts: maxRetries, skipUnchanged: true, expectedGeneration });
+  }
   return {
+    // 조회/이관과 같은 실행이 확인한 원본 revision을 반환한다. 나중에 읽은
+    // 메타정보를 이전 본문과 조합해 조건부 조회 토큰을 만들지 않는다.
+    async readInventorySnapshot(uid) { return (await updateFull(uid, () => {}, 3)).record; },
     async downloadInventory(uid) {
       const record = await store.read(uid);
       return { data: record.value, generation: String(record.revision) };
@@ -38,12 +49,7 @@ function createRtdbInventoryRepository({ storage, migration } = {}) {
           expectedGeneration = error.generation;
         }
       }
-      const memo = new Map();
-      const saved = await store.update(uid, async inventory => {
-        await migration.prepareInventoryV2(inventory, memo);
-        await mutate(inventory);
-        inventory.version = migration.inventoryMigrationStatus(inventory).status === 'complete' ? 3 : 1;
-      }, { maxAttempts: maxRetries, skipUnchanged: true, expectedGeneration });
+      const saved = await updateFull(uid, mutate, maxRetries, expectedGeneration);
       return saved.record.value;
     },
     async deleteInventory(uid) { await store.clear(uid); },

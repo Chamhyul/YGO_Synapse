@@ -16,7 +16,7 @@
 | Font Awesome Free | CDN 7.2.0 | 폰트 OFL-1.1, 아이콘 CC-BY-4.0, 코드 MIT. Fonticons, Inc. 및 [원문 고지](Font-Awesome-LICENSE.txt). 브랜드 상표는 별도 |
 | Hangul-js | unpkg, 확인일 현재 0.2.6 (URL 미고정) | MIT, Jaemin Jo, [원문](Hangul-js-LICENSE.txt), [버전 근거](https://unpkg.com/hangul-js/package.json) |
 | SheetJS Community Edition | xlsx-latest CDN, 확인일 현재 0.20.3 (URL 미고정) | Apache-2.0, [원문](SheetJS-LICENSE.txt), [버전 근거](https://cdn.sheetjs.com/xlsx-latest/package/package.json) |
-| Firebase JavaScript SDK | compat 10.12.0 | Apache-2.0, [원문](Firebase-SDK-LICENSE.txt), [소스](https://github.com/firebase/firebase-js-sdk/tree/firebase%4010.12.0) |
+| Firebase JavaScript SDK | compat 13.0.0 | Apache-2.0, [원문](Firebase-SDK-LICENSE.txt), [소스](https://github.com/firebase/firebase-js-sdk/tree/firebase%4013.0.0) |
 
 CDN 자료의 수집된 원문은 검토 시점의 고지입니다. 버전 미고정 URL의 미래 응답까지 확인했다는 의미가 아닙니다.
 

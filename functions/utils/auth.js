@@ -2,6 +2,7 @@ const { measure } = require('../services/inventoryRequestTiming');
 const { admin } = require("../config/firebase");
 const { safeErrorSummary } = require("./safeError");
 const { requestProduction, isLocal } = require("../services/publicReadTransport");
+const { requestAccount, validateCurrentAccount } = require('../services/requestAccount');
 
 // Firebase App Check 토큰 파싱 및 검증 헬퍼
 async function verifyAppCheck(req, res) {
@@ -44,7 +45,7 @@ async function verifyAppCheck(req, res) {
 
 // Firebase Auth 토큰 파싱 및 검증 헬퍼
 const verifiedAccountRoles = new WeakMap();
-async function verifyUser(req, res, { includeAccountRole = false } = {}) {
+async function verifyUser(req, res, { includeAccountRole = false, onIdentity, accountWindow } = {}) {
   const authHeader = req.headers?.authorization;
   if (typeof authHeader !== 'string' || !/^Bearer \S+$/.test(authHeader)) {
     res.status(401).json({ success: false, code: "AUTH_INVALID", message: "로그인 정보가 필요합니다." });
@@ -66,9 +67,19 @@ async function verifyUser(req, res, { includeAccountRole = false } = {}) {
       return result.uid;
     }
     const auth = admin.auth();
-    // SDK가 서명·유효기간·발급 프로젝트 및 철회·비활성 상태를 확인한다.
-    const decodedToken = await measure('auth.id_token', () => auth.verifyIdToken(idToken, true));
+    // 서명·발급자·대상·만료는 SDK가, 철회·비활성 및 현재 권한은 같은
+    // 요청의 최신 UserRecord 한 번이 확인한다. 토큰 claims로 대체하지 않는다.
+    const decodedToken = await measure('auth.id_token', () => auth.verifyIdToken(idToken, false));
     if (typeof decodedToken.uid !== 'string' || !decodedToken.uid) throw Object.assign(new Error('유효한 사용자가 없습니다.'), { code: 'AUTH_INVALID' });
+    // 완료 확인은 검증 창 안에서 처음 읽은 최신 계정을 공유한다. HTTP 본문이
+    // 이 함수를 주입할 수 없으며, 반환 뒤에도 기존 철회/disabled 검사를 수행한다.
+    const read = () => measure('auth.account', () => requestAccount(req, auth, decodedToken.uid,
+      { fresh: typeof accountWindow === 'function' }));
+    const [account] = await Promise.all([
+      typeof accountWindow === 'function' ? accountWindow({ uid: decodedToken.uid, auth, read }) : read(),
+      onIdentity?.(decodedToken.uid),
+    ]);
+    validateCurrentAccount(account, decodedToken);
     return decodedToken.uid;
   } catch (err) {
     console.error("Token verification failed:", safeErrorSummary(err));
@@ -95,7 +106,7 @@ async function getVerifiedAccountRole(req, uid) {
       verifiedAccountRoles.set(req, { uid, role: result.accountRole });
       return result.accountRole;
     }
-    const user = await admin.auth().getUser(uid);
+    const user = await requestAccount(req, admin.auth(), uid);
     if (user.disabled) throw new Error();
     return require('../services/membershipPolicy').resolveAccountRole(user.customClaims || {});
   } catch (_) {
@@ -114,7 +125,7 @@ async function verifyAdmin(req, res, { ownerOnly = false } = {}) {
   const uid = await verifyUser(req, res);
   if (!uid) return null;
   try {
-    const user = await admin.auth().getUser(uid);
+    const user = await requestAccount(req, admin.auth(), uid);
     if (user.disabled) { res.status(401).json({ success: false }); return null; }
     const claims = user.customClaims || {};
     const role = claims.role === 'owner' ? 'owner'
@@ -133,11 +144,19 @@ async function verifyAdmin(req, res, { ownerOnly = false } = {}) {
 
 // CORS 허용 헤더
 async function verifyRegisteredUser(req, res, options) {
-  const uid = await measure('auth.verify', () => verifyUser(req, res, options));
+  let registration;
+  const read = uid => registration ||= measure('registration.check', async () => {
+    try { return { registered: await require('../services/registrationService').isRegisteredUser(uid) }; }
+    catch (error) { return { error }; }
+  });
+  // 서명 검증으로 얻은 UID의 가입 읽기는 현재 계정 조회와 겹친다.
+  // 두 결과가 모두 성공하기 전에는 보호된 작업을 시작하지 않는다.
+  const uid = await measure('auth.verify', () => verifyUser(req, res, { ...options, onIdentity: read }));
   if (!uid) return null;
   try {
-    const { isRegisteredUser } = require('../services/registrationService');
-    if (await measure('registration.check', () => isRegisteredUser(uid))) return uid;
+    const result = await read(uid);
+    if (result.error) throw result.error;
+    if (result.registered) return uid;
     res.status(403).json({ success: false, code: 'REGISTRATION_REQUIRED', message: '서비스 가입을 완료해 주세요.' });
   } catch (error) {
     console.error('Registration verification failed:', safeErrorSummary(error));

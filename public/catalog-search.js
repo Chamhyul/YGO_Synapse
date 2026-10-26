@@ -528,7 +528,8 @@ function updateCatalogRows(state, view, visible) {
         row.kind.textContent = CatalogFilters.kinds.find(kind => kind.value === metadata?.kind)?.label || '';
         row.kind.hidden = !metadata;
         const qty = card.cid ? quantities.get(String(card.cid)) : card.number ? numberQuantities.get(normalizeStr(card.number)) : nameQuantities.get(normalizeStr(card.name));
-        row.quantity.textContent = `${qty || 0}장`;
+        row.quantity.textContent = typeof UserStore !== 'undefined' && UserStore.user && UserStore.inventorySyncStatus !== 'ready'
+            ? (UserStore.inventorySyncStatus === 'error' ? '확인 실패' : '확인 중') : `${qty || 0}장`;
         if (view.list.children[index] !== row.item) view.list.insertBefore(row.item, view.list.children[index] || null);
     });
     for (const [key, row] of view.rows) if (!liveKeys.has(key)) { row.item.remove(); view.rows.delete(key); }

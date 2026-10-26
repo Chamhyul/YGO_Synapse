@@ -75,7 +75,7 @@ const FIREBASE_CONFIG = {
 let _cachedAuthToken = null;
 
 // Firebase App Check 즉시 초기화
-if (typeof firebase !== 'undefined' && firebase.appCheck) {
+if (!window.YgoDiscordPopup?.isCallback && typeof firebase !== 'undefined' && firebase.appCheck && !window.YgoAuthBootstrap?.appCheckStarted) {
     // localhost에서 운영의 App Check 보호 API를 호출할 수 있도록 debug token을 발급합니다.
     // 콘솔에 출력된 토큰은 Firebase Console > App Check에서 한 번 등록해야 합니다.
     if (IS_LOCAL_DEV) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
@@ -113,7 +113,10 @@ const UserStore = {
     user: null,
     settings: { theme: 'light', isDetailMode: false, hideMembershipVerify: false },
     isInitialSyncDone: false,
-    isUserDataSyncDone: false
+    isUserDataSyncDone: false,
+    inventorySyncStatus: 'idle',
+    claimsSyncStatus: 'idle',
+    accountRevision: 0
 };
 
 /**
@@ -476,6 +479,7 @@ const CardListCache = {
 class ClientCache {
     constructor() {
         this._inventory = [];
+        this._inventoryRevision = 0;
         this._allKnownNames = new Set();
         this._indexes = {
             names: new Set(),
@@ -727,6 +731,7 @@ class ClientCache {
      * [Phase 2] 인덱스 및 전역 룩업 변수 자동 동기화
      */
     refreshIndexes() {
+        this._inventoryRevision = (this._inventoryRevision || 0) + 1;
         this._inventoryNameToCid = Object.create(null);
         this._inventoryNoToCid = Object.create(null);
         this._ownedByCid = new Map();
@@ -875,6 +880,7 @@ class ClientCache {
      * 서버 요약 통계 설정
      */
     setSummary(amount, locations, rarities) {
+        this._inventoryRevision = (this._inventoryRevision || 0) + 1;
         this._summary.amount = amount || 0;
         this._summary.locations = locations || {};
         this._summary.rarities = rarities || {};
@@ -1289,7 +1295,7 @@ function refreshLocalLookups() {
     // 여기서는 UI 갱신 로직만 담당합니다.
 
     const datalist = document.getElementById('loc-datalist');
-    if (datalist) datalist.innerHTML = cardCacheInstance.getAllLocations().map(l => `<option value="${l}">`).join('');
+    if (datalist) datalist.innerHTML = cardCacheInstance.getAllLocations().map(l => `<option value="${escapeHTML(l)}">`).join('');
 
     const autoLocWrap = document.getElementById('wrap-auto-loc');
     const autoLocInput = document.getElementById('auto-location-input');
@@ -1495,11 +1501,17 @@ function checkLegacyMigrationQuery() {
  * 애플리케이션 통합 초기화 함수
  */
 async function initApp() {
+    if (window.YgoDiscordPopup?.isCallback) return;
+    window.YgoLoginTiming?.mark('ui_init_start');
+    initFirebaseAuth();
+    let uiPrepared = false;
+    try {
     const footerVer = document.getElementById('footer-version');
     if (footerVer) footerVer.textContent = CLIENT_VERSION;
 
     // 로컬 DB 초기화
-    await ClientCache.init();
+    const prepareCache = () => ClientCache.init();
+    await (window.YgoLoginTiming?.startupMeasure ? window.YgoLoginTiming.startupMeasure('cache', prepareCache) : prepareCache());
 
     // DB 복원 후 인스턴스에 안전하게 이름 목록 주입
     if (CardDataStore.allCardNames.length > 0 && cardCacheInstance) {
@@ -1513,7 +1525,7 @@ async function initApp() {
 
     // 서브 모듈 리스너 및 기능 초기화 일괄 실행
     fetchNotices();
-    initFirebaseAuth();
+
     if (typeof handleDiscordOAuthCallback === 'function') handleDiscordOAuthCallback();
     if (typeof initSearchButtonBlurListeners === 'function') initSearchButtonBlurListeners();
     if (typeof initMobileSearchListeners === 'function') initMobileSearchListeners();
@@ -1552,7 +1564,7 @@ async function initApp() {
             if (document.activeElement !== searchInput || searchInput.value !== val) return;
             if (isSearchComposing && !val.trim()) return;
             filterAndShowDropdown(val);
-        }, 100);
+        }, 150);
 
         searchInput.addEventListener('compositionstart', () => {
             isSearchComposing = true;
@@ -1693,7 +1705,11 @@ async function initApp() {
     document.body.classList.remove('no-transition');
     document.body.classList.add('no-transition');
 
-    // 위에서 UI는 먼저 잡았으므로, 동기화 후 로컬 캐시가 준비된 시점에 자동 검색(automation)을 실행함
+    // 로그인 화면 적용에는 로컬 캐시/정적 UI만 요구한다. 공용 카드 동기화를 추가 장벽으로 만들지 않는다.
+    uiPrepared = true;
+    window.YgoAuthBootstrap?.uiPrepared();
+    resolveServiceUi();
+    // 공용 데이터 동기화·자동 검색은 기존 준비 순서를 유지한다.
     await refreshInitialData();
 
     // 동기화 완료 후 자동화 로직만 별도로 추출하여 트리거 (캐시된 데이터 활용 보장)
@@ -1751,6 +1767,12 @@ async function initApp() {
             }
         }
     });
+    } finally {
+        if (!uiPrepared) {
+            window.YgoAuthBootstrap?.uiFailed();
+            rejectServiceUi(new Error('화면 준비 실패'));
+        }
+    }
 }
 
 // 애플리케이션 단일 초기화 이벤트 바인딩
@@ -1794,6 +1816,7 @@ function syncMembershipHeader(shouldShowVerify = null) {
             ? '내 계정: 멤버십 인증 필요, 환경설정으로 이동'
             : '내 계정: 환경설정으로 이동');
     }
+    if (typeof renderDiscordMembershipHeader === 'function') renderDiscordMembershipHeader();
     // 크기 변경으로 현재 조작 중인 버튼이 숨겨지면 계정 진입으로 초점을 보존한다.
     if (verifyBtn.hidden && hadVerifyFocus) authBtn.focus();
 }
@@ -2193,6 +2216,15 @@ async function renderInventoryGrid(forceSync = false) {
 
     if (!UserStore.user) {
         renderInventoryLoginRequiredState();
+        return;
+    }
+
+    if (UserStore.inventorySyncStatus === 'loading' || UserStore.inventorySyncStatus === 'error') {
+        const area = document.getElementById('grid-status-area');
+        if (area) {
+            area.textContent = UserStore.inventorySyncStatus === 'error' ? '보유 정보 동기화에 실패했습니다. 위의 다시 시도를 눌러주세요.' : '보유 정보를 동기화하는 중입니다.';
+            area.style.display = 'flex';
+        }
         return;
     }
 
@@ -2680,6 +2712,8 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
             return;
         }
     }
+
+    if (mode === 'settings') prepareMembershipEntry();
 
     // subMode가 명시되지 않은 경우, 현재 저장된 상태를 복원하여 가드 로직 및 UI에 반영
     if (mode === 'add' && !subMode) {
@@ -4833,6 +4867,7 @@ async function handleContinueDiscard() {
 }
 
 async function submitPageEntries() {
+    if (!requireInventoryReady()) return;
     if (managementRequestPending) return;
     const submitBtn = document.getElementById('add-submit-main-btn');
     if (submitBtn && submitBtn.classList.contains('disabled')) return;
@@ -4974,6 +5009,7 @@ async function submitPageEntries() {
 }
 
 async function submitDiscardEntries() {
+    if (!requireInventoryReady()) return;
     if (managementRequestPending) return;
     const submitBtn = document.getElementById('discard-submit-main-btn');
     if (submitBtn && submitBtn.classList.contains('disabled')) return;
@@ -5390,6 +5426,7 @@ function loadUserTheme(settingsFromServer, waitForServer = false) {
  * 사용자 설정을 저장 (DB + LocalStorage)
  */
 async function saveUserSetting(field, value) {
+    UserStore.accountRevision++;
     UserStore.settings[field] = value;
 
     // 로컬 스토리지 호환성 유지
@@ -5833,11 +5870,23 @@ async function getApiAppCheckToken(forceRefresh = false) {
     try {
         if (typeof firebase === 'undefined' || !firebase.appCheck) throw new Error();
         // getToken은 유효한 캐시를 사용하고, 필요할 때만 갱신한다. 동시 발급도 SDK가 처리한다.
-        const result = await firebase.appCheck().getToken(forceRefresh);
+        const prepare = () => firebase.appCheck().getToken(forceRefresh);
+        const timing = typeof window === 'undefined' ? null : window.YgoLoginTiming;
+        const result = await (timing?.appCheck ? timing.appCheck(forceRefresh ? 'refresh' : 'request', forceRefresh, prepare) : prepare());
         if (!result?.token) throw new Error();
         return result.token;
-    } catch (_) {
-        throw Object.assign(new Error('앱 인증을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'), { code: 'APPCHECK_UNAVAILABLE' });
+    } catch (error) {
+        // SDK 원문·토큰·URL을 전달하지 않고 알려진 설정 거부만 고정 분류한다.
+        const failure = typeof window === 'undefined' ? undefined : window.YgoLoginTiming?.appCheckFailure?.(error);
+        let denied = false;
+        try { denied = ['appCheck/fetch-status-error', 'app-check/fetch-status-error'].includes(error?.code)
+            && [400, 403, 404].includes(error?.customData?.httpStatus); } catch (_) {}
+        throw Object.assign(new Error(denied
+            ? (IS_LOCAL_DEV ? '로컬 앱 인증 설정이 거부되었습니다. 현재 브라우저의 디버그 토큰 등록을 확인해 주세요.'
+                : '앱 인증 설정을 확인하지 못했습니다. 관리자에게 문의해 주세요.')
+            : '앱 인증을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'),
+        { code: denied ? 'APPCHECK_CONFIGURATION_REJECTED' : 'APPCHECK_UNAVAILABLE',
+            ...(failure ? { retryable: failure.retryable } : {}) });
     }
 }
 
@@ -5856,7 +5905,12 @@ function awaitApiPreparation(promise, signal) {
     });
 }
 
+let membershipAuthenticationSerial = 0;
 async function requestApi(action, params = {}, postData = null) {
+    if (postData && ['addCards', 'moveCards', 'discardCards', 'clearUserData', 'migrateFromData', 'migrateFromSheet'].includes(action)
+        && !requireInventoryReady()) throw Object.assign(new Error('보유 정보 동기화가 필요합니다.'), { code: 'INVENTORY_SYNC_REQUIRED' });
+    const loginTiming = typeof window !== 'undefined' && params.warmup !== 'true' && ['getRegistrationStatus', 'getUserData'].includes(action)
+        ? window.YgoLoginTiming?.request(action) : null;
     const endpoint = FIREBASE_CONFIG.ENDPOINTS[action];
     if (!endpoint) {
         throw new Error(`등록되지 않은 서버 기능입니다: ${action}`);
@@ -5877,13 +5931,26 @@ async function requestApi(action, params = {}, postData = null) {
     };
     if (action === 'searchCardByImage') options.signal = AbortSignal.timeout(45000);
     if (action === 'getRegistrationStatus') options.signal = AbortSignal.timeout(30000);
+    const preparingMembership = postData?.membershipPrepare === true;
+    const resultStream = !preparingMembership && ['verifyYoutubeMembership', 'verifyDiscordMembership'].includes(action)
+        && typeof window !== 'undefined' && window.YgoAuthenticationResult;
+    const resultSerial = resultStream ? ++membershipAuthenticationSerial : 0, resultRevision = resultStream ? authStateRevision : 0;
+    // 첫 결과 뒤 화면을 이동해도 작은 인증 요청의 기록 정리를 이어간다.
+    if (resultStream) options.keepalive = true;
+    if (preparingMembership) {
+        options.signal = AbortSignal.timeout(5000);
+        // Discord 이동으로 문서가 바뀌어도 작은 읽기 준비 요청은 전달한다.
+        options.keepalive = true;
+    }
 
     // 최신 Firebase ID Token을 즉시 가져와 Authorization 헤더에 설정 (오래된 캐시 토큰으로 인한 403 거부 방지)
     const authUser = UserStore.user || (['getRegistrationStatus', 'completeRegistration'].includes(action)
         ? firebase.auth().currentUser : null);
+    if (preparingMembership && !authUser) throw Object.assign(new Error('로그인이 필요합니다.'), { code: 'AUTH_INVALID' });
     if (authUser) {
         try {
-            const token = await awaitApiPreparation(authUser.getIdToken(), options.signal);
+            const prepareToken = () => awaitApiPreparation(authUser.getIdToken(), options.signal);
+            const token = await (loginTiming ? loginTiming.measure('id_token', prepareToken) : prepareToken());
             _cachedAuthToken = token;
             options.headers['Authorization'] = `Bearer ${token}`;
         } catch (authErr) {
@@ -5896,19 +5963,27 @@ async function requestApi(action, params = {}, postData = null) {
     }
 
     // App Check 실패를 로그인 실패로 바꾸거나 인증 헤더 없이 요청하지 않는다.
-    options.headers['X-Firebase-AppCheck'] = await awaitApiPreparation(getApiAppCheckToken(), options.signal);
+    const prepareAppCheck = () => awaitApiPreparation(getApiAppCheckToken(), options.signal);
+    options.headers['X-Firebase-AppCheck'] = await (loginTiming ? loginTiming.measure('app_check', prepareAppCheck) : prepareAppCheck());
 
     if (postData) {
         // POST 요청 시 ssId를 본문에 포함
         const body = {
             ...postData,
+            ...(resultStream ? { authenticationResultStream: true } : {}),
             ssId: savedId
         };
         options.body = JSON.stringify(body);
     }
 
     try {
-        const response = await fetch(url.toString(), options);
+        if (preparingMembership && (authUser.uid !== UserStore.user?.uid
+            || authUser.uid !== firebase.auth().currentUser?.uid)) {
+            throw Object.assign(new Error('서비스 계정이 변경되었습니다.'), { code: 'REQUEST_SUPERSEDED' });
+        }
+        const sendRequest = () => fetch(url.toString(), options);
+        const response = await (loginTiming ? loginTiming.measure('http', sendRequest) : sendRequest());
+        if (loginTiming) { try { loginTiming.server(response.headers?.get('X-YGO-Login-Timing')); } catch (_) {} }
         if (!response.ok) {
             const errBody = await response.json().catch(() => ({}));
             console.error(`[API Error Details] Action: ${action}, Status: ${response.status}`, errBody);
@@ -5916,7 +5991,22 @@ async function requestApi(action, params = {}, postData = null) {
             throw Object.assign(new Error(detailMsg ? `HTTP ${response.status}: ${detailMsg}` : `HTTP error! status: ${response.status}`), { code: errBody.code, status: response.status });
         }
 
-        const res = await response.json();
+        const currentResult = () => resultSerial === membershipAuthenticationSerial && resultRevision === authStateRevision
+            && authUser?.uid === UserStore.user?.uid && firebase.auth().currentUser?.uid === authUser?.uid;
+        const parse = () => resultStream ? resultStream.read(response, {
+            async onRecorded(result) {
+                if (!currentResult() || result.uid !== authUser.uid || !result.membershipClaims) return;
+                const ready = await refreshMembershipClaims(authUser, result);
+                if (!currentResult()) return;
+                UserStore.claimsSyncStatus = ready ? 'ready' : 'pending';
+                followMembershipClaims(authUser);
+                setInventorySyncStatus(UserStore.inventorySyncStatus);
+            },
+            onFailure() {
+                if (currentResult()) showToast('인증 결과의 작업 기록을 확인하지 못했습니다. 다시 확인해 주세요.', 'toast-warn');
+            }
+        }) : response.json();
+        const res = await (loginTiming ? loginTiming.measure('response_json', parse) : parse());
 
         if (res && res.debug && res.debug.serverTime) {
             // [로그 삭제] 서버 실행 시간 로그 제거
@@ -6553,6 +6643,10 @@ async function renderTargetSearchResult(targetCardName, targetRows, prioritizeNu
 }
 
 function renderOwnedCardsToContainer(rows, container) {
+    if (UserStore.user && UserStore.inventorySyncStatus !== 'ready') {
+        container.textContent = UserStore.inventorySyncStatus === 'error' ? '보유 정보 동기화 실패' : '보유 정보 동기화 중';
+        return;
+    }
     return OwnedCards.render(rows, container, {
         contextKey: typeof UserStore !== 'undefined' ? (UserStore.user?.uid || 'guest') : 'guest',
         compareRarity,
@@ -6627,56 +6721,207 @@ async function refreshMembershipClaims(user, result) {
     } catch (_) { return false; }
 }
 
-async function loadUserData() {
+function followMembershipClaims(user) {
+    const sync = globalThis.YgoMembershipClaimsSync;
+    if (!sync) return;
+    if (UserStore.claimsSyncStatus !== 'pending') { sync.cancel(); return; }
+    const revision = authStateRevision;
+    sync.start({
+        isCurrent: () => authStateRevision === revision && UserStore.user === user
+            && firebase.auth().currentUser?.uid === user.uid,
+        check: () => callApi('getUserData', {}, { membershipClaimsOnly: true }),
+        refresh: result => refreshMembershipClaims(user, result),
+        onStatus: status => {
+            UserStore.claimsSyncStatus = status;
+            setInventorySyncStatus(UserStore.inventorySyncStatus);
+        },
+    });
+}
+
+let userDataSyncTask = null;
+let userDataSyncSerial = 0;
+let inventorySyncSnapshot = null;
+const inventorySyncTokenValid = token => typeof token === 'string' && /^i1:[a-f0-9]{64}$/.test(token);
+function reusableInventorySnapshot() {
+    const saved = inventorySyncSnapshot;
+    if (!saved || typeof cardCacheInstance === 'undefined' || saved.cache !== cardCacheInstance
+        || saved.uid !== UserStore.user?.uid || saved.authRevision !== authStateRevision
+        || saved.cacheRevision !== cardCacheInstance._inventoryRevision
+        || !Number.isSafeInteger(saved.cacheRevision) || !inventorySyncTokenValid(saved.token)) return null;
+    return saved;
+}
+
+async function loadUserData(initialData, options = {}) {
+    if (!UserStore.user) return false;
+    const owner = UserStore.user, revision = authStateRevision;
+    if (!options.force && initialData === undefined && userDataSyncTask?.owner === owner
+        && userDataSyncTask.revision === revision) return userDataSyncTask.promise;
+    // 쓰기 응답이 반영되는 동안 새 전체 snapshot이 시작되지 않게 한다.
+    if (typeof managementRequestPending !== 'undefined' && managementRequestPending) return false;
+    const task = { owner, revision, serial: ++userDataSyncSerial, accountRevision: UserStore.accountRevision,
+        inventorySnapshot: options.membershipClaimsReadOnly === true && UserStore.inventorySyncStatus === 'ready'
+            ? reusableInventorySnapshot() : null,
+        timing: typeof window === 'undefined' ? null : window.YgoLoginTiming?.current() };
+    userDataSyncTask = task;
+    UserStore.isUserDataSyncDone = false;
+    UserStore.claimsSyncStatus = 'loading';
+    setInventorySyncStatus('loading');
+    showLoading(true, '내 인벤토리 로딩 중...');
+    task.promise = Promise.resolve().then(() => performUserDataSync(initialData, options, task))
+        .finally(() => { if (userDataSyncTask === task) userDataSyncTask = null; });
+    return task.promise;
+}
+
+function retryUserDataSync() {
+    if (UserStore.inventorySyncStatus === 'ready' && ['pending', 'checking'].includes(UserStore.claimsSyncStatus)) {
+        UserStore.claimsSyncStatus = 'pending';
+        followMembershipClaims(UserStore.user);
+        return;
+    }
+    return loadUserData(undefined, { background: true });
+}
+
+function requireInventoryReady() {
+    if (!UserStore.user) return true; // 기존 로그인 유도 분기를 유지한다.
+    if (UserStore.inventorySyncStatus === 'ready') return true;
+    showToast(UserStore.inventorySyncStatus === 'error'
+        ? '보유 정보를 불러오지 못했습니다. 동기화를 다시 시도해 주세요.'
+        : '보유 정보를 동기화하는 중입니다. 완료 후 다시 시도해 주세요.', 'toast-warn');
+    return false;
+}
+
+function setInventorySyncStatus(status) {
+    UserStore.inventorySyncStatus = status;
+    const area = document.getElementById('user-sync-status');
+    if (area) {
+        area.hidden = !UserStore.user || status === 'idle' || status === 'ready' && UserStore.claimsSyncStatus !== 'pending';
+        const label = area.querySelector('[data-sync-message]');
+        if (label) label.textContent = status === 'ready' && UserStore.claimsSyncStatus === 'pending' ? '보유 정보는 준비되었습니다. 멤버십 권한 동기화 확인이 필요합니다.' : status === 'error' ? '보유 정보 동기화에 실패했습니다.' : '보유 정보를 동기화하고 있습니다.';
+        const retry = area.querySelector('button');
+        if (retry) retry.hidden = status !== 'error' && UserStore.claimsSyncStatus !== 'pending';
+    }
+    document.querySelectorAll('[data-requires-inventory]').forEach(button => {
+        if (UserStore.user && status !== 'ready') {
+            if (!button.disabled) { button.disabled = true; button.dataset.userSyncDisabled = 'true'; }
+        } else if (button.dataset.userSyncDisabled === 'true') {
+            button.disabled = false; delete button.dataset.userSyncDisabled;
+        }
+    });
+    if (status !== 'ready' && UserStore.user) {
+        const pendingText = status === 'error' ? '확인 실패' : '확인 중';
+        document.querySelectorAll('.catalog-search-quantity').forEach(node => { node.textContent = pendingText; });
+        document.querySelectorAll('.target-inventory-section').forEach(node => { node.textContent = status === 'error' ? '보유 정보 동기화 실패' : '보유 정보 동기화 중'; });
+        for (const id of ['total-cards', 'kind-cards', 'inv-total-cards', 'inv-kind-cards']) {
+            const node = document.getElementById(id); if (node) node.textContent = '—';
+        }
+        for (const id of ['inv-location-stats', 'inv-rarity-stats']) {
+            const node = document.getElementById(id); if (node) node.textContent = status === 'error' ? '동기화 실패' : '동기화 중';
+        }
+    }
+}
+
+function applyAccountData(res) {
+    // 멤버십 정보가 없더라도 기본 UI 렌더링을 위해 초기화 호출
+    const membership = (res && res.settings && res.settings.membership) ? res.settings.membership : null;
+
+    UserStore.sourceMembership = res?.sourceMembership || null;
+
+    // 기타 사용자 설정 및 멤버십 동기화
+    if (res && res.settings) {
+        if (res.settings.isDetailMode !== undefined) UserStore.settings.isDetailMode = res.settings.isDetailMode;
+        if (res.settings.hideMembershipVerify !== undefined) UserStore.settings.hideMembershipVerify = res.settings.hideMembershipVerify;
+        if (res.settings.membership) UserStore.settings.membership = res.settings.membership;
+    }
+
+    applyMembershipStatus(membership);
+    if (typeof updateAuthUI === 'function') updateAuthUI(UserStore.user);
+
+    // Firestore 직접 조회를 제거하고 서버 API 응답(res)의 데이터로 UI 업데이트 진행
+    const userData = {
+        createdAt: res ? res.createdAt : null,
+        Nickname: res ? res.nickname : ""
+    };
+
+    // 계정 정보 섹션 UI 업데이트
+    updateUserInfoCard(UserStore.user, userData);
+
+    if (res?.settings) loadUserSettings(res.settings);
+}
+
+async function performUserDataSync(initialData, options, task) {
+    if (UserStore.user !== task.owner || authStateRevision !== task.revision || task.serial !== userDataSyncSerial) return false;
     if (!UserStore.user) {
         UserStore.isUserDataSyncDone = true;
         return;
     }
-    const ownerUid = UserStore.user.uid, ownerRevision = authStateRevision;
-    const current = () => UserStore.user?.uid === ownerUid && authStateRevision === ownerRevision;
+    const ownerUid = UserStore.user.uid, ownerRevision = task.revision;
+    const loginTiming = task.timing;
+    let endLoginRender, loginReady = false;
+    const current = () => UserStore.user?.uid === ownerUid && authStateRevision === ownerRevision && task.serial === userDataSyncSerial;
     UserStore.isUserDataSyncDone = false; // [추가] 동기화 시작 시 플래그 초기화
-    showLoading(true, "내 인벤토리 로딩 중...");
     try {
-        const res = await callApi('getUserData');
+        const requestBody = { inventoryConditional: true,
+            ...(options.membershipClaimsReadOnly === true ? { membershipClaimsReadOnly: true } : {}) };
+        const savedInventory = task.inventorySnapshot;
+        if (savedInventory) requestBody.inventoryToken = savedInventory.token;
+        const fetchData = () => initialData === undefined
+            ? callApi('getUserData', {}, requestBody) : Promise.resolve(initialData);
+        let res = await (loginTiming ? loginTiming.measure('user_data', fetchData) : fetchData());
+        if (res?.inventorySync?.status === 'unchanged'
+            && (!savedInventory || reusableInventorySnapshot() !== savedInventory
+                || res.inventorySync.token !== savedInventory.token || Object.hasOwn(res, 'allCards'))) {
+            // 새 수정·초기화·계정/캐시 교체나 미지원 응답이면 전체 snapshot으로 복구한다.
+            if (!current()) return;
+            res = await callApi('getUserData', {}, { ...requestBody, inventoryToken: undefined });
+            if (res?.inventorySync?.status === 'unchanged') throw new Error('인벤토리 전체 응답을 확인하지 못했습니다.');
+        }
+        if (res?.success === false) throw Object.assign(new Error('회원 정보 조회 실패'), { code: res.code });
         if (!current()) return;
-        if (res?.membershipClaims) {
-            await refreshMembershipClaims(UserStore.user, res);
+        const applyClaimsResult = async value => {
+        if (value?.membershipClaims) {
+            const refreshClaims = () => refreshMembershipClaims(UserStore.user, value);
+            const tokenReady = await (loginTiming ? loginTiming.measure('claims_token', refreshClaims) : refreshClaims());
+            if (!current()) return;
+            UserStore.claimsSyncStatus = value.membershipClaims.status === 'synced' && tokenReady ? 'ready' : 'pending';
             if (!current()) return;
         }
-        showLoading(false);
-
-        // 멤버십 정보가 없더라도 기본 UI 렌더링을 위해 초기화 호출
-        const membership = (res && res.settings && res.settings.membership) ? res.settings.membership : null;
-
-        UserStore.sourceMembership = res?.sourceMembership || null;
-
-        // 기타 사용자 설정 및 멤버십 동기화
-        if (res && res.settings) {
-            if (res.settings.isDetailMode !== undefined) UserStore.settings.isDetailMode = res.settings.isDetailMode;
-            if (res.settings.hideMembershipVerify !== undefined) UserStore.settings.hideMembershipVerify = res.settings.hideMembershipVerify;
-            if (res.settings.membership) UserStore.settings.membership = res.settings.membership;
-        }
-
-        applyMembershipStatus(membership);
-        if (typeof updateAuthUI === 'function') updateAuthUI(UserStore.user);
-
-        // Firestore 직접 조회를 제거하고 서버 API 응답(res)의 데이터로 UI 업데이트 진행
-        const userData = {
-            createdAt: res ? res.createdAt : null,
-            Nickname: res ? res.nickname : ""
+        if (!value?.membershipClaims) UserStore.claimsSyncStatus = 'not_required';
         };
+        await applyClaimsResult(res);
+        if (!current()) return;
+        if (res?.inventorySync?.status === 'unchanged' && reusableInventorySnapshot() !== savedInventory) {
+            res = await callApi('getUserData', {}, { ...requestBody, inventoryToken: undefined });
+            if (!res?.success || res.inventorySync?.status === 'unchanged') throw new Error('인벤토리 전체 응답을 확인하지 못했습니다.');
+            await applyClaimsResult(res);
+            if (!current()) return;
+        }
+        followMembershipClaims(UserStore.user);
+        if (['ready', 'not_required'].includes(UserStore.claimsSyncStatus)) loginTiming?.checkpoint?.('claims_ready');
+        endLoginRender = loginTiming?.begin('render');
 
-        // 계정 정보 섹션 UI 업데이트
-        updateUserInfoCard(UserStore.user, userData);
+        if (task.accountRevision === UserStore.accountRevision) applyAccountData(res);
 
         if (res && res.success) {
-            applyUserData(res);
+            UserStore.inventorySyncStatus = 'ready';
+            applyUserData(res, { includeSettings: task.accountRevision === UserStore.accountRevision });
+            if (res.inventorySync && inventorySyncTokenValid(res.inventorySync.token) && typeof cardCacheInstance !== 'undefined'
+                && Number.isSafeInteger(cardCacheInstance._inventoryRevision)
+                && (res.inventorySync.status === 'unchanged'
+                    || Array.isArray(res.allCards) && res.inventoryMigration?.status === 'complete'
+                        && Number.isSafeInteger(res.inventoryMigration.unresolvedCount) && res.inventoryMigration.unresolvedCount >= 0)) {
+                inventorySyncSnapshot = { uid: ownerUid, authRevision: ownerRevision, cache: cardCacheInstance,
+                    cacheRevision: cardCacheInstance._inventoryRevision, token: res.inventorySync.token };
+            } else inventorySyncSnapshot = null;
             if (!res.settings) loadUserTheme();
+            loginReady = true;
+            loginTiming?.checkpoint?.('inventory_ready');
         } else {
             loadUserTheme(undefined, true);
         }
     } catch (e) {
         if (!current()) return;
+        // 계정 요약이 확인된 뒤의 인벤토리 장애로 계정 표시를 취소하지 않는다.
+        if (!options.background || e.code === 'ACCOUNT_ROLE_UNAVAILABLE') {
         // 현재 권한을 확인하지 못했을 때 과거 관리자 표시를 계속 인정하지 않는다.
         if (!UserStore.settings) UserStore.settings = {};
         UserStore.settings.membership = { status: 'unknown', type: 'none', levelName: '확인 필요' };
@@ -6685,11 +6930,20 @@ async function loadUserData() {
         showToast('회원 상태를 확인하지 못했습니다. 새로고침 후 다시 확인해 주세요.', 'toast-warn');
         // 서버 조회 실패는 설정 없음과 다르므로 계정 기록을 임의로 만들지 않는다.
         loadUserTheme(undefined, true);
-        console.error("[Sync] getUserData Error:", e);
-        showLoading(false);
+        }
+        UserStore.claimsSyncStatus = 'error';
+        if (e.code === 'AUTH_INVALID') {
+            await firebase.auth().signOut().catch(() => {});
+            if (!current()) return false;
+        }
+        console.error("[Sync] getUserData failed");
+        return false;
     } finally {
-        if (!current()) return;
-        UserStore.isUserDataSyncDone = true; // 사용자 동기화 완료 플래그 설정
+        endLoginRender?.(loginReady);
+        if (!current()) { loginTiming?.finish('superseded'); return; }
+        UserStore.isUserDataSyncDone = loginReady;
+        setInventorySyncStatus(loginReady ? 'ready' : 'error');
+        if (loginReady && typeof UIStore !== 'undefined' && UIStore.mode === 'settings') prepareMembershipEntry();
         checkAndHideInitialLoading();
 
         // [추가] 사용자가 현재 보유 현황 페이지의 목록 모드를 보고 있다면, 로그인 성공 후 자동으로 목록을 갱신합니다.
@@ -6697,6 +6951,11 @@ async function loadUserData() {
             typeof UIStore.inventoryMode !== 'undefined' && UIStore.inventoryMode === 'list') {
             renderInventoryGrid();
         }
+
+        showLoading(false);
+        if (loginReady) loginTiming?.checkpoint?.('entry_ready');
+        loginTiming?.finish(loginReady ? 'ready' : 'failed');
+        if (!loginReady) return false;
 
         // 데이터 동기화가 완료된 후 온보딩 가이드 트리거 (로그인 완료 및 로딩 해제 시점)
         if (typeof OnboardingManager !== 'undefined' && typeof UIStore.mode !== 'undefined') {
@@ -6709,6 +6968,7 @@ async function loadUserData() {
             restorePendingFormData();
         }
     }
+    return loginReady;
 }
 
 /**
@@ -6759,7 +7019,6 @@ function renderMembershipSettings(membership) {
     if (isPremium) {
         levelName = membership.levelName || '유튜브 멤버십';
         if (levelName === '디스코드 멤버십 회원') levelName = '유튜브 멤버십';
-        if (levelName === '소유자') levelName = '관리자';
     }
     label.textContent = levelName;
     card.classList.toggle('border-theme', isPremium);
@@ -6819,23 +7078,26 @@ function scheduleInventoryMigration(res) {
     }, delay);
 }
 
-function applyUserData(res) {
+function applyUserData(res, { includeSettings = true } = {}) {
     if (!res) return;
-    scheduleInventoryMigration(res);
+    const unchanged = res.inventorySync?.status === 'unchanged';
+    if (!unchanged) scheduleInventoryMigration(res);
 
     // 서버로부터 받은 설정 적용 (테마, 상세 모드 등)
-    if (res.settings) {
+    if (includeSettings && res.settings) {
         loadUserSettings(res.settings);
     }
 
     // 1. 인벤토리 목록 저장
-    if (res.allCards) {
+    if (!unchanged && res.allCards) {
         cardCacheInstance.setInventory(res.allCards);
     }
 
     // 2. 통계 및 매핑 저장 (초기 로딩 및 로컬 데이터를 바탕으로 통계 강제 동기화 보정)
-    cardCacheInstance.setSummary(res.amount, res.locations, res.rarities);
-    cardCacheInstance.rebuildSummaryFromInventory();
+    if (!unchanged) {
+        cardCacheInstance.setSummary(res.amount, res.locations, res.rarities);
+        cardCacheInstance.rebuildSummaryFromInventory();
+    }
 
     // 3. UI 갱신
     updateTotals();
@@ -7086,6 +7348,10 @@ function showLoading(show, html) {
     if (typeof serviceLoginPending !== 'undefined' && serviceLoginPending) {
         show = true;
         html = '로그인 중...';
+    } else if (typeof UserStore !== 'undefined' && UserStore.user && UserStore.inventorySyncStatus === 'loading') {
+        // 공통 데이터 등 다른 작업의 종료가 사용자 데이터 동기화 화면을 닫지 못한다.
+        show = true;
+        html = '내 인벤토리 로딩 중...';
     }
     const overlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
@@ -8635,6 +8901,7 @@ async function finishMoveProcess() {
 }
 
 async function submitMoveEntries() {
+    if (!requireInventoryReady()) return;
     if (managementRequestPending) return;
     const submitBtn = document.getElementById('move-submit-main-btn');
     if (submitBtn && submitBtn.classList.contains('disabled')) return;
@@ -8734,6 +9001,7 @@ async function submitMoveEntries() {
 }
 
 async function submitBulkMoveEntries() {
+    if (!requireInventoryReady()) return;
     if (managementRequestPending) return;
     const fromInput = document.getElementById('rename-from-input');
     const toInput = document.getElementById('rename-to-input');
@@ -8835,6 +9103,7 @@ function handleAutomationParams(params) {
  * 보유 현황 대시보드 통계를 업데이트합니다.
  */
 function updateDashboardStats() {
+    if (UserStore.user && UserStore.inventorySyncStatus !== 'ready') { setInventorySyncStatus(UserStore.inventorySyncStatus); return; }
 
     // 1. 기본 통계 (수량, 종류)
     const totalCount = cardCacheInstance.getAmount();
@@ -8861,7 +9130,7 @@ function updateDashboardStats() {
             locKeys.forEach((loc, idx) => {
                 const count = locations[loc].length;
                 const hiddenClass = idx >= 3 ? "is-hidden" : "";
-                locHtml += `<div class="stat-item ${hiddenClass}"><span class="stat-name color-text-001">${loc}</span><span class="stat-cnt ui-chip color-tint-theme shape-capsule">${count}종</span></div>`;
+                locHtml += `<div class="stat-item ${hiddenClass}"><span class="stat-name color-text-001">${escapeHTML(loc)}</span><span class="stat-cnt ui-chip color-tint-theme shape-capsule">${count}종</span></div>`;
             });
             if (locKeys.length > 3) {
                 locHtml += `<button class="stat-more-btn ui-button color-theme-001" onclick="toggleStatSection(this)"><span>더보기</span><i class="material-icons">expand_more</i></button>`;
@@ -8879,7 +9148,7 @@ function updateDashboardStats() {
             rareKeys.forEach((rare, idx) => {
                 const count = rarities[rare];
                 const hiddenClass = idx >= 3 ? "is-hidden" : "";
-                rareHtml += `<div class="stat-item ${hiddenClass}"><span class="stat-name color-text-001">${getLocalizedRarity(rare)}</span><span class="stat-cnt ui-chip color-tint-theme shape-capsule">${count}장</span></div>`;
+                rareHtml += `<div class="stat-item ${hiddenClass}"><span class="stat-name color-text-001">${escapeHTML(getLocalizedRarity(rare))}</span><span class="stat-cnt ui-chip color-tint-theme shape-capsule">${count}장</span></div>`;
             });
             if (rareKeys.length > 3) {
                 rareHtml += `<button class="stat-more-btn ui-button color-theme-001" onclick="toggleStatSection(this)"><span>더보기</span><i class="material-icons">expand_more</i></button>`;
@@ -10203,12 +10472,17 @@ async function applyPackCardResults(cards) {
 // ==========================================
 
 let authStateRevision = 0;
+let serviceAuthStarted = false;
+let resolveServiceUi, rejectServiceUi;
+const serviceUiReady = new Promise((resolve, reject) => { resolveServiceUi = resolve; rejectServiceUi = reject; });
+serviceUiReady.catch(() => {});
 let pendingRegistrationUser = null;
 let pendingConsentVersions = null;
 let registrationSaving = false;
 let loginInProgress = false;
 let registrationCheckPending = false;
 let pendingServiceAuthUser = null;
+let serviceLoginFailureCode = null;
 let serviceLoginPending = false;
 
 function setServiceLoginPending(pending) {
@@ -10241,22 +10515,38 @@ function reportAuthFailure(stage, error) {
 }
 
 async function getServiceRegistrationStatus(user, revision) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-        if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return null;
-        try { return await callApi('getRegistrationStatus'); }
-        catch (error) {
-            if (error.code === 'AUTH_INVALID' || attempt === 2
-                || (error.status && error.status !== 401 && error.status < 500)) throw error;
-            if (['APPCHECK_REQUIRED', 'APPCHECK_INVALID', 'APPCHECK_UNAVAILABLE'].includes(error.code)) {
-                await awaitApiPreparation(getApiAppCheckToken(true), AbortSignal.timeout(30000)).catch(() => {});
+    const trace = window.YgoLoginTiming?.recovery?.('registration');
+    const measure = (name, work) => trace ? trace.measure(name, work) : work();
+    try {
+        for (let attempt = 0; attempt < 3; attempt++) {
+            if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) {
+                trace?.finish('superseded'); return null;
             }
-            await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 500 : 1500));
+            try {
+                const result = await measure('registration_attempt', () => callApi('getRegistrationStatus', { includeUserData: 'true' }));
+                if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) {
+                    trace?.finish('superseded'); return null;
+                }
+                trace?.finish('ready'); return result;
+            } catch (error) {
+                if (error.retryable === false || error.code === 'APPCHECK_CONFIGURATION_REJECTED' || error.code === 'AUTH_INVALID' || attempt === 2
+                    || (error.status && error.status !== 401 && error.status < 500)) throw error;
+                if (['APPCHECK_REQUIRED', 'APPCHECK_INVALID', 'APPCHECK_UNAVAILABLE'].includes(error.code)) {
+                    await measure('app_check_refresh', () => awaitApiPreparation(getApiAppCheckToken(true), AbortSignal.timeout(30000))).catch(error => {
+                        if (error.retryable === false) throw error;
+                    });
+                }
+                await measure('retry_delay', () => new Promise(resolve => setTimeout(resolve, attempt === 0 ? 500 : 1500)));
+            }
         }
-    }
+    } catch (error) { trace?.finish('failed', error); throw error; }
 }
 
 async function handleFirebaseAuthState(user) {
     const revision = ++authStateRevision;
+    window.YgoDiscordPopup?.cancelActive?.();
+    discordMembershipStartPreparation = null;
+    serviceLoginFailureCode = null;
     pendingRegistrationUser = null;
     pendingConsentVersions = null;
     pendingServiceAuthUser = null;
@@ -10265,22 +10555,29 @@ async function handleFirebaseAuthState(user) {
     toggleLoginBtn();
     if (!user) {
         // 진행 중인 인증 팝업에 앞서 도착한 초기 비로그인 알림은 종료 결과가 아니다.
+        if (!loginInProgress) window.YgoLoginTiming?.current()?.finish('signed_out');
         if (!loginInProgress && serviceLoginPending) setServiceLoginPending(false);
         applyServiceAuthState(null);
         M.Modal.getInstance(document.getElementById('signup-modal'))?.close();
         return;
     }
+    const loginTiming = window.YgoLoginTiming?.start();
     // 다른 계정의 조회·보유 정보가 새 계정에 노출되지 않도록 먼저 분리한다.
     applyServiceAuthState(null);
     try {
-        const status = await getServiceRegistrationStatus(user, revision);
+        const status = await (loginTiming ? loginTiming.measure('registration_gate', () => getServiceRegistrationStatus(user, revision)) : getServiceRegistrationStatus(user, revision));
         if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return;
         if (!status?.success || typeof status.registered !== 'boolean') throw new Error('가입 상태 조회 실패');
+        const waitForUi = () => window.YgoAuthBootstrap?.whenUiReady() || serviceUiReady;
+        await (loginTiming ? loginTiming.measure('ui_ready_wait', waitForUi) : waitForUi());
+        if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return;
         setServiceLoginPending(false);
         M.Modal.getInstance(document.getElementById('auth-modal'))?.close();
         if (status.registered) {
-            applyServiceAuthState(user);
+            if (status.initialAccount && status.initialAccount.success !== true) throw new Error('계정 정보 조회 실패');
+            applyServiceAuthState(user, status.initialData, status.initialAccount);
         } else {
+            loginTiming?.finish('signup_required');
             applyServiceAuthState(null);
             pendingRegistrationUser = user;
             pendingConsentVersions = status.consentVersions;
@@ -10294,6 +10591,7 @@ async function handleFirebaseAuthState(user) {
         }
     } catch (error) {
         if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return;
+        loginTiming?.finish('failed');
         setServiceLoginPending(false);
         applyServiceAuthState(null);
         if (error.code === 'AUTH_INVALID') {
@@ -10303,7 +10601,7 @@ async function handleFirebaseAuthState(user) {
             });
         } else {
             pendingServiceAuthUser = user;
-            showToast('로그인을 완료하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
+            serviceLoginFailureCode = error.code === 'APPCHECK_CONFIGURATION_REJECTED' ? error.code : null;
             toggleAuthModal(true);
         }
     } finally {
@@ -10380,10 +10678,14 @@ function cancelServiceRegistration() {
 }
 
 function initFirebaseAuth() {
+    if (serviceAuthStarted) return;
     if (typeof firebase === 'undefined' || !firebase.auth) {
         setTimeout(initFirebaseAuth, 200); // SDK 로드 대기
         return;
     }
+
+    serviceAuthStarted = true;
+    window.YgoLoginTiming?.mark('service_auth_start');
 
     // [신규 웜업] 사용자 인증 진행 중 인벤토리 인스턴스를 선제 부팅(Hot-Start)시키기 위한 비동기 핑 — 대기(await)하지 않음
     if (typeof callApi === 'function') {
@@ -10398,7 +10700,7 @@ function initFirebaseAuth() {
     }
 
     // 리다이렉트 로그인 복귀 시 발생하는 예외 처리
-    firebase.auth().getRedirectResult().catch(function (error) {
+    (window.YgoAuthBootstrap?.redirect || firebase.auth().getRedirectResult()).catch(function (error) {
         reportAuthFailure('redirect-result', error);
         if (!registrationCheckPending && serviceLoginPending) setServiceLoginPending(false);
         showToast('로그인하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
@@ -10443,12 +10745,19 @@ function initFirebaseAuth() {
     handleTooltipDisplay();
 }
 
-function applyServiceAuthState(user) {
+function applyServiceAuthState(user, initialData, initialAccount) {
     window.isAuthInitialized = true;
     const previousOwner = UserStore.user?.uid || null;
     UserStore.user = user;
     loadUserTheme(undefined, true);
     if (previousOwner !== (user?.uid || null)) {
+        userDataSyncSerial++;
+        userDataSyncTask = null;
+        UserStore.accountRevision++;
+        UserStore.isUserDataSyncDone = false;
+        UserStore.inventorySyncStatus = 'idle';
+        UserStore.claimsSyncStatus = 'idle';
+        globalThis.YgoMembershipClaimsSync?.cancel();
         cardCacheInstance.clearAll();
         clearTimeout(inventoryMigrationTimer);
         delete UserStore.settings.membership;
@@ -10475,7 +10784,10 @@ function applyServiceAuthState(user) {
         if (homeUnauthContent) homeUnauthContent.hidden = true;
         if (homeAuthContent) homeAuthContent.hidden = false;
 
-        loadUserData();
+        if (initialAccount) applyAccountData(initialAccount);
+        // 구버전 서버의 본문 없음/통합 본문은 종전 로딩 경로로 호환한다.
+        const splitSync = !!initialAccount;
+        loadUserData(initialData, { background: splitSync });
 
         // 로그인 성공 시 로그인 모달/바텀시트 자동으로 닫기
         const modalId = 'auth-modal';
@@ -10498,6 +10810,7 @@ function applyServiceAuthState(user) {
 
         // [추가] Guest 사용자는 추가 동기화 대기 없음
         UserStore.isUserDataSyncDone = true;
+        setInventorySyncStatus('idle');
         checkAndHideInitialLoading();
 
         updateProviderUI('google', false, 0);
@@ -10711,49 +11024,133 @@ async function getYoutubeAccessTokenViaSecondaryApp() {
 }
 
 let youtubeMembershipVerificationPending = false;
+// 준비 응답은 권한 증명이 아니다. 같은 계정/revision의 짧은 연결 준비만 공유한다.
+const membershipPreparationTasks = new Map();
+function beginMembershipPreparation(provider) {
+    const targets = provider === 'youtube'
+        ? ['startYoutubeMembershipVerification', 'verifyYoutubeMembership', 'getUserData']
+        : ['verifyDiscordMembership', 'getUserData'];
+    const revision = authStateRevision, uid = UserStore.user?.uid;
+    const current = () => uid && authStateRevision === revision && UserStore.user?.uid === uid
+        && firebase.auth().currentUser?.uid === uid;
+    const clock = () => globalThis.performance?.now?.() ?? Date.now();
+    const pending = new Map();
+    for (const name of targets) {
+        const previous = membershipPreparationTasks.get(name);
+        if (current() && previous?.uid === uid && previous.revision === revision
+            && !previous.failed && clock() < previous.deadline) {
+            pending.set(name, previous.promise);
+            continue;
+        }
+        if (!current()) { pending.set(name, Promise.resolve(false)); continue; }
+        const prepared = { uid, revision, deadline: clock() + 60000, failed: false };
+        prepared.promise = Promise.resolve().then(() => current()
+            ? callApi(name, { warmup: 'true' }, { warmup: 'true', membershipPrepare: true }) : null)
+            .then(result => {
+                const ready = current() && result?.success === true && result.membershipPreparation?.version === 1
+                    && result.membershipPreparation?.target === name && result.membershipPreparation?.ready === true;
+                prepared.failed = !ready;
+                return !!ready;
+            }, () => { prepared.failed = true; return false; });
+        membershipPreparationTasks.set(name, prepared);
+        pending.set(name, prepared.promise);
+    }
+    return { wait: name => pending.get(name) || Promise.resolve(false) };
+}
+
+// 계정/설정 진입 시만 시작한다. 반복 타이머·권한 결과 캐시·자동 OAuth는 사용하지 않는다.
+let membershipWorkerPreparationTask;
+function beginMembershipWorkerPreparation() {
+    const uid = UserStore.user?.uid, revision = authStateRevision;
+    if (!uid || firebase.auth().currentUser?.uid !== uid) return;
+    const now = globalThis.performance?.now?.() ?? Date.now();
+    if (membershipWorkerPreparationTask?.uid === uid && membershipWorkerPreparationTask.revision === revision
+        && now < membershipWorkerPreparationTask.deadline) return;
+    // 성공/실패 모두 짧게 제한한다. 업무에서 기다리거나 권한 근거로 사용하지 않는다.
+    membershipWorkerPreparationTask = { uid, revision, deadline: now + 60000 };
+    Promise.resolve().then(() => UserStore.user?.uid === uid && authStateRevision === revision
+        && firebase.auth().currentUser?.uid === uid
+        ? callApi('getUserData', { warmup: 'true' },
+            { warmup: 'true', membershipPrepare: true, workerPrepare: true }) : null).catch(() => {});
+}
+function prepareMembershipEntry() {
+    if (!UserStore.user || UserStore.inventorySyncStatus !== 'ready'
+        || typeof discordMembershipStarting !== 'undefined' && discordMembershipStarting
+        || youtubeMembershipVerificationPending
+        || typeof discordMembershipHeaderState !== 'undefined' && discordMembershipHeaderState?.phase === 'pending') return;
+    beginMembershipPreparation('youtube');
+    beginMembershipPreparation('discord');
+    beginMembershipWorkerPreparation();
+    prepareDiscordMembershipStart();
+}
+
 async function startYoutubeMembershipVerify() {
+    if (!requireInventoryReady()) return;
     const user = UserStore.user;
     if (!user) {
         showToast('로그인이 필요합니다.', 'toast-warn');
         return;
     }
-    if (youtubeMembershipVerificationPending) return;
+    if (youtubeMembershipVerificationPending
+        || typeof discordMembershipStarting !== 'undefined' && discordMembershipStarting
+        || typeof discordMembershipHeaderState !== 'undefined' && discordMembershipHeaderState?.phase === 'pending') return;
     youtubeMembershipVerificationPending = true;
+    let headerCompleted = false;
+    setDiscordMembershipHeader('pending', user.uid);
     const revision = authStateRevision;
     const current = () => authStateRevision === revision && UserStore.user?.uid === user.uid
         && firebase.auth().currentUser?.uid === user.uid;
     try {
-        showToast('유튜브 계정을 연결하는 중입니다...', 'toast-info');
         // 팝업은 클릭 직후 실행한다. 시작 요청을 먼저 기다리면 Safari에서 차단될 수 있다.
+        const popup = getYoutubeAccessTokenViaSecondaryApp();
+        const preparation = beginMembershipPreparation('youtube');
         const [accessToken, challenge] = await Promise.all([
-            getYoutubeAccessTokenViaSecondaryApp(),
+            popup,
             callApi('startYoutubeMembershipVerification', {}, {})
         ]);
         if (!current()) throw Object.assign(new Error(), { code: 'YOUTUBE_SESSION_CHANGED' });
         if (!accessToken || !challenge?.success || challenge.uid !== user.uid || !challenge.verificationId) {
             throw Object.assign(new Error(), { code: 'YOUTUBE_PROOF_REQUIRED' });
         }
+        if (!current()) throw Object.assign(new Error(), { code: 'YOUTUBE_SESSION_CHANGED' });
         const res = await callApi('verifyYoutubeMembership', {}, { verificationId: challenge.verificationId, accessToken });
         if (!current()) throw Object.assign(new Error(), { code: 'YOUTUBE_SESSION_CHANGED' });
         if (!res?.success || res.uid !== user.uid) {
             showToast(res?.message || '멤버십을 확인하지 못했습니다. 다시 인증해 주세요.', 'toast-error');
             return;
         }
-        if (res.membershipClaims) {
-            await refreshMembershipClaims(user, res);
-            if (!current()) return;
-        }
-        showToast(res.isMemberActive ? '유튜브 멤버십 인증에 성공했습니다!'
-            : '유튜브 채널이 멤버십 회원 목록에 등록되어 있지 않습니다.', res.isMemberActive ? 'toast-success' : 'toast-warn');
+        const providerActive = res.sourceMembership?.status === 'active';
+        if (!providerActive) showToast('유튜브 채널이 멤버십 회원 목록에 등록되어 있지 않습니다.', 'toast-warn');
         if (!UserStore.settings) UserStore.settings = {};
         UserStore.sourceMembership = res.sourceMembership || null;
         UserStore.settings.membership = res.membership;
         applyMembershipStatus(res.membership);
-        updateAuthUI(UserStore.user);
         const modalInstance = M.Modal.getInstance(document.getElementById('membership-auth-modal'));
         if (modalInstance) modalInstance.close();
         resetMembershipVerifyModal();
-        if (typeof loadUserData === 'function') loadUserData();
+        setDiscordMembershipHeader('complete', user.uid);
+        headerCompleted = true;
+        globalThis.YgoAuthenticationResult?.displayed?.('youtube');
+        let claimsReady = false;
+        if (res.membershipClaims) {
+            claimsReady = await refreshMembershipClaims(user, res);
+            if (!current()) return;
+        }
+        if (UserStore.inventorySyncStatus === 'ready') {
+            // 같은 계정의 준비된 보유 정보는 인증 결과로 무효화되지 않는다.
+            if (res.membershipClaims) {
+                UserStore.claimsSyncStatus = claimsReady ? 'ready' : 'pending';
+                followMembershipClaims(user);
+                setInventorySyncStatus('ready');
+            }
+        } else {
+            await preparation.wait('getUserData');
+            if (!current()) throw Object.assign(new Error(), { code: 'YOUTUBE_SESSION_CHANGED' });
+            // 인벤토리가 없거나 실패/로딩 상태면 기존 전체 동기화와 화면 가림을 유지한다.
+            if (typeof loadUserData === 'function'
+                && await loadUserData(undefined, { membershipClaimsReadOnly: true }) === false) return;
+        }
+        if (!current()) throw Object.assign(new Error(), { code: 'YOUTUBE_SESSION_CHANGED' });
     } catch (error) {
         const cancelled = ['auth/popup-closed-by-user', 'auth/cancelled-popup-request', 'auth/user-cancelled', 'auth/access-denied'].includes(error.code);
         if (!cancelled) showToast(error.code === 'YOUTUBE_SESSION_CHANGED'
@@ -10761,6 +11158,7 @@ async function startYoutubeMembershipVerify() {
             : '유튜브 인증을 완료하지 못했습니다. 계정과 승인한 권한을 확인하고 다시 시도해 주세요.', 'toast-error');
     } finally {
         youtubeMembershipVerificationPending = false;
+        if (!headerCompleted) setDiscordMembershipHeader('idle');
     }
 }
 
@@ -10878,6 +11276,8 @@ function renderLinkedAccounts(user) {
         }
     }
 
+    if (typeof renderDiscordMembershipHeader === 'function') renderDiscordMembershipHeader();
+
     // 환경설정 페이지 계정 카드 표시 제어
     const infoCard = getAccountCardElement();
     if (infoCard) {
@@ -10985,6 +11385,7 @@ function confirmNicknameEdit() {
  */
 async function updateNickname(newNickname) {
     if (!UserStore.user) return;
+    UserStore.accountRevision++;
     
     try {
         // Firestore 직접 조작 대신 신설된 updateNickname API 엔드포인트 호출
@@ -10993,7 +11394,7 @@ async function updateNickname(newNickname) {
         if (res && res.success) {
             showToast('닉네임이 성공적으로 변경되었습니다.', 'toast-main');
             toggleNicknameEdit(false);
-            loadUserData();
+            loadUserData(undefined, { background: true, force: true });
         } else {
             showToast(res?.message || '닉네임 변경에 실패했습니다.', 'toast-alert');
         }
@@ -11049,7 +11450,9 @@ function toggleAuthModal(showGuide = false) {
     if (guide) {
         guide.hidden = !showGuide && !pendingServiceAuthUser;
         guide.textContent = pendingServiceAuthUser
-            ? '로그인을 완료하지 못했습니다. 다시 시도해 주세요.'
+            ? (serviceLoginFailureCode === 'APPCHECK_CONFIGURATION_REJECTED'
+                ? (IS_LOCAL_DEV ? '로컬 앱 인증 설정이 거부되었습니다. 현재 브라우저의 디버그 토큰 등록을 확인해 주세요.' : '앱 인증 설정을 확인하지 못했습니다. 관리자에게 문의해 주세요.')
+                : '로그인을 완료하지 못했습니다. 다시 시도해 주세요.')
             : '로그인 후 이용 가능합니다.';
     }
     if (introduction) introduction.hidden = showGuide || !!pendingServiceAuthUser;
@@ -11092,6 +11495,16 @@ async function retryServiceLoginConfirmation() {
     }
 }
 
+function getServiceSignInMode(providerName) {
+    if (IS_LOCAL_DEV) return 'popup';
+    const nav = typeof navigator === 'undefined' ? {} : navigator;
+    const ua = nav.userAgent || '';
+    const mobile = nav.userAgentData?.mobile === true
+        || /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(ua)
+        || (/Macintosh/i.test(ua) && nav.maxTouchPoints > 1);
+    return providerName === 'google' && !mobile ? 'popup' : 'redirect';
+}
+
 async function signInWithProvider(providerName) {
     if (pendingServiceAuthUser) return retryServiceLoginConfirmation();
     const btn = document.getElementById(providerName === 'google' ? 'google-login-btn' : 'twitter-login-btn');
@@ -11101,12 +11514,29 @@ async function signInWithProvider(providerName) {
     loginInProgress = true;
     setServiceLoginPending(true);
     toggleLoginBtn();
+    let mode = getServiceSignInMode(providerName);
     try {
-        if (IS_LOCAL_DEV) await firebase.auth().signInWithPopup(provider);
-        else await firebase.auth().signInWithRedirect(provider);
+        window.YgoLoginTiming?.provider(mode);
+        if (mode === 'popup') {
+            const popupTiming = providerName === 'google' ? window.YgoLoginTiming?.beginPopup?.() : undefined;
+            try {
+                // 사용자 클릭의 활성 상태를 유지하도록 팝업 앞에서 비동기 준비를 기다리지 않는다.
+                const popupPromise = firebase.auth().signInWithPopup(provider);
+                popupTiming?.returned();
+                await popupPromise;
+                popupTiming?.settled(true);
+            } catch (error) {
+                popupTiming?.settled(false);
+                if (IS_LOCAL_DEV || providerName !== 'google' || error?.code !== 'auth/popup-blocked') throw error;
+                mode = 'redirect';
+                window.YgoLoginTiming?.provider(mode, true);
+                await firebase.auth().signInWithRedirect(provider);
+            }
+        } else await firebase.auth().signInWithRedirect(provider);
         // 인증 결과 반환만으로 로딩을 닫지 않는다. 최종 결과는 onAuthStateChanged에서 처리한다.
     } catch (error) {
-        reportAuthFailure(IS_LOCAL_DEV ? 'sign-in-popup' : 'sign-in-redirect', error);
+        window.YgoLoginTiming?.cancelProvider?.();
+        reportAuthFailure(mode === 'popup' ? 'sign-in-popup' : 'sign-in-redirect', error);
         if (!registrationCheckPending) setServiceLoginPending(false);
         showToast('로그인하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
     } finally {
@@ -11136,80 +11566,288 @@ function openMembershipAuthModal(source = 'header') {
     if (youtubeBadge) youtubeBadge.hidden = !(active && linkedMembership.type === 'csv');
 
     const modal = document.getElementById('membership-auth-modal');
-    if (modal) getAppModal(modal).open();
+    if (modal) {
+        getAppModal(modal).open();
+        prepareMembershipEntry();
+    }
 }
 
 /**
  * 디스코드 멤버십 인증 시작
  */
 let discordMembershipStarting = false;
+let discordMembershipStartPreparation = null;
+const discordStartClock = () => globalThis.performance?.now?.() ?? Date.now();
+
+// 권한 결과가 아닌 짧은 일회용 OAuth 시작 상태만 메모리에서 공유한다.
+// 모달 재열기/빠른 클릭은 같은 요청을 사용하며 저장소·로그에는 주소를 남기지 않는다.
+function prepareDiscordMembershipStart() {
+    const uid = UserStore.user?.uid, revision = authStateRevision, redirectUri = location.origin + '/';
+    if (!uid || firebase.auth().currentUser?.uid !== uid) return null;
+    const previous = discordMembershipStartPreparation;
+    if (previous && previous.uid === uid && previous.revision === revision
+        && previous.redirectUri === redirectUri && !previous.failed && !previous.claimed
+        && discordStartClock() < previous.deadline) return previous;
+    const prepared = { uid, revision, redirectUri, deadline: discordStartClock() + 270000,
+        result: null, claimed: false, failed: false };
+    discordMembershipStartPreparation = prepared;
+    prepared.promise = (async () => {
+        const result = await callApi('startDiscordMembershipVerification', {}, { redirectUri });
+        if (discordMembershipStartPreparation !== prepared || authStateRevision !== revision
+            || UserStore.user?.uid !== uid || firebase.auth().currentUser?.uid !== uid
+            || discordStartClock() >= prepared.deadline) throw new Error('Discord 준비가 만료되었습니다.');
+        if (!result?.success || result.uid !== uid || !/^[a-f0-9]{64}$/.test(result.verificationId)) throw new Error('Discord 준비 응답이 올바르지 않습니다.');
+        const url = new URL(result.authorizationUrl);
+        if (url.origin !== 'https://discord.com' || url.pathname !== '/oauth2/authorize'
+            || url.searchParams.getAll('state').length !== 1 || url.searchParams.get('state') !== result.verificationId
+            || url.searchParams.getAll('redirect_uri').length !== 1 || url.searchParams.get('redirect_uri') !== redirectUri) throw new Error('Discord 준비 주소가 올바르지 않습니다.');
+        prepared.result = { ...result, authorizationUrl: url.href };
+        prepared.readyAt = discordStartClock();
+        return prepared.result;
+    })();
+    // 모달을 닫거나 YouTube를 선택해도 실패한 선행 요청을 반드시 회수한다.
+    prepared.promise.catch(() => { prepared.failed = true; });
+    beginMembershipPreparation('discord');
+    return prepared;
+}
+// 전역 계정 버튼의 대기/완료 표시는 YouTube와 Discord가 함께 사용한다.
+let discordMembershipHeaderState = null;
+let discordMembershipHeaderTimer = null;
+let discordMembershipWidthAnimation = null;
+
+function animateDiscordMembershipWidth(button, fromWidth) {
+    const old = discordMembershipWidthAnimation;
+    discordMembershipWidthAnimation = null;
+    old?.cancel();
+    button.classList.remove('is-membership-resizing');
+    const toWidth = button.getBoundingClientRect().width;
+    if (typeof button.animate !== 'function' || Math.abs(toWidth - fromWidth) < 0.5
+        || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    button.classList.add('is-membership-resizing');
+    const animation = button.animate([{ width: `${fromWidth}px` }, { width: `${toWidth}px` }],
+        { duration: 220, easing: 'ease-out' });
+    discordMembershipWidthAnimation = animation;
+    const finish = () => {
+        if (discordMembershipWidthAnimation !== animation) return;
+        discordMembershipWidthAnimation = null;
+        button.classList.remove('is-membership-resizing');
+    };
+    animation.finished.then(finish, finish);
+}
+
+function setDiscordMembershipHeader(phase, uid) {
+    if (discordMembershipHeaderTimer !== null) clearTimeout(discordMembershipHeaderTimer);
+    discordMembershipHeaderTimer = null;
+    discordMembershipHeaderState = phase === 'pending' || phase === 'complete' ? { phase, uid } : null;
+    if (!discordMembershipHeaderState) {
+        const button = document.getElementById?.('auth-capsule-btn');
+        const icon = button?.querySelector('.auth-icon');
+        const text = document.getElementById?.('auth-btn-text');
+        const fromWidth = button?.getBoundingClientRect().width;
+        if (button) {
+            delete button.dataset.membershipVerification;
+            button.removeAttribute('aria-busy');
+            button.setAttribute('aria-label', UserStore.user ? '내 계정: 환경설정으로 이동' : '로그인');
+        }
+        if (icon) {
+            icon.classList.remove('is-membership-pending');
+            icon.textContent = UserStore.user && UserStore.settings?.membership?.status === 'active' ? 'diamond' : 'account_circle';
+        }
+        if (text) { text.textContent = UserStore.user ? '내 계정' : '로그인'; text.removeAttribute('aria-live'); }
+        if (button) animateDiscordMembershipWidth(button, fromWidth);
+        syncMembershipHeader();
+        return;
+    }
+    renderDiscordMembershipHeader();
+    if (phase === 'complete') {
+        const completed = discordMembershipHeaderState;
+        discordMembershipHeaderTimer = setTimeout(() => {
+            if (discordMembershipHeaderState === completed) setDiscordMembershipHeader('idle');
+        }, 5000);
+    }
+}
+
+function renderDiscordMembershipHeader() {
+    const state = discordMembershipHeaderState;
+    if (!state) return;
+    const currentUid = UserStore.user?.uid || firebase.auth().currentUser?.uid;
+    if (currentUid && currentUid !== state.uid || state.phase === 'complete' && UserStore.user?.uid !== state.uid
+        || !currentUid && window.isAuthInitialized && !registrationCheckPending) {
+        setDiscordMembershipHeader('idle');
+        return;
+    }
+    const button = document.getElementById?.('auth-capsule-btn');
+    if (!button) return;
+    const pending = state.phase === 'pending';
+    const label = pending ? '멤버십 인증 중' : '멤버십 인증 완료';
+    const text = document.getElementById?.('auth-btn-text');
+    const labelChanged = text?.textContent !== label || button.dataset.membershipVerification !== state.phase;
+    const fromWidth = labelChanged ? button.getBoundingClientRect().width : null;
+    button.dataset.membershipVerification = state.phase;
+    button.setAttribute('aria-busy', String(pending));
+    button.setAttribute('aria-label', label);
+    const icon = button.querySelector('.auth-icon');
+    if (icon) {
+        icon.classList.toggle('is-membership-pending', pending);
+        icon.textContent = pending ? 'sync' : UserStore.settings?.membership?.status === 'active' ? 'diamond' : 'account_circle';
+    }
+    if (text) { text.setAttribute('aria-live', 'polite'); text.textContent = label; }
+    if (labelChanged) animateDiscordMembershipWidth(button, fromWidth);
+}
+
 async function startDiscordMembershipVerify() {
+    if (!requireInventoryReady()) return;
     const user = UserStore.user;
     if (!user) { showToast('로그인이 필요합니다.', 'toast-warn'); return; }
-    if (discordMembershipStarting) return;
+    if (discordMembershipStarting || typeof youtubeMembershipVerificationPending !== 'undefined' && youtubeMembershipVerificationPending) return;
     discordMembershipStarting = true;
+    setDiscordMembershipHeader('pending', user.uid);
     const revision = authStateRevision;
+    const clickedAt = discordStartClock();
+    let popup, navigating = false;
     try {
-        const redirectUri = location.origin + '/';
-        const res = await callApi('startDiscordMembershipVerification', {}, { redirectUri });
-        if (revision !== authStateRevision || UserStore.user?.uid !== user.uid) throw new Error();
-        if (!res?.success || res.uid !== user.uid || !/^[a-f0-9]{64}$/.test(res.verificationId)) throw new Error();
-        const url = new URL(res.authorizationUrl);
-        if (url.origin !== 'https://discord.com' || url.pathname !== '/oauth2/authorize'
-            || url.searchParams.get('state') !== res.verificationId || url.searchParams.get('redirect_uri') !== redirectUri) throw new Error();
-        sessionStorage.setItem('discord_membership_verification', JSON.stringify({ uid: user.uid, state: res.verificationId, expiresAt: Date.now() + 300000 }));
+        const prepared = prepareDiscordMembershipStart();
+        if (!prepared) throw new Error();
+        const wasPrepared = !!prepared.result;
+        // await 전에 사용자 클릭 안에서 연다. 준비됐으면 안내 문서를 요청하지 않는다.
+        popup = globalThis.YgoDiscordPopup?.open?.({ prepared: wasPrepared });
+        prepared.claimed = true;
+        const res = prepared.result || await prepared.promise;
+        if (revision !== authStateRevision || UserStore.user?.uid !== user.uid
+            || firebase.auth().currentUser?.uid !== user.uid || discordStartClock() >= prepared.deadline) throw new Error();
+        discordMembershipStartPreparation = null;
+        const pending = { uid: user.uid, state: res.verificationId,
+            expiresAt: Date.now() + Math.max(0, prepared.deadline - discordStartClock()) };
+        if (popup && popup.authorize({ authorizationUrl: res.authorizationUrl, state: pending.state, deadline: pending.expiresAt })) {
+            const navigationMs = Math.round((discordStartClock() - clickedAt) * 1000) / 1000;
+            const result = await popup.result;
+            if (revision !== authStateRevision || UserStore.user?.uid !== user.uid
+                || firebase.auth().currentUser?.uid !== user.uid || Date.now() >= pending.expiresAt) throw new Error();
+            await handleDiscordOAuthCallback({ popup: true, pending, ...result,
+                timingParams: { discordFlow: 'popup', discordStartPrepared: String(wasPrepared), discordNavigationMs: String(navigationMs) } });
+            return;
+        }
+        sessionStorage.setItem('discord_membership_verification', JSON.stringify(pending));
         sessionStorage.removeItem('discord_oauth_pending');
-        window.location.href = url.href;
-    } catch (_) { showToast('Discord 인증을 시작하지 못했습니다. 복귀 주소와 로그인 상태를 확인해 주세요.', 'toast-error'); }
-    finally { discordMembershipStarting = false; }
+        // 이동/복귀 계측에는 계정·state·주소 없이 숫자와 준비 여부만 남긴다.
+        try {
+            sessionStorage.removeItem('discord_start_timing');
+            sessionStorage.setItem('discord_start_timing', JSON.stringify({ version: 1, prepared: wasPrepared,
+                navigationMs: Math.round((discordStartClock() - clickedAt) * 1000) / 1000 }));
+        } catch (_) { /* 부가 계측 저장 실패는 OAuth 이동을 막지 않는다. */ }
+        navigating = true;
+        window.location.href = res.authorizationUrl;
+    } catch (error) {
+        navigating = false; setDiscordMembershipHeader('idle');
+        if (error?.code !== 'DISCORD_POPUP_CANCELLED') showToast('Discord 인증을 시작하지 못했습니다. 복귀 주소와 로그인 상태를 확인해 주세요.', 'toast-error');
+    }
+    finally { popup?.cancel(); if (!navigating) discordMembershipStarting = false; }
 }
 
 // Firebase 초기화뿐 아니라 서비스 가입 확인까지 완료된 계정만 사용한다.
-async function waitForDiscordServiceUser(uid) {
-    const deadline = Date.now() + 30000;
+async function waitForDiscordServiceUser(uid, expiresAt) {
+    // 복원 재시도보다 먼저 포기하지 않는다. 기존 nonce 만료 안에서만 기다린다.
+    const deadline = Math.min(Number.isFinite(expiresAt) ? expiresAt : 0, Date.now() + 300000);
     while (Date.now() < deadline) {
         const user = firebase.auth().currentUser;
-        if (user && user.uid !== uid) throw new Error();
-        if (!registrationCheckPending && UserStore.user?.uid === uid && user?.uid === uid) return user;
-        if (window.isAuthInitialized && !registrationCheckPending) throw new Error();
+        if (user && user.uid !== uid || UserStore.user && UserStore.user.uid !== uid) {
+            throw Object.assign(new Error(), { code: 'DISCORD_SESSION_CHANGED' });
+        }
+        if (!registrationCheckPending && UserStore.user?.uid === uid && user?.uid === uid
+            && UserStore.inventorySyncStatus === 'ready') return user;
+        if (window.isAuthInitialized && !registrationCheckPending
+            && (!UserStore.user || UserStore.inventorySyncStatus === 'error')) {
+            throw Object.assign(new Error(), { code: 'DISCORD_RESTORE_FAILED' });
+        }
         await new Promise(resolve => setTimeout(resolve, 50));
     }
-    throw new Error();
+    throw Object.assign(new Error(), { code: 'DISCORD_VERIFICATION_EXPIRED' });
 }
 
-async function handleDiscordOAuthCallback() {
-    const params = new URLSearchParams(location.search);
-    const raw = sessionStorage.getItem('discord_membership_verification');
-    if (!raw && !sessionStorage.getItem('discord_oauth_pending')) return;
-    if (!params.has('code') && !params.has('error')) return;
-    sessionStorage.removeItem('discord_membership_verification');
-    sessionStorage.removeItem('discord_oauth_pending');
-    const code = params.get('code'), state = params.get('state');
-    params.delete('code'); params.delete('state'); params.delete('error'); params.delete('error_description');
-    const clean = new URL(location.href); clean.search = params.toString();
-    window.history.replaceState({}, document.title, clean.href);
+async function handleDiscordOAuthCallback(popupProof) {
+    const popup = popupProof?.popup === true;
+    let authenticationDisplayed = false;
+    let raw, code, state;
+    if (popup) {
+        raw = JSON.stringify(popupProof.pending); code = popupProof.code; state = popupProof.state;
+    } else {
+        const params = new URLSearchParams(location.search);
+        raw = sessionStorage.getItem('discord_membership_verification');
+        if (!raw && !sessionStorage.getItem('discord_oauth_pending')) return;
+        if (!params.has('code') && !params.has('error')) return;
+        sessionStorage.removeItem('discord_membership_verification');
+        sessionStorage.removeItem('discord_oauth_pending');
+        code = params.get('code'); state = params.get('state');
+        params.delete('code'); params.delete('state'); params.delete('error'); params.delete('error_description');
+        const clean = new URL(location.href); clean.search = params.toString();
+        window.history.replaceState({}, document.title, clean.href);
+    }
+    const trace = window.YgoLoginTiming?.recovery?.('discord');
+    const measure = (name, work) => trace ? trace.measure(name, work) : work();
     try {
         const pending = JSON.parse(raw);
-        if (!pending || pending.state !== state || pending.expiresAt <= Date.now()) throw new Error();
-        if (!code) { showToast('Discord 인증을 취소했습니다.', 'toast-info'); return; }
-        const user = await waitForDiscordServiceUser(pending.uid);
+        if (!pending || pending.state !== state || !Number.isFinite(pending.expiresAt) || pending.expiresAt <= Date.now()) {
+            throw Object.assign(new Error(), { code: 'DISCORD_VERIFICATION_EXPIRED' });
+        }
+        if (!code) { trace?.finish('cancelled'); showToast('Discord 인증을 취소했습니다.', 'toast-info'); return; }
+        setDiscordMembershipHeader('pending', pending.uid);
+        const user = popup ? UserStore.user : await measure('restore_wait', () => waitForDiscordServiceUser(pending.uid, pending.expiresAt));
+        if (!user || user.uid !== pending.uid || firebase.auth().currentUser?.uid !== pending.uid) throw Object.assign(new Error(), { code: 'DISCORD_SESSION_CHANGED' });
         const revision = authStateRevision;
-        const res = await callApi('verifyDiscordMembership', {}, { code, verificationId: state });
-        if (revision !== authStateRevision || UserStore.user?.uid !== user.uid || firebase.auth().currentUser?.uid !== user.uid) throw new Error();
+        let startTiming;
+        try {
+            if (!popup) {
+                startTiming = JSON.parse(sessionStorage.getItem('discord_start_timing'));
+                sessionStorage.removeItem('discord_start_timing');
+            }
+        } catch (_) { /* 계측 부재는 인증을 막지 않는다. */ }
+        const timingParams = popup ? popupProof.timingParams : startTiming?.version === 1 && typeof startTiming.prepared === 'boolean'
+            && Number.isFinite(startTiming.navigationMs) && startTiming.navigationMs >= 0 && startTiming.navigationMs <= 300000
+            ? { discordStartPrepared: String(startTiming.prepared), discordNavigationMs: String(startTiming.navigationMs) } : {};
+        const res = await measure('membership_request', () => callApi('verifyDiscordMembership', timingParams, { code, verificationId: state }));
+        if (revision !== authStateRevision || UserStore.user?.uid !== user.uid || firebase.auth().currentUser?.uid !== user.uid) throw Object.assign(new Error(), { code: 'DISCORD_SESSION_CHANGED' });
         if (!res?.success || res.uid !== user.uid) throw new Error();
         if (!UserStore.settings) UserStore.settings = {};
+        measure('render', () => {
+            UserStore.sourceMembership = res.sourceMembership || null;
+            UserStore.settings.membership = res.membership;
+            applyMembershipStatus(res.membership);
+            const dialog = document.getElementById?.('membership-auth-modal');
+            if (dialog && typeof M !== 'undefined') {
+                M.Modal.getInstance(dialog)?.close();
+                resetMembershipVerifyModal();
+            }
+            setDiscordMembershipHeader('complete', user.uid);
+            authenticationDisplayed = true;
+            globalThis.YgoAuthenticationResult?.displayed?.('discord');
+        });
+        let claimsReady;
         if (res.membershipClaims) {
-            await refreshMembershipClaims(user, res);
-            if (revision !== authStateRevision || UserStore.user?.uid !== user.uid || firebase.auth().currentUser?.uid !== user.uid) return;
+            claimsReady = await measure('claims_sync', () => refreshMembershipClaims(user, res));
+            if (revision !== authStateRevision || UserStore.user?.uid !== user.uid || firebase.auth().currentUser?.uid !== user.uid) { trace?.finish('superseded'); return; }
         }
-        UserStore.sourceMembership = res.sourceMembership || null;
-        UserStore.settings.membership = res.membership;
-        applyMembershipStatus(res.membership);
-        updateAuthUI(UserStore.user);
-        showToast(res.isMemberActive ? '디스코드 멤버십 인증에 성공했습니다!'
-            : '디스코드 서버에 가입되어 있지 않거나 멤버십 역할이 없습니다.', res.isMemberActive ? 'toast-success' : 'toast-warn');
-        if (typeof loadUserData === 'function') loadUserData();
-    } catch (_) { showToast('Discord 인증이 만료되었거나 계정이 변경되었습니다. 다시 인증해 주세요.', 'toast-error'); }
+        // 복귀 시 가입 확인이 이미 동기화한 목록은 멤버십 변경만으로 무효화되지 않는다.
+        // 다른 작업으로 동기화가 필요해진 경우에는 기존 단일 동기화와 전체 로딩을 유지한다.
+        await measure('final_sync', async () => {
+            if (UserStore.inventorySyncStatus !== 'ready') {
+                if (!await loadUserData(undefined, { membershipClaimsReadOnly: true })) throw Object.assign(new Error(), { code: 'DISCORD_RESTORE_FAILED' });
+            } else if (res.membershipClaims) {
+                UserStore.claimsSyncStatus = claimsReady ? 'ready' : 'pending';
+                followMembershipClaims(user);
+                setInventorySyncStatus('ready');
+            }
+        });
+        if (revision !== authStateRevision || UserStore.user?.uid !== user.uid || firebase.auth().currentUser?.uid !== user.uid) { trace?.finish('superseded'); return; }
+        trace?.finish('ready');
+    } catch (error) {
+        if (!authenticationDisplayed) setDiscordMembershipHeader('idle');
+        trace?.finish('failed', error);
+        const restoreFailed = error.code === 'DISCORD_RESTORE_FAILED';
+        const appFailed = ['APPCHECK_UNAVAILABLE', 'APPCHECK_CONFIGURATION_REJECTED', 'APPCHECK_REQUIRED', 'APPCHECK_INVALID'].includes(error.code);
+        showToast(restoreFailed ? '서비스 로그인을 복원하지 못했습니다. 로그인 상태를 확인한 뒤 다시 인증해 주세요.'
+            : appFailed ? '앱 인증을 준비하지 못했습니다. 잠시 후 다시 인증해 주세요.'
+                : 'Discord 인증이 만료되었거나 계정이 변경되었습니다. 다시 인증해 주세요.', 'toast-error');
+    }
 }
 
 /**
@@ -11312,6 +11950,7 @@ function deleteAccount() {
  * 데이터 삭제 확인 모달 오픈
  */
 function openDataClearModal() {
+    if (!requireInventoryReady()) return;
     if (dataClearBusy || migrationState.busy || !checkAuthBeforeAction()) return;
     const message = document.getElementById('data-clear-status-msg');
     message.textContent = '';
@@ -11320,6 +11959,7 @@ function openDataClearModal() {
 }
 
 async function executeDataClear() {
+    if (!requireInventoryReady()) return;
     if (dataClearBusy || migrationState.busy || !checkAuthBeforeAction()) return;
     const user = UserStore.user;
     const message = document.getElementById('data-clear-status-msg');
@@ -11782,7 +12422,7 @@ function handleMigrationFileUpload(event) {
     document.getElementById('mig-file-name').textContent = file.name;
     setMigrationMessage('파일을 확인하는 중…');
     const reader = migrationState.reader = new FileReader();
-    reader.onload = event => {
+    reader.onload = async event => {
         if (!current()) return;
         try {
             const bytes = new Uint8Array(event.target.result);
@@ -11793,9 +12433,17 @@ function handleMigrationFileUpload(event) {
                 catch (_) { throw new Error('UTF-8 형식의 CSV 파일을 선택해주세요.'); }
                 rows = AppDataTransfer.parseCsv(decoded);
             } else if (/\.xlsx?$/i.test(file.name)) {
-                const workbook = XLSX.read(bytes, { type: 'array' });
+                // 이전 HTML에 이미 준비된 XLSX도 같은 API로 사용할 수 있다.
+                const spreadsheet = typeof window.AppSpreadsheet?.load === 'function'
+                    ? await window.AppSpreadsheet.load() : window.XLSX;
+                if (!current()) return;
+                if (typeof spreadsheet?.read !== 'function' || typeof spreadsheet?.utils?.sheet_to_json !== 'function') {
+                    throw Object.assign(new Error('Excel 파일 도구를 준비하지 못했습니다. 페이지를 새로고침한 뒤 다시 선택해주세요.'),
+                        { code: 'SPREADSHEET_LOAD_FAILED' });
+                }
+                const workbook = spreadsheet.read(bytes, { type: 'array' });
                 if (!workbook.SheetNames.includes('MyCard')) throw new Error('"MyCard" 시트를 찾을 수 없습니다.');
-                rows = XLSX.utils.sheet_to_json(workbook.Sheets.MyCard, { header: 1 });
+                rows = spreadsheet.utils.sheet_to_json(workbook.Sheets.MyCard, { header: 1 });
             } else throw new Error('Excel 또는 UTF-8 CSV 파일을 선택해주세요.');
             const preview = AppDataTransfer.parseRows(rows);
             pendingMigrationData = preview.data;
@@ -11803,8 +12451,9 @@ function handleMigrationFileUpload(event) {
             setMigrationMessage(migrationPreviewMessage(preview), preview.legacyQuantity || preview.skippedZeroCount ? 'color-text-001' : 'color-text-theme', 'check_circle');
             document.getElementById('migration-exec-btn').disabled = false;
         } catch (error) {
+            if (!current()) return;
             pendingMigrationData = null;
-            const message = error.message.startsWith('가져올 카드가 없습니다.')
+            const message = error.code === 'SPREADSHEET_LOAD_FAILED' || error.message.startsWith('가져올 카드가 없습니다.')
                 ? error.message : '양식에 맞는 파일을 골라주세요.';
             setMigrationMessage(message, 'color-text-red', 'error');
         } finally { if (current()) migrationState.reader = null; }
@@ -11862,6 +12511,7 @@ function validateMigrationLink() {
 }
 
 async function executeMigration() {
+    if (!requireInventoryReady()) return;
     if (migrationState.busy || dataClearBusy || document.getElementById('migration-exec-btn').disabled) return;
     if (!checkAuthBeforeAction()) return;
     if (migrationState.owner !== UserStore.user) {
@@ -11881,7 +12531,10 @@ async function executeMigration() {
     setMigrationMessage('카드 데이터를 가져오는 중입니다. 완료될 때까지 창을 닫을 수 없습니다.');
     let result;
     try {
-        result = await callApi(fileMode ? 'migrateFromData' : 'migrateFromSheet', {}, payload);
+        if (!window.YgoImportAttempt) throw new Error('가져오기 도구를 준비하지 못했습니다. 페이지를 새로고침해 주세요.');
+        const action = fileMode ? 'migrateFromData' : 'migrateFromSheet';
+        result = await window.YgoImportAttempt.execute({ uid: user.uid, source: fileMode ? 'file' : 'sheet', payload,
+            send: (query, body) => callApi(action, query, body), isCurrent: () => UserStore.user === user });
         if (UserStore.user === user && !result?.success) throw new Error(result?.message || '가져오기에 실패했습니다.');
     } catch (error) {
         if (UserStore.user === user) {
@@ -11943,7 +12596,7 @@ function checkAuthBeforeAction() {
 
 
 
-// Firebase 인증 초기화(initFirebaseAuth)는 initApp에서 통합 호출됩니다.
+// 모든 선언과 DOM 파싱이 끝난 defer 실행에서 인증 조회를 시작한다. 화면 적용은 준비 장벽을 따른다.
 
 /**
  * 대시보드 통계 섹션 더보기/접기 토글
@@ -11999,6 +12652,7 @@ function toggleStatSection(btn) {
 })();
 
 function updateTotals() {
+    if (UserStore.user && UserStore.inventorySyncStatus !== 'ready') { setInventorySyncStatus(UserStore.inventorySyncStatus); return; }
     const totalCount = cardCacheInstance.getAmount();
     const totalElem = document.getElementById('total-cards');
     if (totalElem) totalElem.innerText = totalCount;
@@ -12096,6 +12750,7 @@ window.addEventListener('load', checkUrlHashForModals);
  * 데이터 내보내기 모달 열기
  */
 function openExportModal() {
+    if (!requireInventoryReady()) return;
     if (!checkAuthBeforeAction()) return;
     const qtyElem = document.getElementById('export-total-qty');
     if (qtyElem) {
@@ -12110,6 +12765,7 @@ function openExportModal() {
  * 보유 인벤토리 데이터를 CSV 파일로 내보내기
  */
 function exportInventoryToCSV() {
+    if (!requireInventoryReady()) return;
     if (!checkAuthBeforeAction()) return;
     const data = cardCacheInstance.getInventory();
     if (!data || data.length === 0) {
@@ -12646,16 +13302,16 @@ function getMobileCardHtml(idx, nextNum, data) {
     `;
 
     const bottomBadges = isMove ? `
-        <span class="card-info-badge illust">${illust || '미선택'}</span>
-        <span class="card-info-badge rarity">${rarity || '미선택'}</span>
-        <span class="card-info-badge location">${loc || '보관 위치'}</span>
+        <span class="card-info-badge illust">${escapeHTML(illust || '미선택')}</span>
+        <span class="card-info-badge rarity">${escapeHTML(rarity || '미선택')}</span>
+        <span class="card-info-badge location">${escapeHTML(loc || '보관 위치')}</span>
         <i class="material-icons loc-arrow" style="font-size:0.8rem; color:var(--text-muted); align-self:center; margin:0 -2px;">arrow_forward</i>
-        <span class="card-info-badge location to-loc">${to || '이동 위치'}</span>
+        <span class="card-info-badge location to-loc">${escapeHTML(to || '이동 위치')}</span>
         <span class="card-info-badge qty">${qty !== null ? qty + '장' : '수량'}</span>
     ` : `
-        <span class="card-info-badge illust">${illust || '미선택'}</span>
-        <span class="card-info-badge rarity">${rarity || '미선택'}</span>
-        <span class="card-info-badge location">${loc || '보관 위치'}</span>
+        <span class="card-info-badge illust">${escapeHTML(illust || '미선택')}</span>
+        <span class="card-info-badge rarity">${escapeHTML(rarity || '미선택')}</span>
+        <span class="card-info-badge location">${escapeHTML(loc || '보관 위치')}</span>
         <span class="card-info-badge qty">${qty !== null ? qty + '장' : '수량'}</span>
     `;
 
@@ -12664,8 +13320,8 @@ function getMobileCardHtml(idx, nextNum, data) {
             <div class="card-row-top">
                 <span class="card-num-badge">${nextNum}</span>
                 <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
-                <span class="card-title-text" onclick="openEditBottomSheet(${idx})">${displayName}</span>
-                <span class="card-code-text" onclick="openEditBottomSheet(${idx})">${cardNo || '미입력'}</span>
+                <span class="card-title-text" onclick="openEditBottomSheet(${idx})">${escapeHTML(displayName)}</span>
+                <span class="card-code-text" onclick="openEditBottomSheet(${idx})">${escapeHTML(cardNo || '미입력')}</span>
                 <div class="card-actions">
                     <button class="btn-card-action edit" onclick="openEditBottomSheet(${idx})" title="수정"><i class="material-icons">edit</i></button>
                     ${actionsHtml}
@@ -12680,7 +13336,7 @@ function getMobileCardHtml(idx, nextNum, data) {
                 <div class="sheet-form-field">
                     <label>카드 이름</label>
                     <div class="custom-select-wrapper sheet-input-box no-arrow" style="position:relative;" onclick="openSheetOverlay('name')">
-                        <input type="text" class="custom-input ${nameClass}" data-field="name" value="${data.name || ''}" placeholder="카드 이름 입력" oninput="handleCardNameInput(this)" onblur="fetchCardByName(this)" onkeydown="if(event.isComposing && (event.key==='Enter' || event.key==='Tab')) { event.preventDefault(); return; } if(this.hasAttribute('readonly') && (event.key==='Escape' || event.key==='Backspace' || event.key==='Delete')) { clearPageNameAndNo(this); event.preventDefault(); return; } if(event.key==='Enter') { this.blur(); }" autocomplete="off" readonly>
+                        <input type="text" class="custom-input ${nameClass}" data-field="name" value="${escapeHTML(data.name || '')}" placeholder="카드 이름 입력" oninput="handleCardNameInput(this)" onblur="fetchCardByName(this)" onkeydown="if(event.isComposing && (event.key==='Enter' || event.key==='Tab')) { event.preventDefault(); return; } if(this.hasAttribute('readonly') && (event.key==='Escape' || event.key==='Backspace' || event.key==='Delete')) { clearPageNameAndNo(this); event.preventDefault(); return; } if(event.key==='Enter') { this.blur(); }" autocomplete="off" readonly>
                         <i class="material-icons clear-name-btn clear-btn" onclick="clearBottomSheetField('name', event)" style="display:none; position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.25rem; color:var(--text-muted);">cancel</i>
                     </div>
                 </div>
@@ -12688,7 +13344,7 @@ function getMobileCardHtml(idx, nextNum, data) {
                 <div class="sheet-form-field">
                     <label>카드 번호</label>
                     <div class="custom-select-wrapper sheet-input-box no-arrow" style="position:relative;" onclick="openSheetOverlay('no')">
-                        <input type="text" class="custom-input ${noClass}" data-field="no" value="${cardNo}" placeholder="카드 번호 입력" oninput="handleCardNoInput(this)" onblur="fetchCardByNumber(this)" onkeydown="if(event.key==='Enter' && !this.closest('.custom-select-wrapper').classList.contains('active')) fetchCardByNumber(this)" autocomplete="off" readonly>
+                        <input type="text" class="custom-input ${noClass}" data-field="no" value="${escapeHTML(cardNo)}" placeholder="카드 번호 입력" oninput="handleCardNoInput(this)" onblur="fetchCardByNumber(this)" onkeydown="if(event.key==='Enter' && !this.closest('.custom-select-wrapper').classList.contains('active')) fetchCardByNumber(this)" autocomplete="off" readonly>
                         <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px; display:none;">arrow_drop_down</i>
                         <i class="material-icons clear-btn" onclick="clearBottomSheetField('no', event)" style="display:none; position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.25rem; color:var(--text-muted);">cancel</i>
                     </div>
@@ -12698,14 +13354,14 @@ function getMobileCardHtml(idx, nextNum, data) {
                     <div class="sheet-form-field half">
                         <label>일러스트</label>
                         <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="illust" data-type="strict" style="position:relative;" onclick="openSheetDropdownOverlay('illust')">
-                            <input type="text" class="custom-input ${illustClass}" data-field="illust" data-raw="${escapeHTML(data.illustration || '')}" value="${illust}" placeholder="일러스트" readonly>
+                            <input type="text" class="custom-input ${illustClass}" data-field="illust" data-raw="${escapeHTML(data.illustration || '')}" value="${escapeHTML(illust)}" placeholder="일러스트" readonly>
                             <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
                         </div>
                     </div>
                     <div class="sheet-form-field half">
                         <label>레어도</label>
                         <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="rare" data-type="strict" style="position:relative;" onclick="openSheetDropdownOverlay('rare')">
-                            <input type="text" class="custom-input ${rareClass}" data-field="rare" value="${data.rarity || ''}" placeholder="레어도" readonly>
+                            <input type="text" class="custom-input ${rareClass}" data-field="rare" value="${escapeHTML(data.rarity || '')}" placeholder="레어도" readonly>
                             <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
                         </div>
                     </div>
@@ -12715,14 +13371,14 @@ function getMobileCardHtml(idx, nextNum, data) {
                     <div class="sheet-form-field" style="flex: 1;">
                         <label>보관 위치</label>
                         <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="loc" data-type="${isMove || isDiscard ? 'strict' : 'free'}" style="position:relative;" onclick="openSheetOverlay('loc')">
-                            <input type="text" class="custom-input ${locClass}" data-field="loc" value="${loc}" placeholder="보관 위치" readonly>
+                            <input type="text" class="custom-input ${locClass}" data-field="loc" value="${escapeHTML(loc)}" placeholder="보관 위치" readonly>
                             <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
                         </div>
                     </div>
                     <div class="sheet-form-field" style="flex: 1; display: ${isMove ? 'block' : 'none'};">
                         <label>이동 위치</label>
                         <div class="custom-select-wrapper sheet-input-box" data-field-wrap="to" data-type="free" style="position:relative;" onclick="openSheetOverlay('to')">
-                            <input type="text" class="custom-input move-card-to" data-field="to" value="${to}" placeholder="이동 위치" readonly>
+                            <input type="text" class="custom-input move-card-to" data-field="to" value="${escapeHTML(to)}" placeholder="이동 위치" readonly>
                             <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
                         </div>
                     </div>
@@ -13101,6 +13757,7 @@ function handleDeleteLocationChange(input) {
 }
 
 async function submitDeleteLocation() {
+    if (!requireInventoryReady()) return;
     const deleteInput = document.getElementById('delete-location-input');
     if (!deleteInput) return;
 
@@ -13400,7 +14057,7 @@ function initMobileSearchListeners() {
             // 지우기 직전에 예약된 검색이 최근 검색 목록을 덮어쓰지 않도록 한다.
             if (mSearchInput.value.trim() !== val) return;
             mobileFilterAndShowDropdown(val);
-        }, 50);
+        }, 150);
 
         mSearchInput.addEventListener('input', (e) => {
             const val = e.target.value.trim();
@@ -15478,3 +16135,6 @@ window.switchFaqTab = function(tabName) {
         if (state.transition === running) finishFaqTransition(state);
     });
 };
+
+// 일반 화면·카드 캐시 준비와 독립적으로 인증/가입 조회를 시작한다.
+if (typeof firebase !== 'undefined' && firebase.auth) initFirebaseAuth();

@@ -103,7 +103,6 @@ test('이전 직후 실제 사용자 HTTP 조회·설정 API의 7열·시각·�
   const Module = require('node:module'), fs = require('node:fs'), path = require('node:path');
   const express = require('express'), repository = createRtdbUserProfileRepository({ storage: { profile: c.runtime.profile, inventory: c.runtime.inventory } });
   const { resolveAccountRole } = require('../services/membershipPolicy');
-  const filename = path.resolve(__dirname, '../routes/user.js'), loaded = new Module(filename, module);
   const mocks = {
     '../services/membershipPolicy': require('../services/membershipPolicy'),
     'firebase-functions/v2/https': { onRequest: (_, handler) => handler },
@@ -124,8 +123,16 @@ test('이전 직후 실제 사용자 HTTP 조회·설정 API의 7열·시각·�
       })() },
     '../services/membershipClaims': { syncMembershipClaims: async () => ({ status: 'pending' }) },
   };
-  loaded.require = name => { assert.ok(Object.hasOwn(mocks, name), name); return mocks[name]; };
-  loaded._compile(fs.readFileSync(filename, 'utf8'), filename);
+  const load = (relative, dependencies) => {
+    const filename = path.resolve(__dirname, '..', relative), loaded = new Module(filename, module);
+    loaded.require = name => {
+      if (name === '../services/loginUserData') return load('services/loginUserData.js', Object.fromEntries(Object.entries(dependencies).map(([key, value]) => [key.replace('../services/', './'), value]))).exports;
+      if (['../services/inventoryRequestTiming', './inventoryRequestTiming'].includes(name)) return require('../services/inventoryRequestTiming');
+      assert.ok(Object.hasOwn(dependencies, name), name); return dependencies[name];
+    };
+    loaded._compile(fs.readFileSync(filename, 'utf8'), filename); return loaded;
+  };
+  const loaded = load('routes/user.js', mocks);
   const app = express(); app.use(express.json()); app.get('/user', loaded.exports.getUserData); app.post('/settings', loaded.exports.updateUserSettings);
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   try {

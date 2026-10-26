@@ -170,7 +170,12 @@ async function httpHarness(f) {
   const path = require('node:path'), Module = require('node:module'), fs = require('node:fs');
   const load = (relative, mocks, env = {}) => {
     const filename = path.join(__dirname, '..', relative), mod = new Module(filename, module); mod.filename = filename;
-    mod.require = name => { assert.ok(Object.hasOwn(mocks, name), `예상하지 않은 의존성: ${name}`); return mocks[name]; };
+    mod.require = name => {
+      if (name === '../services/loginUserData') return load('services/loginUserData.js', Object.fromEntries(Object.entries(mocks).map(([key,value]) => [key.replace('../services/', './'), value])), env);
+      if (['../services/inventoryRequestTiming', './inventoryRequestTiming'].includes(name)) return require('../services/inventoryRequestTiming');
+      if (name === '../services/initialWriterRoute') return require('../services/initialWriterRoute');
+      assert.ok(Object.hasOwn(mocks, name), `예상하지 않은 의존성: ${name}`); return mocks[name];
+    };
     mod._compile(`const process = { env: ${JSON.stringify(env)} };\n${fs.readFileSync(filename, 'utf8')}`, filename); return mod.exports;
   };
   const selected = load('services/userProfileRepository.js', { './userProfileWriterRuntime': { getProfileWriterRepository: () => f.repository } }, { USER_PROFILE_WRITER_MODE: 'emulator' });

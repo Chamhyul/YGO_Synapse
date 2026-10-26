@@ -21,14 +21,15 @@
     <link rel="stylesheet" href="/styles/base.css?v=142-common-ui">
     <link rel="stylesheet" href="/styles/components.css?v=172-text-links">
     <link rel="stylesheet" href="/styles/layout.css?v=154-ui-structure">
-    <link rel="stylesheet" href="/styles/admin.css?v=3">
-    <script defer src="/__/firebase/10.12.0/firebase-app-compat.js"></script>
-    <script defer src="/__/firebase/10.12.0/firebase-auth-compat.js"></script>
+    <link rel="stylesheet" href="/styles/admin.css?v=4">
+    <script defer src="/__/firebase/13.0.0/firebase-app-compat.js"></script>
+    <script defer src="/__/firebase/13.0.0/firebase-auth-compat.js"></script>
     <script defer src="/__/firebase/init.js"></script>
     <script defer src="/auth-session.js?v=2"></script>
-    <script defer src="/admin-session.js?v=2"></script>
-    <script defer src="/admin.js?v=6"></script>
-    <link rel="stylesheet" href="/styles/admin-home.css?v=2">
+    <script defer src="/authentication-result.js?v=2"></script>
+    <script defer src="/admin-session.js?v=5"></script>
+    <script defer src="/admin.js?v=7"></script>
+    <link rel="stylesheet" href="/styles/admin-home.css?v=3">
     <script defer src="/admin-home.js?v=3"></script>
     <script defer src="/admin-membership-csv.js?v=1"></script>
 </head>
@@ -75,8 +76,9 @@
                         </dl>
                         <p class="admin-home-note color-text-001">활성 방문자는 로그인 회원 수나 동시 접속자 수와 다릅니다. 한국 시간 오늘 누적과 어제 전체 수치를 함께 표시하며 GA4 집계 지연이 있을 수 있습니다.</p>
                     </section>
+                    <div class="admin-home-dashboard">
                     <section class="admin-home-panel color-surface-001 shape-rounded-lg" aria-labelledby="trend-title">
-                        <div class="admin-home-section-heading"><div><h2 id="trend-title">방문 추이</h2><p class="admin-home-note color-text-001">일별 활성 방문자 · 오늘 포함</p></div><div class="admin-home-periods" role="group" aria-label="방문 추이 기간"><button type="button" class="ui-button color-theme shape-capsule" data-trend-days="7" aria-pressed="true">7일</button><button type="button" class="ui-button color-type000 shape-capsule" data-trend-days="30" aria-pressed="false">30일</button></div></div>
+                        <div class="admin-home-section-heading"><div><h2 id="trend-title">방문 추이</h2><p class="admin-home-note color-text-001">일별 활성 방문자 · 오늘 포함</p></div><div class="admin-home-periods ui-segment ui-segment--compact color-surface-000 shape-capsule" role="group" aria-label="방문 추이 기간"><button type="button" class="ui-button ui-segment__option color-theme shape-capsule" data-trend-days="7" aria-pressed="true">7일</button><button type="button" class="ui-button ui-segment__option color-type000 shape-capsule" data-trend-days="30" aria-pressed="false">30일</button><span class="ui-segment__indicator color-surface-002 shape-capsule" aria-hidden="true"></span></div></div>
                         <div class="admin-home-chart-heading"><span id="trend-range" class="color-text-001">조회 대기 중</span><span class="color-text-001">단위: 명</span></div>
                         <svg id="admin-traffic-chart" class="admin-home-chart" viewBox="0 0 700 210" role="img" aria-labelledby="chart-title chart-description"><title id="chart-title">최근 7일 활성 방문자</title><desc id="chart-description">날짜별 정확한 값은 아래 데이터 표에서 확인할 수 있습니다.</desc></svg>
                         <details class="admin-home-table-details"><summary>날짜별 데이터 보기</summary><div class="admin-home-table-scroll"><table class="admin-home-table"><caption class="color-text-001">일별 활성 방문자 · 한국 시간</caption><thead><tr><th scope="col">날짜</th><th scope="col">활성 방문자</th></tr></thead><tbody id="admin-traffic-rows"></tbody></table></div></details>
@@ -100,6 +102,7 @@
                         <noscript><p class="color-text-001">오류 데이터를 조회하려면 JavaScript를 사용해 주세요.</p></noscript>
                         <p class="admin-home-note color-text-001">연결된 서버 작업 기록 페이지는 아직 준비 화면입니다.</p>
                     </section>
+                    </div>
                     <section id="membership-csv-panel" class="admin-home-panel color-surface-001 shape-rounded-lg" aria-labelledby="membership-csv-title">
                         <div class="admin-home-section-heading"><h2 id="membership-csv-title">멤버십 회원 목록</h2><button id="membership-csv-refresh" type="button" class="ui-button ui-control--disabled color-disabled color-type000 shape-capsule admin-home-record-link">목록 정보 새로고침</button></div>
                         <p id="membership-csv-current" class="admin-home-note color-text-001">현재 목록을 확인하고 있습니다.</p>

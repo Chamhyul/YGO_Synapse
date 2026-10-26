@@ -3,7 +3,7 @@ const { randomBytes } = require('node:crypto');
 const { createNoticeService, createStorageNoticeStore } = require('./noticeService');
 const fail = code => Object.assign(new Error('공지 저장 결과를 확인하지 못했습니다. 현재 목록과 이전 writer 종료 상태를 확인해 주세요.'), { code, status: 503 });
 function createNoticeWriterService({ requests, transition, bucket, storage = createStorageNoticeStore(bucket), parentLease,
-  timeoutMs = 10000, now = Date.now }) {
+  timeoutMs = 10000, now = Date.now, environment = 'production' }) {
   async function bounded(action) {
     let timer;
     try { return await Promise.race([Promise.resolve().then(action), new Promise((_, reject) => { timer = setTimeout(() => reject(fail('NOTICE_STORAGE_TIMEOUT')), timeoutMs); })]); }
@@ -21,7 +21,7 @@ function createNoticeWriterService({ requests, transition, bucket, storage = cre
       }
     },
   };
-  const service = createNoticeService({ storage: guarded, now, environment: 'local',
+  const service = createNoticeService({ storage: guarded, now, environment,
     runLocked: action => requests.withPublication(action, parentLease?.()) });
   return { ...service,
     async recoverPublication(expectedId, { writersDrained = false } = {}) {

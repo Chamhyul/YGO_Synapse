@@ -19,7 +19,7 @@
 ## 저장소·데이터 경계
 
 - 편집·통합 검증 원본은 기존 `YGO_Synapse` 저장소 하나다. 기존 미커밋 변경·UI 수정과 `card-service/src/`의 모듈 경계를 보존한다.
-- 별도 `YGO_Synapse_Service`·`YGO_Synapse_Cards` 저장소/폴더는 보존 대상으로 두며, 자동 동기화·덮어쓰기·삭제하지 않는다. 저장소 분리용 준비본·템플릿은 일상 개발의 원본이 아니다.
+- 개발·검증은 이 저장소에서만 진행한다. 별도 `YGO_Synapse_Service`·`YGO_Synapse_Cards` 복제본과 `main-service/`·분리 게시 템플릿은 현재 구성에 포함하지 않으며, 별도 승인 없이 재생성·동기화하지 않는다. `card-service/src/`와 Functions용 생성 패키지는 현행 모듈이므로 유지한다.
 - 확정 목표는 같은 Firebase 프로젝트에서 카드 데이터를 Firestore, 사용자·인벤토리 데이터를 Realtime Database로 관리하는 것이다. Authentication과 파일용 Storage는 역할에 맞게 유지한다. 현재 구현과 미구현 목표는 [사용자 저장소 설계](docs/Data/guide_user_storage.md)에서 구분한다.
 - 첫 운영 전환부터 기존 전체 기능·API·데이터 호환을 유지한다. 부분 이전 상태를 운영 완료로 처리하지 않는다. 파일 수정 승인은 DB 생성·데이터 이전·IAM·배포 승인이 아니다.
 

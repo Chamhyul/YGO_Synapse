@@ -13,6 +13,7 @@
 !scripts/user_writer_job.cjs
 !scripts/manage_user_writer.cjs
 !scripts/reconcile_membership_claims.cjs
+!scripts/recover_admin_session.cjs
 !operations/
 !operations/user-storage/
 !operations/user-storage/Dockerfile

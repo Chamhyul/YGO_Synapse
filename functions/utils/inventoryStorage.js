@@ -288,3 +288,24 @@ module.exports = {
   processMoveCards,
   processDiscardCards,
 };
+
+// 선택 요청 ID를 사용하는 운영 가져오기는 공통 writer의 원자적 저장 영수증에 묶는다.
+async function getInventoryImportStatus(uid, requestId, digest) {
+  const repository = rtdbRepository();
+  if (!repository?.importStatus) return { status: 'unsupported' };
+  return repository.importStatus(uid, requestId, digest);
+}
+async function withInventoryImportAttempt(uid, requestId, source, body, action) {
+  const repository = rtdbRepository();
+  if (!repository?.withImportAttempt) throw Object.assign(new Error('이 서버는 가져오기 재시도 보호를 지원하지 않습니다.'), { code: 'IMPORT_RETRY_UNAVAILABLE' });
+  return repository.withImportAttempt(uid, requestId, require('../services/inventoryImportRequests').digestImport(source, body), action);
+}
+module.exports.getInventoryImportStatus = getInventoryImportStatus;
+module.exports.withInventoryImportAttempt = withInventoryImportAttempt;
+
+// HTTP 입력은 후보 버전일 뿐이다. 현재 서버 원본과 전환 경계를 확인한
+// 공통 저장소만 축약 응답을 선택하며 미지원 저장소는 전체 조회로 돌아간다.
+module.exports.readInventoryForSync = async (uid, token) => {
+  const repository = rtdbRepository();
+  return repository?.readInventoryForSync ? repository.readInventoryForSync(uid, token) : undefined;
+};

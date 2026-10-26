@@ -38,3 +38,18 @@ test('CSV selector는 없는 RTDB 저장소·잘못된 설정을 Firestore로 �
   const env = { ...demo(), NODE_ENV: 'production' };
   assert.throws(() => load(env, { './userStorageRuntime': { getRtdbUserStorage() { resolveRtdbConfig(env); } } }).getMembershipCsvStore(), { code: 'USER_STORAGE_CONFIG_INVALID' });
 });
+
+
+test('writer CSV selector는 지원하는 읽기 범위를 전달하고 호출마다 설정을 재검사한다', async () => {
+  const env = { USER_PROFILE_WRITER_MODE: 'emulator' }, config = { runId: 'synthetic' };
+  let selected = config, reads = 0, writes = 0;
+  const binding = { transition: { runId: config.runId }, membershipCsv: {
+    withReadRequest: async (_req, work) => { reads++; return work(); },
+    withRequest: async (_req, work) => { writes++; return work(); },
+  } };
+  const repo = load(env, { '../config/userProfileWriter': { resolveProfileWriterConfig: () => selected } }).getMembershipCsvStore({ env, writerBinding: binding });
+  assert.equal(await repo.withReadRequest(null, () => 'read'), 'read'); assert.equal(reads, 1); assert.equal(writes, 0);
+  selected = { runId: 'changed' }; await assert.rejects(repo.withReadRequest(null, () => assert.fail()), { code: 'USER_STORAGE_CONFIG_INVALID' });
+  binding.membershipCsv = {}; selected = config; const legacy = load(env, { '../config/userProfileWriter': { resolveProfileWriterConfig: () => selected } }).getMembershipCsvStore({ env, writerBinding: binding });
+  assert.equal(legacy.withReadRequest, undefined);
+});

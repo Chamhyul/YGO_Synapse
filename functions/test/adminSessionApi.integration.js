@@ -2,7 +2,7 @@
 
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { createHash } = require('node:crypto');
+const { createHash, randomBytes } = require('node:crypto');
 const Module = require('node:module');
 const path = require('node:path');
 const fs = require('node:fs/promises');
@@ -19,6 +19,7 @@ const { IDLE_MS, ABSOLUTE_MS, PAGES } = sessionModule;
 // Auth는 합성이며 실제 관리자 HTML 템플릿을 렌더링한다.
 // 운영 인증·프록시·Firestore·Storage는 사용하지 않는다.
 const inspector = createUserStorageConnection(), servers = [];
+const fixtureRun = randomBytes(8).toString('hex');
 let sequence = 0;
 after(async () => {
   await Promise.all(servers.map(server => new Promise((resolve, reject) => {
@@ -47,13 +48,13 @@ function loadFactory() {
 }
 
 async function harness({ role = 'owner', disabled = false } = {}) {
-  const id = ++sequence, uid = `synthetic-admin-http-${id}`;
+  const id = ++sequence, uid = `synthetic-admin-http-${fixtureRun}-${id}`;
   let time = 20000000, cookie = '', issue = 0, revoked = false, authFailure = false, decodedUid = uid;
   const authCalls = [], issued = new Set();
   const auth = {
     async verifyIdToken(token, checkRevoked) {
       authCalls.push(['token', token, checkRevoked]);
-      assert.equal(checkRevoked, true);
+      assert.equal(checkRevoked, false);
       if (token !== 'synthetic-valid-token') throw Object.assign(new Error('synthetic-private-invalid-token'), { code: 'auth/invalid-id-token' });
       return { uid, role: 'owner', admin: true };
     },
@@ -66,12 +67,12 @@ async function harness({ role = 'owner', disabled = false } = {}) {
     async createSessionCookie(token, options) {
       authCalls.push(['issue', token, options]);
       assert.deepEqual(options, { expiresIn: ABSOLUTE_MS });
-      const value = `synthetic-admin-cookie:${id}:${++issue}`;
+      const value = `synthetic-admin-cookie:${fixtureRun}:${id}:${++issue}`;
       issued.add(value); return value;
     },
     async verifySessionCookie(value, checkRevoked) {
       authCalls.push(['cookie', checkRevoked]);
-      assert.equal(checkRevoked, true);
+      assert.equal(checkRevoked, false);
       if (authFailure) throw new Error('synthetic-private-auth-secret');
       if (revoked || !issued.has(value)) throw Object.assign(new Error('synthetic-private-revoked-cookie'), { code: 'auth/session-cookie-revoked' });
       return { uid: decodedUid };
@@ -249,13 +250,13 @@ test('HTTP RTDB 관리자 인증 장애·손상 세션은 503으로 차단하고
   const failed = await auth.call('/admin', { expected: 503 }); noDocument(failed);
   assert.match(failed.text, /data-admin-unavailable="true"/);
   assert.doesNotMatch(failed.text, /synthetic-private-auth-secret/);
-  assert.deepEqual((await auth.call('/admin/session/activity', { method: 'POST', body: { uid: auth.uid }, expected: 503 })).body, { success: false });
-  const damaged = await harness(); await damaged.signIn();
+  assert.deepEqual((await auth.call('/admin/session/activity', { method: 'POST', body: { uid: auth.uid }, expected: 503 })).body, { success: false, code: 'ADMIN_SESSION_UNAVAILABLE' });
+  const damaged = await harness(); assert.equal((await damaged.signIn()).status, 200);
   const original = { format: 999, synthetic: 'synthetic-private-db-secret' };
   await inspector.database.ref(recordPath(damaged.key)).set(original);
   const document = await damaged.call('/admin', { expected: 503 }); noDocument(document);
   assert.doesNotMatch(document.text, /synthetic-private-db-secret|USER_STORAGE_/);
   const logout = await damaged.call('/admin/session/logout', { method: 'POST', expected: 503 });
-  assert.deepEqual(logout.body, { success: false });
+  assert.deepEqual(logout.body, { success: false, code: 'ADMIN_SESSION_UNAVAILABLE' });
   assert.deepEqual(await raw(damaged.key), original);
 });

@@ -1,5 +1,5 @@
 // 로컬 멤버십 검증은 운영 서버만 신뢰한다. 운영 권한키·임의 URL은 사용하지 않는다.
-async function forwardDiscordMembership(operation, body, headers, fetchImpl = fetch) {
+async function forwardDiscordMembership(operation, body, headers, fetchImpl = fetch, { onResult } = {}) {
   if (!['startDiscordMembershipVerification', 'verifyDiscordMembership'].includes(operation)) throw new Error('허용되지 않은 인증 요청');
   const authorization = headers?.authorization;
   const appCheck = headers?.['x-firebase-appcheck'];
@@ -10,8 +10,9 @@ async function forwardDiscordMembership(operation, body, headers, fetchImpl = fe
     headers: { 'Content-Type': 'application/json', Authorization: authorization, 'X-Firebase-AppCheck': appCheck },
     body: JSON.stringify(body)
   });
-  if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('응답 형식 오류');
-  const result = await response.json();
+  if (!response.headers.get('content-type')?.includes('application/json')
+      && !(body.authenticationResultStream === true && response.headers.get('content-type')?.startsWith('application/x-ndjson'))) throw new Error('응답 형식 오류');
+  const result = await require('./authenticationResult').readAuthenticationResponse(response, response.ok ? onResult : undefined);
   if (!response.ok || result?.success !== true) {
     // 운영의 고정 오류 코드만 전달하고 원문·토큰은 노출하지 않는다.
     const code = typeof result?.code === 'string' && /^DISCORD_[A-Z_]+$/.test(result.code) ? result.code : 'DISCORD_UNAVAILABLE';

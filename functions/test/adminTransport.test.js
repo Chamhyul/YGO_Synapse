@@ -16,10 +16,10 @@ function fixture() {
   let role = 'owner', time = 1000, reads = 0, writes = 0, authChecks = 0;
   const issued = new Set(), sent = [];
   const auth = {
-    async verifyIdToken(token, checkRevoked) { assert.equal(checkRevoked, true); authChecks++; if (token !== 'valid') throw Error('invalid'); return { uid: 'test' }; },
+    async verifyIdToken(token, checkRevoked) { assert.equal(checkRevoked, false); authChecks++; if (token !== 'valid') throw Error('invalid'); return { uid: 'test' }; },
     async getUser() { return { customClaims: { role } }; },
     async createSessionCookie() { issued.add('signed-cookie'); return 'signed-cookie'; },
-    async verifySessionCookie(cookie, checkRevoked) { assert.equal(checkRevoked, true); if (!issued.has(cookie)) throw Object.assign(Error(), { code: 'auth/invalid-session-cookie' }); return { uid: 'test' }; }
+    async verifySessionCookie(cookie, checkRevoked) { assert.equal(checkRevoked, false); if (!issued.has(cookie)) throw Object.assign(Error(), { code: 'auth/invalid-session-cookie' }); return { uid: 'test' }; }
   };
   const handler = createAdminPageHandler({ auth, store: createMemoryStore(), now: () => time,
     template: async () => '<html><title></title><body><section id="admin-login"></section><main id="admin-content" data-admin-title="관리자"><a id="admin-settings" hidden></a></main></body></html>',

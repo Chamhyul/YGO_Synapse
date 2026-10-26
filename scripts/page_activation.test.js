@@ -128,6 +128,7 @@ function fixture({ initialPage = 'home' } = {}) {
     PackDeckStore: { isPackTableGenerated: false, isDeckTableGenerated: false },
     currentToastInstance: null, currentToastMessage: null, addSubMode: 'general',
     updateActiveNav() {}, toggleSearchWrapper() {}, initPageMove() {}, initPageDiscard() {},
+    prepareMembershipEntry() {},
     handleAutomationParams() {}, updateManageFooter() {}, renderInventoryGrid() {}, updateDashboardStats() {},
     requestAnimationFrame(fn) { frames.set(++frameId, fn); return frameId; },
     cancelAnimationFrame(id) { cancelledFrames.push(id); },

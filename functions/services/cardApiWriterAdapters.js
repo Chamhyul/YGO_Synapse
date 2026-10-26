@@ -95,7 +95,9 @@ function createApiWriterAdapters({ db, database, timeoutMs = 10000, onAmbiguousW
         const cors = corsValue(await access.guarded(corsRef.get(), false)); for (const id of Object.keys(cors.keyOrigins)) keys.add(`apiKey/${id}`);
         return Promise.all([...keys].sort().map(key => this.read(key)));
       },
-      async commit(op) { const entry = checkApiCommand(op); await write(op.id, op.digest, entry, { token: entry.token }, op); },
+      async commit(op, onConfirmedReceipt) { const entry = checkApiCommand(op);
+        const confirmed = await write(op.id, op.digest, entry, { token: entry.token }, op);
+        onConfirmedReceipt?.(decode(confirmed)); },
       async receipt(op) { const raw = (await access.guarded(receipts.doc(op.id).get(), false)).data(); return raw ? decode(proof(raw, op.id, op.digest)) : null; },
       async cancellationReason(op) { const raw = (await access.guarded(receipts.doc(op.id).get(), false)).data(); return raw ? proof(raw, op.id, op.digest).reason : undefined; },
       async fence(op) { const entry = checkApiCommand(op); return decode(await write(op.id, op.digest, entry, null, op, true)); },
@@ -124,8 +126,8 @@ function createApiWriterAdapters({ db, database, timeoutMs = 10000, onAmbiguousW
       await access.guarded(database.ref(`apiAccess/origins/${originHash(origin)}/${checkApiKey(entry.key)}`).set(true), true); }
 
     async function header(key, id, digest, planned) {
-      const hash = checkApiKey(key), record = await records.read(hash), archived = await archive.read(receiptId(hash, id));
-      const found = record.commitReceipt?.id === id ? record.commitReceipt : archived.value;
+      const hash = checkApiKey(key), record = await records.read(hash);
+      const found = record.commitReceipt?.id === id ? record.commitReceipt : (await archive.read(receiptId(hash, id))).value;
       if (!found) return null;
       if (found.id !== id || found.digest !== digest || !checkCommitReceipt(found, found.revision, found.generation)) throw fail('API_WRITER_RECEIPT_CONFLICT');
       if (planned && found.outcome === 'committed' && record.commitReceipt?.id === id && record.revision === found.revision
@@ -176,7 +178,9 @@ function createApiWriterAdapters({ db, database, timeoutMs = 10000, onAmbiguousW
         }
         return entries.sort((a, b) => a.key.localeCompare(b.key));
       },
-      async commit(op) { const entry = checkApiCommand(op); await write(op.id, op.digest, entry, { token: entry.token }, op); },
+      async commit(op, onConfirmedReceipt) { const entry = checkApiCommand(op);
+        const confirmed = await write(op.id, op.digest, entry, { token: entry.token }, op);
+        onConfirmedReceipt?.(decode(op, confirmed)); },
       async receipt(op) { const entry = checkApiCommand(op); return decode(op, await header(entry.key, op.id, op.digest, entry)); },
       cancellationReason: async op => (await header(op.changes[0].key, op.id, op.digest))?.reason, fence,
       async apply(id, entry, expected) { checkApiKey(entry.key); if (entry.exists) apiValue(entry.value);

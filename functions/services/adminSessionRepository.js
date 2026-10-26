@@ -35,7 +35,7 @@ function getAdminSessionStore({ env = process.env, writerBinding } = {}) {
       return writerBinding.adminSessions;
     };
     check();
-    return Object.fromEntries(['get', 'set', 'remove', 'touch', 'withRequest', 'beginLogin'].map(method =>
+    return Object.fromEntries(['get', 'set', 'remove', 'touch', 'withRequest', 'withReadRequest', 'beginLogin'].map(method =>
       [method, async (...args) => check()[method](...args)]));
   }
   const backend = validateAdminSessionEnvironment(env);

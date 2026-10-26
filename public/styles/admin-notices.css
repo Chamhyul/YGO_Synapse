@@ -1,38 +1,42 @@
 /* 공지 편집의 배치와 입력 크기만 담당한다. 색상은 기존 조합을 소비한다. */
-.admin-notices-layout { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr); gap: 24px; margin-top: 24px; }
+.admin-notices-layout { display: grid; grid-template-columns: minmax(240px, .65fr) minmax(0, 1.35fr); gap: 20px; align-items: start; margin-top: 24px; }
 .admin-notices-layout > section { min-width: 0; margin-bottom: 0; }
 .admin-notices fieldset { border: 0; min-width: 0; margin: 0; padding: 0; }
 .admin-notices fieldset p { margin: 0 0 20px; }
-.admin-notices label { display: block; margin-bottom: 8px; }
-.admin-notices input { display: block; width: 100%; height: auto; min-height: 44px; margin: 0 0 8px; padding: 12px 16px; border: 0; box-sizing: border-box; font: inherit; background: var(--color-bg); color: var(--color-text); }
+.admin-notices label { display: block; margin-bottom: 8px; font-size: .8rem; font-weight: 500; }
+.admin-notices input { display: block; width: 100%; height: auto; min-height: 44px; margin: 0 0 8px; padding: 12px; border: 0; box-sizing: border-box; font: inherit; font-size: .875rem; line-height: 1.5; background: var(--color-bg); color: var(--color-text); }
 .admin-notices :is(input, textarea):focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }
-.admin-notices textarea { width: 100%; min-height: 220px; padding: 14px; border: 0; border-radius: 20px; box-sizing: border-box; resize: vertical; font: inherit; background: var(--color-bg); color: var(--color-text); }
+.admin-notices textarea { width: 100%; min-height: 280px; padding: 20px; border: 0; border-radius: 20px; box-sizing: border-box; resize: vertical; font: inherit; background: var(--color-bg); color: var(--color-text); }
 .admin-notices .admin-home-periods { flex-wrap: wrap; }
-.admin-notices .admin-home-errors li { display: block; padding: 0; }
-.admin-notices .admin-home-errors button { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 16px; width: 100%; padding: 16px; text-align: left; overflow-wrap: anywhere; white-space: normal; }
+.admin-notices .admin-home-errors { margin-top: 16px; display: grid; gap: 4px; }
+.admin-notices .admin-home-errors li { display: block; padding: 0; border: 0; }
+.admin-notices .admin-home-errors button { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; width: 100%; padding: 16px; text-align: left; overflow-wrap: anywhere; white-space: normal; }
 .admin-notices .admin-home-errors button > span:last-child > span { display: block; }
 .admin-notices .admin-home-errors button > span:last-child > span + span { margin-top: 4px; font-size: 0.8rem; line-height: 1.5; }
 .admin-notices .notice-content-body { overflow-wrap: anywhere; }
-@media (max-width: 800px) {
+@media (max-width: 1100px) {
     .admin-notices-layout { grid-template-columns: minmax(0, 1fr); }
     .admin-notices-layout > section:first-child { grid-row: auto; }
     .admin-notices-layout > section:last-child { grid-column: auto; }
 }
 
 /* Tiptap 내부 문서·도구줄·native dialog의 기능 배치. 색상/곡률은 공통 조합을 사용한다. */
-.notice-body-label { display: block; margin-bottom: 8px; }
+.notice-body-label { display: block; margin-bottom: 8px; font-size: .8rem; font-weight: 500; }
 .notice-editor-frame { margin-bottom: 20px; }
-.notice-toolbar { display: flex; align-items: center; gap: 4px; padding: 8px; flex-wrap: wrap; }
+#notice-body-help { margin: 0 0 12px; }
+#notice-pin { max-width: 140px; }
+.admin-notices #notice-list .admin-home-record-link { justify-content: start; }
+.notice-toolbar { border-bottom: 1px solid var(--border-000); display: flex; align-items: center; gap: 4px; padding: 8px; flex-wrap: wrap; }
 .notice-toolbar .ui-button { width: 44px; height: 44px; min-width: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
-.notice-toolbar select { max-width: 100px; min-height: 44px; padding: 8px; border: 0; font: inherit; background: var(--color-bg); color: var(--color-text); }
+.notice-toolbar select { width: auto; max-width: 108px; flex: none; min-height: 44px; padding: 8px; border: 0; font: inherit; background: var(--color-bg); color: var(--color-text); }
 .notice-toolbar .material-icons { font-size: 20px; width: 20px; overflow: hidden; pointer-events: none; }
 .notice-more { position: relative; margin-left: auto; }
 .notice-more summary { list-style: none; cursor: pointer; }
 .notice-more summary::-webkit-details-marker { display: none; }
 .notice-more-menu .notice-mobile-command { display: none; }
-.notice-more-menu { position: absolute; right: 0; top: 48px; z-index: 5; display: grid; grid-template-columns: repeat(4, 44px); gap: 4px; padding: 8px; background: var(--color-bg); color: var(--color-text); }
-.notice-rich-content { font: inherit; line-height: 1.8; overflow-wrap: anywhere; }
-.notice-rich-content .tiptap { min-height: 220px; padding: 14px; outline: none; }
+.notice-more-menu { border: 1px solid var(--border-000); box-sizing: border-box; position: absolute; right: 0; top: 48px; z-index: 5; display: grid; grid-template-columns: repeat(4, 44px); gap: 4px; padding: 8px; background: var(--color-bg); color: var(--color-text); }
+.notice-rich-content { font: inherit; font-size: .9rem; line-height: 1.8; overflow-wrap: anywhere; }
+.notice-rich-content .tiptap { min-height: 280px; padding: 20px; outline: none; }
 .notice-rich-content .tiptap:focus-visible { outline: 2px solid var(--color-text); outline-offset: -2px; border-radius: 20px; }
 .notice-rich-content :is(p, ul, ol, pre, blockquote) { margin: 0 0 12px; }
 .notice-rich-content :is(h1,h2,h3,h4,h5,h6) { line-height: 1.4; margin: 16px 0 12px; font-weight: 700; }

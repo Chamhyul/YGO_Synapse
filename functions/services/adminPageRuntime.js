@@ -3,6 +3,7 @@
 const { resolveUserStorageConfig } = require('../config/userStorage');
 const { createConfiguredAdminPageHandler, validateAdminSessionEnvironment } = require('./adminSessionRepository');
 const { createAdminBackendHandler, emulatorConfigured } = require('./adminTransport');
+const { measure, withAdminRequestTiming } = require('./adminRequestTiming');
 
 function unavailable(res) {
   res.set('Cache-Control', 'private, no-store');
@@ -16,7 +17,7 @@ function invalid() {
 
 /** 일반 export와 격리 HTTP 검사가 같은 관리자 경로 선택을 사용한다. */
 function createAdminRouteHandlers({ env = process.env, productionDependencies, emulatorDependencies,
-  createPageHandler = createConfiguredAdminPageHandler, proxy, writerBinding } = {}) {
+  createPageHandler = createConfiguredAdminPageHandler, proxy, writerBinding, authenticationProxy } = {}) {
   let initialSelection, directHandler;
 
   function select() {
@@ -46,20 +47,26 @@ function createAdminRouteHandlers({ env = process.env, productionDependencies, e
 
   async function handlerFor(selected) {
     if (directHandler) return directHandler;
-    directHandler = Promise.resolve().then(async () => {
+    directHandler = measure('admin.runtime.dependencies', () => Promise.resolve().then(async () => {
       const dependencies = selected.mode === 'emulator' ? emulatorDependencies
         : typeof productionDependencies === 'function' ? await productionDependencies(selected) : undefined;
       if (!dependencies || typeof dependencies !== 'object') throw invalid();
       select();
       return createPageHandler(dependencies, { env, writerBinding });
-    });
+    }));
     return directHandler;
   }
 
   function dispatch(kind) {
-    return async (req, res) => {
+    return withAdminRequestTiming(kind === 'pages' ? 'adminPages' : 'adminBackend', async (req, res) => {
       try {
-        const selected = select();
+        const selected = measure('admin.runtime.select', () => select());
+        if (kind === 'pages' && selected.mode === 'production' && req.method === 'POST'
+            && req.body?.authenticationResultStream === true
+            && new URL(req.originalUrl || req.url, 'https://admin.invalid').pathname === '/admin/session') {
+          authenticationProxy ||= require('./adminTransport').createAdminProxy({ authenticationResultOnly: true });
+          return await authenticationProxy(req, res);
+        }
         if (kind === 'pages' && selected.mode === 'proxy') {
           if (typeof proxy !== 'function') throw invalid();
           return await proxy(req, res);
@@ -76,7 +83,7 @@ function createAdminRouteHandlers({ env = process.env, productionDependencies, e
         // 설정·의존성 실패를 기존 저장소나 운영 proxy로 대체하거나 원문을 노출하지 않는다.
         return unavailable(res);
       }
-    };
+    });
   }
   return { adminPages: dispatch('pages'), adminBackend: dispatch('backend') };
 }

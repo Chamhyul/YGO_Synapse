@@ -177,6 +177,7 @@ function createCsvWriterAdapters({ db, database, now = Date.now, timeoutMs = 100
   })();
   const rtdb=(()=>{
     const archive=createRecordStore({database,path:'membershipCsvWriterReceipts',timeoutMs,onAmbiguousWrite});
+    const lookup = require('./user-storage/membershipCsvLookup').createMembershipCsvLookup({ database, timeoutMs, onAmbiguousWrite });
     const records=Object.fromEntries([['control','control'],['candidate','candidates'],['operation','operations'],['legacyUsers','legacyUsers']].map(([kind,path])=>[kind,createRecordStore({database,path:`membershipCsv/${path}`,timeoutMs,onAmbiguousWrite,
       payloadCodec:{encode:(value,context)=>encodeValue(C.valueFor(kind==='control'||kind==='legacyUsers'?`csv/${kind}`:`csv/${kind}/${'0'.repeat(32)}`,value),context),decode:(value)=>decodeValue(value)},
       archiveReceipt:async(id,header)=>archive.update(`${kind}:${id}:${header.id}`,prior=>{if(prior && fingerprint(prior)!==fingerprint(header))throw C.fail('CSV_WRITER_RECEIPT_CONFLICT');return{value:header};}),
@@ -198,6 +199,24 @@ function createCsvWriterAdapters({ db, database, now = Date.now, timeoutMs = 100
       catch(error){if(!op||!['USER_STORAGE_CONFLICT','CSV_WRITER_INACTIVE'].includes(error.code))throw error;await fence(op,error.code==='CSV_WRITER_INACTIVE'?'inactive':'conflict');}
       return header(entry.key,id,digest,entry);}
     return{inspect,read:async key=>(await inspect(key)).entry,
+      lookupMember: (pointer, channelId) => lookup.read(pointer, channelId, async () => {
+        const source = await inspect(`csv/candidate/${pointer.revision}`);
+        if (!source.entry.exists) throw C.fail('CSV_WRITER_LOOKUP_INVALID');
+        return source.entry.value;
+      }),
+      async lookupPlan(id) {
+        const source = await inspect(`csv/candidate/${id}`);
+        if (!source.entry.exists) throw C.fail('CSV_WRITER_LOOKUP_INVALID');
+        const value = source.entry.value, built = require('./user-storage/membershipCsvLookup').buildLookup(value.members);
+        return { count: built.count, fingerprint: value.fingerprint,
+          indexBytes: Buffer.byteLength(JSON.stringify(require('./user-storage/membershipCsvLookup').projection(value, built))) };
+      },
+      async prepareLookup(id) {
+        const source = await inspect(`csv/candidate/${id}`);
+        if (!source.entry.exists) throw C.fail('CSV_WRITER_LOOKUP_INVALID');
+        const value = source.entry.value;
+        return lookup.install({ revision: id, fingerprint: value.fingerprint, count: value.members.length }, value);
+      },
       async snapshot(){const keys=[];for(const[kind,path]of[['control','control'],['candidate','candidates'],['operation','operations'],['legacyUsers','legacyUsers']]){const snap=await access.guarded(database.ref(`membershipCsv/${path}`).get(),false);snap.forEach(child=>{const id=decodeKey(child.key);if((kind==='control'||kind==='legacyUsers')&&id!=='current')throw C.fail('CSV_WRITER_INVALID_KEY');keys.push(kind==='control'||kind==='legacyUsers'?`csv/${kind}`:`csv/${kind}/${id}`);});}return C.checkSnapshot(await Promise.all(keys.sort().map(key=>this.read(key))));},
       commit:async op=>{const entry=C.checkCsvCommand(op);await write(op.id,op.digest,entry,{token:entry.token},op);},receipt:async op=>decode(op,await header(op.changes[0].key,op.id,op.digest,op.changes[0])),cancellationReason:async op=>(await header(op.changes[0].key,op.id,op.digest))?.reason,fence,
       async apply(id,entry,expected){C.checkCsvKey(entry.key);if(entry.exists)C.valueFor(entry.key,entry.value);const found=await write(id,fingerprint({entry,expected}),entry,expected);if(found.outcome!=='committed')throw C.fail('CSV_WRITER_RECEIPT_CONFLICT');return{...entry,token:`${found.revision}:${found.generation}`};},

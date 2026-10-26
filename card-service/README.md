@@ -1,8 +1,8 @@
-# YGO_Synapse_Cards
+# YGO_Synapse 카드 모듈
 
 카드 DB 조회와 카드 목록·팩·레어도 파일의 metadata를 제공하는 내부 HTTP 서비스다. 독립된 package.json·lockfile·Dockerfile을 사용하며 기존 서비스 폴더를 가져오지 않는다. 현재 구현에는 수집·저장·관리·작업 큐의 독립 실행 전환이 포함되어 있지 않다.
 
-현재 이 폴더는 `YGO_Synapse` 단일 저장소 안의 카드 모듈이다. 별도로 만들어 둔 두 비공개 저장소는 보존하며 이 폴더와 자동 동기화하지 않는다. `repository-publication.json`은 이전 분리 게시 준비 자료다.
+현재 이 폴더는 `YGO_Synapse` 단일 저장소 안의 카드 모듈이다. 코드 원본은 `src/`이며 루트의 Functions용 생성 패키지와 함께 관리한다. 별도 분리 저장소의 로컬 복제본이나 게시 준비본을 생성·동기화하지 않는다. `repository-publication.json`은 이전 분리 게시 메타데이터이며 현재 개발·게시 대상의 설정으로 사용하지 않는다.
 
 ## 저장소와 DB 역할
 

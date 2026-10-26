@@ -1,6 +1,7 @@
 'use strict';
 const { measure } = require('./inventoryRequestTiming');
 const { randomBytes } = require('node:crypto');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const { encodeKey, encodeValue, decodeValue } = require('./user-storage/codec');
 const { fingerprint, content } = require('./userMigrationRehearsal');
 const { validateState, requirements } = require('./user-storage/writerState');
@@ -66,10 +67,58 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
   }
   async function read() { const record = await journal.read(runId); return record.exists ? valid(record.value) : undefined; }
   const historyVersion = state => state?.historyVersion || 0;
+  const historyPrefetch = new AsyncLocalStorage(), prefetchedHistory = Symbol('prefetchedHistory');
+  async function withOperationHistoryPrefetch(ids, action) {
+    if (!Array.isArray(ids) || ids.length > 2 || new Set(ids).size !== ids.length || typeof action !== 'function') throw fail('WRITER_INVALID_DEPENDENCIES');
+    ids.forEach(idCheck);
+    if (!history || !journal.readWithFallback) return action();
+    const scope = { ids, reads: new Map(), started: false };
+    try { return await historyPrefetch.run(scope, action); }
+    finally {
+      // 실패/미사용 조회도 회수한다. 다른 요청·복구에는 결과를 남기지 않는다.
+      await Promise.all([...scope.reads.values()].map(read => read.result));
+      scope.reads.clear();
+    }
+  }
+  function primeOperationHistory(state) {
+    const scope = historyPrefetch.getStore();
+    if (!scope || scope.started || !state) return;
+    scope.started = true;
+    for (const id of scope.ids) {
+      if (scope.reads.has(id)) continue;
+      const result = (async () => measure('journal.history_lookup', () => history.get('operations', id)))()
+        .then(value => ({ status: 'fulfilled', value }), error => ({ status: 'rejected', error }));
+      scope.reads.set(id, { version: historyVersion(state), result });
+    }
+  }
   // 보관 조회와 hot CAS 사이에 정리가 일어나면 다시 조회한다. 완료 ID를 새 명령으로 재등록하지 않는다.
   async function historyGuard(kind, id, action) {
     for (let attempt = 0; attempt < 10; attempt++) {
-      const state = await read(), value = state?.[kind]?.[id] || await history?.get(kind, id);
+      let state, archived;
+      if (journal.readWithFallback) {
+        const found = await journal.readWithFallback(runId, record => record.value?.[kind]?.[id],
+          () => {
+            const pending = kind === 'operations' && historyPrefetch.getStore()?.reads.get(id);
+            return pending ? { [prefetchedHistory]: pending }
+              : measure('journal.history_lookup', () => history?.get(kind, id));
+          });
+        state = found.record.exists ? valid(found.record.value) : undefined; archived = found.value;
+      } else {
+        state = await read();
+        if (!state?.[kind]?.[id]) archived = await history?.get(kind, id);
+      }
+      primeOperationHistory(state);
+      const pending = archived?.[prefetchedHistory];
+      if (!state?.[kind]?.[id] && pending) {
+        // 부재 조회도 historyVersion CAS를 통과한다. 버전이 바뀌면 새로 조회한다.
+        if (pending.version !== historyVersion(state)) archived = await measure('journal.history_lookup', () => history.get(kind, id));
+        else {
+          const result = await pending.result;
+          if (result.status === 'rejected') throw result.error;
+          archived = result.value;
+        }
+      }
+      const value = state?.[kind]?.[id] || archived;
       try { return await action(value, historyVersion(state)); }
       catch (error) {
         if (error.code === 'WRITER_JOURNAL_FULL' && history) {
@@ -159,6 +208,12 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
     // 공유 범위는 불변 본문 생성뿐이다. 각 envelope 공개 후 DB 재대조는 생략하지 않는다.
     if (history.withSession) await history.withSession(archive); else await archive();
     const error = results.find(Boolean); if (failed) throw error;
+    // 불변 완료 이력이 서버에서 검증된 뒤에만 native 본문을 분리한다.
+    // 실패하면 hot 이력을 유지해 다음 유지보수 실행이 같은 ID로 재개한다.
+    for (const backend of ['legacy', 'rtdb']) {
+      if (typeof stores[backend].archiveConfirmedReceipts !== 'function') continue;
+      await stores[backend].archiveConfirmedReceipts(prepared.filter(item => item.kind === 'operations' && item.saved.backend === backend).map(item => item.saved));
+    }
     const initialThrough = initial.transfer ? initial.transfer.cursor : initial.sequence;
     const removable = new Set();
     for (const event of initial.events) {
@@ -251,7 +306,53 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
     const state = await read(); if (!state) throw fail('WRITER_NOT_INITIALIZED');
     return { backend: state.backend, epoch: state.epoch, phase: state.phase };
   }
-  async function prepareOperation(writer, id, changes, result = null, { resources = [], details, parentExternal } = {}, execution) {
+  const activityAdmissionReads = new AsyncLocalStorage();
+  async function withActivityAdmissionReads(parent, operation, action) {
+    idCheck(parent); idCheck(operation);
+    if (typeof action !== 'function') throw fail('WRITER_INVALID_DEPENDENCIES');
+    const scope = { parent, operation };
+    const prime = () => {
+      if (scope.pending) return;
+      // 서버 자격 확인 뒤 시작하는 읽기 전용 준비다. 어떤 등록/저장도 하지 않는다.
+      scope.pending = (async () => {
+        const fallback = () => Promise.allSettled(['external', 'operations'].map((kind, index) =>
+          measure('journal.history_lookup', () => history?.get(kind, index ? operation : parent))));
+        const found = journal.readWithFallback ? await journal.readWithFallback(runId, () => false, fallback)
+          : { record: await journal.read(runId), value: await fallback() };
+        const state = found.record.exists ? valid(found.record.value) : undefined;
+        const operationReads = historyPrefetch.getStore();
+        if (operationReads?.ids.includes(operation)) {
+          const hot = state?.operations?.[operation], saved = hot ? { status: 'fulfilled', value: hot } : found.value[1];
+          operationReads.reads.set(operation, { version: historyVersion(state), result: Promise.resolve(saved.status === 'fulfilled'
+            ? saved : { status: 'rejected', error: saved.reason }) });
+          // 이미 준비한 소비 ID를 다시 읽지 않고, 완료 ID만 첫 CAS와 겹쳐 준비한다.
+          primeOperationHistory(state);
+        }
+        return { version: historyVersion(state), values: Object.fromEntries(['external', 'operations'].map((kind, index) => {
+          const hot = state?.[kind]?.[index ? operation : parent];
+          return [kind, hot ? { status: 'fulfilled', value: hot } : found.value[index]];
+        })) };
+      })().then(value => ({ status: 'fulfilled', value }), reason => ({ status: 'rejected', reason }));
+    };
+    try { return await activityAdmissionReads.run(scope, () => action(prime)); }
+    finally { await scope.pending; }
+  }
+  async function activityAdmissionHistory(kind, id, action) {
+    const scope = activityAdmissionReads.getStore();
+    if (scope?.pending && id === (kind === 'external' ? scope.parent : scope.operation)) {
+      const found = await scope.pending;
+      if (found.status === 'rejected') throw found.reason;
+      const value = found.value.values[kind];
+      if (value.status === 'rejected') throw value.reason;
+      try { return await action(value.value, found.value.version); }
+      catch (error) {
+        // 서버 CAS의 revision/이력 버전이 달라지면 기존 fresh 대조·용량 정리로 돌아간다.
+        if (!['WRITER_HISTORY_CHANGED', 'WRITER_JOURNAL_FULL'].includes(error.code)) throw error;
+      }
+    }
+    return historyGuard(kind, id, action);
+  }
+  async function prepareOperation(writer, id, changes, result = null, { resources = [], details, parentExternal, activityCompletion = false, activityAdmissionVersion, membershipAdmissionVersion } = {}, execution) {
     idCheck(id); entriesCheck(changes, true); encodeValue(result); checkCommand(writer?.backend, changes, details);
     if (!Array.isArray(resources)) throw fail('WRITER_INVALID_RECORDS');
     const locks = [...new Set([...changes.map(entry => entry.key), ...resources])].sort();
@@ -260,7 +361,7 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
     const digest = fingerprint({ writer: { backend: writer?.backend, epoch: writer?.epoch }, changes, result, resources: locks,
       ...(details !== undefined ? { details } : {}), ...(parentExternal ? { parentExternal } : {}) });
     await measure('writer.maintenance', maintain);
-    return historyGuard('operations', id, async (known, version) => {
+    return (activityAdmissionVersion === undefined && membershipAdmissionVersion === undefined ? historyGuard : activityAdmissionHistory)('operations', id, async (known, version) => {
     if (known && ['completed', 'cancelled'].includes(known.status)) {
       if (known.digest !== digest) throw fail('WRITER_OPERATION_CONFLICT'); return clone(known);
     }
@@ -270,16 +371,42 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
         if (state.operations[id].digest !== digest) throw fail('WRITER_OPERATION_CONFLICT');
         return state;
       }
+      if (activityAdmissionVersion !== undefined) {
+        // 잠금·실행 소유권을 한 CAS로 등록한다. 새 요청만 accepting에서 허용한다.
+        if (!activityCompletion || !execution || !parentExternal || parentExternal === id) throw fail('WRITER_INVALID_DEPENDENCIES');
+        idCheck(parentExternal); sameHistory(state, activityAdmissionVersion); matches(state, writer, true);
+        state.external ||= {};
+        if (state.external[parentExternal]) throw fail('WRITER_OPERATION_CONFLICT');
+        if (Object.keys(state.operations).length + Object.keys(state.external).length + 2 > maxOperations) throw fail('WRITER_JOURNAL_FULL');
+        const parentLocks = [...locks, `sessionRequest/${parentExternal}`].sort(); parentLocks.forEach(checkKey);
+        state.external[parentExternal] = { id: parentExternal, backend: writer.backend, epoch: writer.epoch,
+          resources: parentLocks, status: 'running' };
+      }
+      if (membershipAdmissionVersion !== undefined) {
+        const command = require('./userMembershipWriterAdapters').checkMembershipCommand({ changes, details });
+        if (details.action !== 'consume' || !execution || !parentExternal || parentExternal === id
+            || !command.nonce.value.consumed || command.nonce.value.completed) throw fail('WRITER_INVALID_DEPENDENCIES');
+        idCheck(parentExternal); sameHistory(state, membershipAdmissionVersion); matches(state, writer, true);
+        const expected = [command.nonce.key, `fs/users/${command.uid}`, `inventory/${command.uid}`].sort();
+        if (fingerprint(locks) !== fingerprint(expected)) throw fail('WRITER_INVALID_RECORDS');
+        state.external ||= {};
+        if (state.external[parentExternal]) throw fail('WRITER_OPERATION_CONFLICT');
+        if (Object.keys(state.operations).length + Object.keys(state.external).length + 2 > maxOperations) throw fail('WRITER_JOURNAL_FULL');
+        state.external[parentExternal] = { id: parentExternal, backend: writer.backend, epoch: writer.epoch,
+          resources: [...expected, require('./user-storage/accountResource').accountResource(command.uid)].sort(), status: 'running' };
+      }
       const parent = parentExternal && state?.external?.[parentExternal];
       if (parentExternal && (!parent || parent.status !== 'running' || parent.backend !== writer?.backend || parent.epoch !== writer?.epoch || locks.some(key => !parent.resources.includes(key)))) throw fail('WRITER_FENCED');
       matches(state, writer, !parent);
+      if (activityCompletion) checkActivityParent(state, { parentExternal, resources: locks, changes, details });
       if (Object.keys(state.operations).length + Object.keys(state.external || {}).length >= maxOperations) throw fail('WRITER_JOURNAL_FULL');
       // 미확정 작업의 자원을 재사용하지 않는다. 여러 키를 한 업무 transaction으로 묶을 수 있다.
       const locked = new Set([...Object.values(state.operations).filter(op => ['prepared', 'executing'].includes(op.status)), ...externalPending(state).filter(op => op.id !== parentExternal)].flatMap(op => op.resources));
-      if (locks.some(key => locked.has(key))) throw fail('WRITER_RESOURCE_BUSY');
+      const requestedLocks = membershipAdmissionVersion === undefined ? locks : parent.resources;
+      if (requestedLocks.some(key => locked.has(key))) throw fail('WRITER_RESOURCE_BUSY');
       state.operations[id] = { id, digest, backend: writer.backend, epoch: writer.epoch,
         status: execution ? 'executing' : 'prepared', ...(execution ? { execution } : {}), resources: locks, changes: clone(changes), result: clone(result),
-        ...(details !== undefined ? { details: clone(details) } : {}) };
+        ...(details !== undefined ? { details: clone(details) } : {}), ...(parentExternal ? { parentExternal } : {}) };
       return state;
     });
     return clone(state.operations[id]);
@@ -300,7 +427,44 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
     if (!receiptVerified) validateCommittedReceipt(operation, receipt);
     return { result: clone(result), receipt: clone(receipt) };
   }
-  async function complete(operation, receipt) {
+  // 활동 POST의 단일 세션 명령만 상위 요청과 함께 종료한다. 일반 저장·claims는 대상이 아니다.
+  function checkActivityParent(state, operation, settled = false) {
+    const entry = require('./adminSessionWriterAdapters').checkSessionCommand(operation);
+    const parentId = operation.parentExternal, parent = state.external?.[parentId];
+    if (operation.details.action !== 'touch' || operation.resources.length !== 1 || operation.resources[0] !== entry.key
+        || !parent || parent.backend !== operation.backend && operation.backend !== undefined
+        || parent.epoch !== operation.epoch && operation.epoch !== undefined
+        || parent.resources.length !== 2 || !parent.resources.includes(entry.key)
+        || !parent.resources.includes(`sessionRequest/${parentId}`)
+        || !['running', ...(settled ? ['completed'] : [])].includes(parent.status)) throw fail('WRITER_FENCED');
+    for (const op of Object.values(state.operations)) {
+      if (op.id !== operation.id && ['prepared', 'executing'].includes(op.status)
+          && op.resources.some(key => parent.resources.includes(key))) throw fail('WRITER_RESOURCE_BUSY');
+    }
+    for (const op of externalPending(state)) {
+      if (op.id !== parentId && op.resources.some(key => parent.resources.includes(key))) throw fail('WRITER_RESOURCE_BUSY');
+    }
+    return parent;
+  }
+  function checkMembershipParent(state, operation, settled = false) {
+    const command = require('./userMembershipWriterAdapters').checkMembershipCommand(operation);
+    const parent = state.external?.[operation.parentExternal];
+    const expected = [command.nonce.key, `fs/users/${command.uid}`, `inventory/${command.uid}`,
+      require('./user-storage/accountResource').accountResource(command.uid)].sort();
+    if (operation.details.action !== 'complete' || !command.nonce.value.completed || !command.nonce.value.consumed
+        || !parent || parent.backend !== operation.backend || parent.epoch !== operation.epoch
+        || !['running', ...(settled ? ['completed'] : [])].includes(parent.status)
+        || fingerprint(parent.resources.filter(key => key !== 'csv/control')) !== fingerprint(expected)
+        || parent.resources.includes('csv/control') && command.provider !== 'youtube'
+        || operation.resources.some(key => !expected.includes(key))) throw fail('WRITER_FENCED');
+    const pending = [...Object.values(state.operations).filter(op => op.id !== operation.id && ['prepared', 'executing'].includes(op.status)),
+      ...externalPending(state).filter(op => op.id !== parent.id)];
+    if (pending.some(op => op.resources.some(key => parent.resources.includes(key)))) throw fail('WRITER_RESOURCE_BUSY');
+    return parent;
+  }
+  const completionParent = (state, op) => op.details?.kind === 'membership'
+    ? checkMembershipParent(state, op, true) : checkActivityParent(state, op, true);
+  async function complete(operation, receipt, onParentCompleted) {
     if (receipt?.outcome === 'cancelled') {
       if (receipt.id !== operation.id || receipt.digest !== operation.digest
           || Object.keys(receipt).length !== 3) throw fail('WRITER_RECEIPT_CONFLICT');
@@ -322,7 +486,8 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
     await historyGuard('operations', operation.id, async (known, version) => {
     if (known && known.digest !== operation.digest) throw fail('WRITER_OPERATION_CONFLICT');
     if (known?.status === 'completed') {
-      if (fingerprint(known.receipt) !== fingerprint(receipt)) throw fail('WRITER_RECEIPT_CONFLICT'); return;
+      if (fingerprint(known.receipt) !== fingerprint(receipt)) throw fail('WRITER_RECEIPT_CONFLICT');
+      if (!onParentCompleted) return;
     }
     await change(state => {
       sameHistory(state, version);
@@ -330,6 +495,7 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
       if (!op || op.digest !== operation.digest) throw fail('WRITER_OPERATION_CONFLICT');
       if (op.status === 'completed') {
         if (fingerprint(op.receipt) !== fingerprint(receipt)) throw fail('WRITER_RECEIPT_CONFLICT');
+        if (onParentCompleted) completionParent(state, op).status = 'completed';
         return state;
       }
       if (op.status !== 'executing') throw fail('WRITER_OPERATION_CONFLICT');
@@ -338,9 +504,11 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
       state.sequence++;
       op.status = 'completed'; op.receipt = clone(receipt); op.capturedSequence = state.sequence;
       state.events.push({ sequence: state.sequence, epoch: op.epoch, operationId: op.id, changes: clone(receipt.changes) });
+      if (onParentCompleted) completionParent(state, op).status = 'completed';
       return state;
     });
     });
+    if (onParentCompleted) onParentCompleted(operation.parentExternal);
     await onCheckpoint('captured', operation.id);
     return clone(operation.result);
   }
@@ -363,7 +531,7 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
     if (op.status === 'completed') return executionResult(op, op.receipt, op.result, withReceipt);
     return commitExecution(op, id, withReceipt);
   }
-  async function commitExecution(op, id, withReceipt) {
+  async function commitExecution(op, id, withReceipt, onParentCompleted) {
     // RPC 거부/시간초과도 자동 취소·재실행하지 않는다. 영구 영수증으로 복구한다.
     await onCheckpoint('executing', id);
     const adapter = stores[op.backend]; let confirmed;
@@ -373,7 +541,12 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
     await onCheckpoint('businessCommitted', id);
     // 새 CAS의 확정 증거만 재사용한다. 미확정/경합/복구는 fresh reader를 유지한다.
     const receipt = await measure('writer.receipt', () => confirmed === undefined ? adapter.receipt(clone(op)) : confirmed);
-    const result = await measure('writer.complete', () => complete(op, receipt));
+    // 업무 CAS의 정상 영수증만 결과로 공개한다. 취소/미확정/변조는 기존
+    // 오류·복구 경로에 남기며 journal 완료와 부모 잠금 정리는 계속 기다린다.
+    if (receipt?.outcome !== 'cancelled') {
+      require('./authenticationResult').publishAuthenticationCommit(op, () => validateCommittedReceipt(op, receipt));
+    }
+    const result = await measure('writer.complete', () => complete(op, receipt, onParentCompleted));
     return executionResult(op, receipt, result, withReceipt, true);
   }
   async function prepareAndExecuteWithReceipt(writer, id, changes, result = null, options = {}) {
@@ -389,6 +562,58 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
     if (op.status === 'prepared') return execute(writer, id, true);
     if (op.status !== 'executing' || op.execution !== execution) throw fail('WRITER_OUTCOME_UNRESOLVED');
     return commitExecution(op, id, true);
+  }
+  async function prepareAndExecuteActivityWithReceipt(writer, id, changes, result = null, options = {}) {
+    if (typeof options.onParentCompleted !== 'function' || options.onPrepared !== undefined && typeof options.onPrepared !== 'function') throw fail('WRITER_INVALID_DEPENDENCIES');
+    const execution = randomBytes(16).toString('hex');
+    const op = await measure('writer.prepare', () => prepareOperation(writer, id, changes, result,
+      { ...options, activityCompletion: true }, execution));
+    options.onPrepared?.(clone(op));
+    if (op.status === 'cancelled') throw fail('WRITER_CANCELLED');
+    if (op.status === 'completed') {
+      await complete(op, op.receipt, options.onParentCompleted);
+      return executionResult(op, op.receipt, op.result, true);
+    }
+    if (op.status !== 'executing' || op.execution !== execution) throw fail('WRITER_OUTCOME_UNRESOLVED');
+    return commitExecution(op, id, true, options.onParentCompleted);
+  }
+  async function prepareAndExecuteActivityAdmissionWithReceipt(writer, id, changes, result = null, options = {}) {
+    idCheck(id); idCheck(options.parentExternal);
+    // hot/보관 ID 모두 대조한다. 보관 버전 변경은 등록 CAS에서 거부하고 fresh로 다시 읽는다.
+    return activityAdmissionHistory('external', options.parentExternal, async (known, version) => {
+      if (known) throw fail('WRITER_OPERATION_CONFLICT');
+      return prepareAndExecuteActivityWithReceipt(writer, id, changes, result,
+        { ...options, activityAdmissionVersion: version });
+    });
+  }
+  async function prepareAndExecuteMembershipWithReceipt(writer, id, changes, result = null, options = {}) {
+    const command = require('./userMembershipWriterAdapters').checkMembershipCommand({ changes, details: options.details });
+    idCheck(id); idCheck(options.parentExternal);
+    if (options.onPrepared !== undefined && typeof options.onPrepared !== 'function'
+        || options.finishParent && (command.provider !== 'youtube' && command.provider !== 'discord'
+          || command.nonce.value.completed !== true || options.details.action !== 'complete'
+          || typeof options.onParentCompleted !== 'function')) throw fail('WRITER_INVALID_DEPENDENCIES');
+    const run = async admissionVersion => {
+      const execution = randomBytes(16).toString('hex');
+      const op = await measure('writer.prepare', () => prepareOperation(writer, id, changes, result,
+        { ...options, ...(admissionVersion === undefined ? {} : { membershipAdmissionVersion: admissionVersion }) }, execution));
+      options.onPrepared?.(clone(op));
+      if (op.status === 'cancelled') throw fail('WRITER_CANCELLED');
+      const finish = options.finishParent ? options.onParentCompleted : undefined;
+      if (op.status === 'completed') {
+        if (finish) await complete(op, op.receipt, finish);
+        return executionResult(op, op.receipt, op.result, true);
+      }
+      if (op.status !== 'executing' || op.execution !== execution) throw fail('WRITER_OUTCOME_UNRESOLVED');
+      return commitExecution(op, id, true, finish);
+    };
+    if (!options.admitParent) return run();
+    if (options.details.action !== 'consume' || options.finishParent) throw fail('WRITER_INVALID_DEPENDENCIES');
+    if (!activityAdmissionReads.getStore()?.pending) await measure('writer.maintenance', maintain);
+    return activityAdmissionHistory('external', options.parentExternal, async (known, version) => {
+      if (known) throw fail('WRITER_OPERATION_CONFLICT');
+      return run(version);
+    });
   }
   async function recover(id) {
     idCheck(id); const op = await operationFor(id);
@@ -489,9 +714,10 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
       op.resources = [...new Set([...op.resources, ...added])].sort(); return state;
     });
   }
-  async function recoverExternal(expectedId, id, resources, { writersDrained = false } = {}) {
+  async function recoverExternal(expectedId, id, resources, { writersDrained = false, settledOperation } = {}) {
     idCheck(expectedId); idCheck(id);
     await measure('writer.maintenance', maintain);
+    const confirmed = settledOperation ? await operationFor(settledOperation.id) : undefined;
     return historyGuard('external', id, async (known, version) => {
     if (known && ['completed', 'recovered'].includes(known.status)) throw fail('WRITER_OPERATION_CONFLICT');
     const saved = await change(state => {
@@ -500,6 +726,14 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
       if (writersDrained !== true || state.phase !== 'draining' || !old || !['running', 'uncertain', 'recovered'].includes(old.status)
           || fingerprint(old.resources) !== fingerprint([...new Set(resources)].sort())) throw fail('WRITER_EXTERNAL_RECOVERY_CONFIRMATION_REQUIRED');
       matches(state, old);
+      if (settledOperation) {
+        const op = state.operations[settledOperation.id] || confirmed;
+        if (!op || op.digest !== settledOperation.digest || !['completed', 'cancelled'].includes(op.status)
+            || Object.values(state.operations).some(item => ['prepared', 'executing'].includes(item.status)
+              && item.resources.some(key => old.resources.includes(key)))
+            || Object.values(state.external || {}).some(item => ![expectedId, id].includes(item.id)
+              && ['running', 'uncertain'].includes(item.status) && item.resources.some(key => old.resources.includes(key)))) throw fail('WRITER_OUTCOME_UNRESOLVED');
+      }
       if (old.status === 'recovered') {
         const next = state.external[old.recoveryId];
         if (!next || !['running', 'uncertain'].includes(next.status) || next.recoveryOf !== expectedId) throw fail('WRITER_OUTCOME_UNRESOLVED');
@@ -774,18 +1008,31 @@ function createUserWriterTransition({ journal, history, plans, runId, stores, ch
     idCheck(id);
     if (!Array.isArray(resources) || !resources.length) throw fail('WRITER_INVALID_RECORDS');
     resources.forEach(checkKey);
-    const operation = typeof journal.readExternal === 'function' ? await journal.readExternal(runId, id) : (await read())?.external?.[id];
-    const op = operation || await history?.get('external', id);
+    let op;
+    if (typeof journal.readExternalWithFallback === 'function') {
+      op = await journal.readExternalWithFallback(runId, id, history ? () => history.get('external', id) : undefined);
+    } else {
+      const operation = typeof journal.readExternal === 'function' ? await journal.readExternal(runId, id) : (await read())?.external?.[id];
+      op = operation || await history?.get('external', id);
+    }
     return !!op && op.id === id && op.status === 'completed' && ['legacy', 'rtdb'].includes(op.backend)
       && Number.isSafeInteger(op.epoch) && op.epoch > 0 && Array.isArray(op.resources)
       && resources.every(key => op.resources.includes(key));
   }
+  let sessionRecovery;
+  const sessionRecoveryTool = () => sessionRecovery ||= require('./adminSessionRecovery').createAdminSessionRecovery({
+    read, operationFor, stores, recover, fenceUncommitted, recoverExternal, endExternal, validateCommittedReceipt,
+    externalFor: async id => (await read())?.external?.[id] || await history?.get('external', id) || null,
+  });
+  const previewSessionRecovery = (writer, options) => sessionRecoveryTool().preview(writer, options);
+  const recoverSession = (writer, options) => sessionRecoveryTool().apply(writer, options);
   const executeWithReceipt = (writer, id) => execute(writer, id, true);
   const withSession = action => journal.withSession ? journal.withSession(action) : action();
-  const methods = { runId, initialize, route, prepare, execute, executeWithReceipt, prepareAndExecuteWithReceipt, recover, fenceUncommitted, cancelPrepared, drain, resume, copy, replay, activate, inspect,
-    beginExternal, endExternal, addExternalResources, recoverExternal, compact, historyStatus, previewPlanCleanup, cleanupPlans, isExternalSettled, withSession };
+  const lookupOperation = async id => { idCheck(id); const op = await operationFor(id); return op ? clone(op) : null; };
+  const methods = { withActivityAdmissionReads, withMembershipAdmissionReads: withActivityAdmissionReads, withOperationHistoryPrefetch, lookupOperation, runId, initialize, route, prepare, execute, executeWithReceipt, prepareAndExecuteWithReceipt, prepareAndExecuteMembershipWithReceipt, prepareAndExecuteActivityWithReceipt, prepareAndExecuteActivityAdmissionWithReceipt, recover, fenceUncommitted, cancelPrepared, drain, resume, copy, replay, activate, inspect,
+    beginExternal, endExternal, addExternalResources, recoverExternal, previewSessionRecovery, recoverSession, compact, historyStatus, previewPlanCleanup, cleanupPlans, isExternalSettled, withSession };
   // 조회/전환 관리 호출에는 다음 요청까지 유지되는 snapshot 캐시를 만들지 않는다.
-  for (const name of ['prepare', 'execute', 'executeWithReceipt', 'prepareAndExecuteWithReceipt', 'recover', 'beginExternal', 'endExternal']) {
+  for (const name of ['prepare', 'execute', 'executeWithReceipt', 'prepareAndExecuteWithReceipt', 'prepareAndExecuteMembershipWithReceipt', 'prepareAndExecuteActivityWithReceipt', 'prepareAndExecuteActivityAdmissionWithReceipt', 'withActivityAdmissionReads', 'withMembershipAdmissionReads', 'recover', 'beginExternal', 'endExternal']) {
     const method = methods[name]; methods[name] = (...args) => withSession(() => method(...args));
   }
   const prepareMethod = methods.prepare;

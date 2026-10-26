@@ -109,8 +109,12 @@ for (const backend of ['legacy', 'rtdb']) test(`${backend} 지연된 소비 RPC�
 for (const backend of ['legacy', 'rtdb']) test(`${backend} 실제 승인 직전 만료와 UTC 창 변경을 재검사한다`, async () => {
   let at = Date.now(), mode; const f = await setup({ apiClock: () => at }), key = newKey();
   try { if (backend === 'rtdb') await flip(f); await f.apiAccess.register(key, options({ expiresAt: at + 120000 }));
-    const prepare = f.transition.prepare; f.transition.prepare = async (...args) => { const op = await prepare(...args);
-      if (args[4]?.details.action === 'consume' && mode) { const current = mode; mode = null; at = current === 'minute' ? (Math.floor(at / 60000) + 1) * 60000 : at + 120000; } return op; };
+    const prepare = f.transition.prepareAndExecuteWithReceipt;
+    f.transition.prepareAndExecuteWithReceipt = (writer, operationId, changes, result, options) => prepare(writer, operationId, changes, result,
+      { ...options, onPrepared: op => {
+        options.onPrepared?.(op);
+        if (options.details.action === 'consume' && mode) { const current = mode; mode = null; at = current === 'minute' ? (Math.floor(at / 60000) + 1) * 60000 : at + 120000; }
+      } });
     mode = 'minute'; await f.apiAccess.consume(key.token, origin); assert.equal((await usage(f, key)).minute, Math.floor(at / 60000));
     mode = 'expiry'; await assert.rejects(f.apiAccess.consume(key.token, origin), { code: 'API_KEY_DISABLED' }); assert.equal((await usage(f, key)).dayCount, 1);
     assert.equal(await f.apiAccess.allowsPreflight(origin), true, '만료 키 OPTIONS 계약은 중지 전까지 유지합니다.');

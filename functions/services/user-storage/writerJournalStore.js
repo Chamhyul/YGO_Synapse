@@ -134,6 +134,18 @@ function createWriterJournalStore({ database, path = 'profileWriterTransitions',
     if (records?.has(id)) return copy(records.get(id));
     const record = await measure('journal.read', () => store.read(id)); records?.set(id, copy(record)); return record;
   }
+  async function readWithFallback(id, select, fallback) {
+    // ACK로 갱신된 같은 세션의 hot에 있으면 보관 GET을 추가하지 않는다.
+    if (sessions.getStore()?.records.has(id)) {
+      const record = await read(id);
+      return { record, value: select(record) ? undefined : await fallback() };
+    }
+    // 최초 전체 읽기와 불변 ID 보관 조회를 겹친다. 모든 결과를 회수하고 hot 우선권을 유지한다.
+    const [current, archived] = await Promise.allSettled([read(id), Promise.resolve().then(fallback)]);
+    if (current.status === 'rejected') throw current.reason;
+    if (!select(current.value) && archived.status === 'rejected') throw archived.reason;
+    return { record: current.value, value: archived.value };
+  }
   async function compareAndSet(id, revision, value) {
     prepare(value, revision);
     try {
@@ -169,13 +181,23 @@ function createWriterJournalStore({ database, path = 'profileWriterTransitions',
     return { exists: !head.tombstone, revision: head.revision, generation: head.generation,
       ...(!head.tombstone ? { value: controlFromHeader(head) } : {}) };
   }
-  async function readExternal(id, operationId) {
+  async function readExternalWithFallback(id, operationId, fallback) {
     const raw = await access.read(`${path}/${encodeKey(id)}/body/value/${encodeKey('external')}/${encodeKey(operationId)}`);
     if (raw !== null) return decodeValue({ version: 1, value: raw });
+    // 현재 기록이 없을 때만 보관 조회를 시작한다. 구형 원본에 값이 있으면
+    // 보관 조회의 실패를 전파하지 않지만 시작한 작업은 모두 회수한다.
+    const [header, archived] = await Promise.allSettled([
+      access.read(`${path}/${encodeKey(id)}/head`),
+      fallback ? Promise.resolve().then(fallback) : undefined,
+    ]);
+    if (header.status === 'rejected') throw header.reason;
     // 구형 envelope는 원문을 그대로 읽으며 조회만으로 이관하지 않는다.
-    const head = await access.read(`${path}/${encodeKey(id)}/head`);
-    return head === null ? (await store.read(id)).value?.external?.[operationId] : undefined;
+    const current = header.value === null ? (await store.read(id)).value?.external?.[operationId] : undefined;
+    if (current) return current;
+    if (archived.status === 'rejected') throw archived.reason;
+    return archived.value;
   }
-  return { read, update, compareAndSet, readRoute, readExternal, withSession };
+  const readExternal = (id, operationId) => readExternalWithFallback(id, operationId);
+  return { read, readWithFallback, update, compareAndSet, readRoute, readExternal, readExternalWithFallback, withSession };
 }
 module.exports = { createWriterJournalStore, projection, checkProjection, checkHeader, encodeJournalRecord };

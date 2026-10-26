@@ -48,7 +48,7 @@ test('이전 writer 종료 확인 없이는 설정/SDK/잠금/권한을 변경�
 test('복구는 현재 역할을 보존하며 쓰기 재조회가 일치한 뒤에만 잠금을 해제한다', async () => {
   const { state, options } = fixture(); state.disabled = true;
   const result = await recoverMembershipClaims('synthetic', id, options);
-  assert.deepEqual(result, { status: 'synced', version: '0', operationId: nextId, recoveryOf: id });
+  assert.deepEqual(result, { status: 'synced', version: membershipClaim(state.record).version, operationId: nextId, recoveryOf: id });
   assert.deepEqual(state.claims, { role: 'owner', admin: true, another: { keep: 1 }, ygoMembership: membershipClaim(state.record) });
   assert.equal(state.lock.state, 'idle'); assert.equal(state.finished, 1);
 });
@@ -75,9 +75,9 @@ test('Auth 쓰기 거부·응답 재조회 불일치·읽기 장애는 복구 �
 });
 test('재조회 뒤 원본이 바뀌면 최신 요약을 다시 맞추고 복구한다', async () => {
   const { state, options } = fixture(); state.onWrite = async next => {
-    state.claims = next; if (state.writes === 1) state.record.version = 'changed';
+    state.claims = next; if (state.writes === 1) state.record = { membership: { status: 'active', type: 'discord', verificationVersion: 2, verificationProvider: 'discord' }, version: 'changed' };
   };
-  assert.equal((await recoverMembershipClaims('synthetic', id, options)).version, 'changed');
+  assert.equal((await recoverMembershipClaims('synthetic', id, options)).version, membershipClaim(state.record).version);
   assert.equal(state.writes, 2); assert.equal(state.lock.state, 'idle');
 });
 test('복구 시간초과 후 늦은 Auth 성공에도 잠금은 자동 해제하지 않는다', async () => {

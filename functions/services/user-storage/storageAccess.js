@@ -1,4 +1,5 @@
 'use strict';
+const { measureRtdbGet } = require('../rtdbReadDiagnostics');
 
 const DEFAULT_TIMEOUT_MS = 10000;
 const ambiguousDatabases = new WeakSet();
@@ -57,7 +58,7 @@ function createStorageAccess({ database, timeoutMs = DEFAULT_TIMEOUT_MS, onAmbig
   return {
     ensureUsable,
     guarded,
-    async read(path) { return (await guarded(reference(path).get(), false)).val(); },
+    async read(path) { return (await guarded(measureRtdbGet(database, 'storage', () => reference(path).get()), false)).val(); },
     async write(path, value) { await guarded(reference(path).set(value), true); },
     async remove(path) { await guarded(reference(path).remove(), true); },
     // 현재/미래 head가 참조하지 않는 고유 노드만 호출자가 지정한다.

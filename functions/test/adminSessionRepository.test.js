@@ -166,10 +166,10 @@ function configuredFixture(backend = 'rtdb') {
   } } : undefined, backend === 'rtdb' ? undefined : { db: firestore.db });
   const handler = api.createConfiguredAdminPageHandler({
     auth: {
-      verifyIdToken: async (token, revoked) => { assert.equal(token, 'synthetic-token'); assert.equal(revoked, true); return { uid: 'synthetic-owner' }; },
+      verifyIdToken: async (token, revoked) => { assert.equal(token, 'synthetic-token'); assert.equal(revoked, false); return { uid: 'synthetic-owner' }; },
       getUser: async uid => ({ uid, customClaims: { role: 'owner' } }),
       createSessionCookie: async () => 'synthetic-cookie',
-      verifySessionCookie: async (cookie, revoked) => { assert.equal(cookie, 'synthetic-cookie'); assert.equal(revoked, true); return { uid: 'synthetic-owner' }; },
+      verifySessionCookie: async (cookie, revoked) => { assert.equal(cookie, 'synthetic-cookie'); assert.equal(revoked, false); return { uid: 'synthetic-owner' }; },
     },
     template: async () => '<html><title></title><body><section id="admin-login"></section><main id="admin-content" data-admin-title="관리자"><a id="admin-settings" hidden></a></main></body></html>',
     now: () => now,
@@ -225,7 +225,7 @@ test('생성된 RTDB handler도 다음 인증 요청에서 설정 변경을 거�
   assert.doesNotMatch(page.body, /id="admin-content"|private-config-must-not-leak/);
   const activity = await fixture.call('/admin/session/activity', { method: 'POST', headers, body: { uid: 'synthetic-owner' } });
   assert.equal(activity.code, 503);
-  assert.deepEqual(activity.body, { success: false });
+  assert.deepEqual(activity.body, { success: false, code: 'ADMIN_SESSION_UNAVAILABLE' });
   assert.deepEqual(fixture.calls, []);
 });
 
@@ -307,6 +307,7 @@ test('이미 생성된 관리자 export도 runtime backend 변경 뒤 운영 han
 test('일반 관리자 export의 승인된 RTDB 운영 분기는 CSV selector를 포함한 관리 서비스를 준비한다', async () => {
   // 운영 대상은 단위 검사에서만 합성 설정으로 주입하며 SDK와 서비스도 모두 모의 객체다.
   const runtimeFactory = load('services/adminPageRuntime.js', {
+    './adminRequestTiming': require('../services/adminRequestTiming'),
     '../config/userStorage': { resolveUserStorageConfig: () => ({ mode: 'production', projectId: 'synthetic-project',
       targetId: 'synthetic-target', instanceId: 'synthetic-instance', location: 'us-central1',
       databaseURL: 'https://synthetic-instance.firebaseio.com/' }) },
