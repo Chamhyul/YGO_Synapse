@@ -93,6 +93,8 @@ function createUserInventoryWriterBinding({ db, database, bucket, FieldValue, ru
   const customClaims = require('./userClaimsWriterStore').createClaimsWriterStore({ transition, initialize, initializeMissing, database, timeoutMs, onAmbiguousWrite, writerLease: () => membership.writerLease() || adminSessions.writerLease() || adminRequests.writerLease() });
   const claimsStorage = { membership, membershipCsv, customClaims, config, writerTransition: transition };
   const requestWriter = new AsyncLocalStorage();
+  const readSnapshots = require('./inventoryReadSnapshots').createInventoryReadSnapshots({ database, runId,
+    getWriter: () => requestWriter.getStore(), verifyBlob: verifyInventoryBlob, timeoutMs });
   const imports = require('./inventoryImportRequests').createInventoryImportRequests({ transition });
   function publish(writer, uid, current, value, blobs = []) {
     return measure('inventory.publish', () => transition.withSession(() => publishInSession(writer, uid, current, value, blobs)));
@@ -134,6 +136,7 @@ function createUserInventoryWriterBinding({ db, database, bucket, FieldValue, ru
     return measure('writer.receipt_final', () => completed.receipt.changes[0]);
   }
   const rtdbStore = createPartitionedInventoryStore({ database, timeoutMs, onAmbiguousWrite, now, verifyBlob: verifyInventoryBlob,
+    readSnapshots,
     publisher: async ({ uid, current, candidate, kind }) => {
       const writer = requestWriter.getStore();
       if (writer?.backend !== 'rtdb') throw fail('WRITER_FENCED');
@@ -163,6 +166,28 @@ function createUserInventoryWriterBinding({ db, database, bucket, FieldValue, ru
     return initializeMissing ? transition.route() : initialized;
   }
   const inventoryRepository = {
+    // 서명·가입 확인 후 같은 요청만 사용한다. 복사본 미적중은 원본 읽기·생성 요청·변환을 시작하지 않는다.
+    async readLoginInventory(uid, beforeFinalRead) {
+      if (typeof beforeFinalRead !== 'function') throw fail('INVENTORY_WRITER_INVALID_COMMAND');
+      const writer = await route();
+      if (writer.backend !== 'rtdb' || writer.phase !== 'accepting') return;
+      const record = await requestWriter.run(writer, () => rtdbRepository.readPreparedInventory(uid,
+        { viewOnly: true, beforeFinalRead }));
+      if (!record) return;
+      const after = await route();
+      if (writer.backend !== after.backend || writer.epoch !== after.epoch || writer.phase !== after.phase) throw fail('WRITER_FENCED');
+      if (migration.inventoryMigrationStatus(record.value).status !== 'complete') return;
+      return record;
+    },
+    async readPreparedInventory(uid) {
+      const writer = await route();
+      if (writer.backend !== 'rtdb' || writer.phase !== 'accepting') return;
+      const record = await requestWriter.run(writer, () => rtdbRepository.readPreparedInventory(uid));
+      const after = await route();
+      if (writer.backend !== after.backend || writer.epoch !== after.epoch || writer.phase !== after.phase) throw fail('WRITER_FENCED');
+      if (record && migration.inventoryMigrationStatus(record.value).status !== 'complete') return;
+      return record;
+    },
     readInventoryForSync: require('./inventoryConditionalSync').createInventorySyncReader({
       route, metadata: uid => rtdbStore.readMetadata(uid, { forSync: true }),
       snapshot: (uid, writer) => requestWriter.run(writer, () => rtdbRepository.readInventorySnapshot(uid)),
@@ -208,6 +233,25 @@ function createUserInventoryWriterBinding({ db, database, bucket, FieldValue, ru
       await publish(writer, uid, current, { exists: false, manifest: clearedManifest(current.value?.manifest) });
     },
   };
+  async function rebuildInventoryReadSnapshot(uid) {
+    keyFor(uid);
+    const writer = await route();
+    if (writer.backend !== 'rtdb' || writer.phase !== 'accepting') return { status: 'skipped' };
+    return requestWriter.run(writer, async () => {
+      if (await rtdbStore.hasReadSnapshot(uid)) {
+        const after = await route();
+        if (writer.backend !== after.backend || writer.epoch !== after.epoch || after.phase !== 'accepting') throw fail('WRITER_FENCED');
+        return { status: 'unchanged' };
+      }
+      const captured = await rtdbStore.captureReadSnapshot(uid);
+      if (!captured) return { status: 'skipped' };
+      const [head, after] = await Promise.all([rtdbStore.readSnapshotHead(uid), route()]);
+      if (writer.backend !== after.backend || writer.epoch !== after.epoch || after.phase !== 'accepting'
+          || captured.head.revision !== head.revision || captured.head.generation !== head.generation
+          || fingerprint(captured.head.value) !== fingerprint(head.value)) throw fail('WRITER_FENCED');
+      return readSnapshots.save(uid, captured);
+    });
+  }
   async function archiveMembershipReceipts({ cursor, limit = 16, apply = false } = {}) {
     const batch = await history.page('operations', { cursor, limit });
     const result = await membershipAdapters.rtdb.archiveConfirmedReceipts(batch.items.map(item => item.value), { apply });
@@ -215,6 +259,6 @@ function createUserInventoryWriterBinding({ db, database, bucket, FieldValue, ru
   }
   const maintainMembershipReceipts = require('./membershipReceiptMaintenance').createMembershipReceiptMaintenance({
     database, runId, archivePage: archiveMembershipReceipts, timeoutMs, onAmbiguousWrite });
-  return { repository: profile.repository, inventoryRepository, transition, stores, inventories, membership, membershipAdapters, claimsStorage, adminSessions, sessionAdapters, apiAccess, apiAdapters, membershipCsv, csvAdapters, adminRequests, notices, initialize, archiveMembershipReceipts, maintainMembershipReceipts };
+  return { repository: profile.repository, inventoryRepository, rebuildInventoryReadSnapshot, transition, stores, inventories, membership, membershipAdapters, claimsStorage, adminSessions, sessionAdapters, apiAccess, apiAdapters, membershipCsv, csvAdapters, adminRequests, notices, initialize, archiveMembershipReceipts, maintainMembershipReceipts };
 }
 module.exports = { createUserInventoryWriterBinding };

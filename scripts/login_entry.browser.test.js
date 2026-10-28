@@ -24,9 +24,14 @@ async function fixture(page){const errors=[];page.setDefaultTimeout(5000);page.o
 test('통합 초기 조회·claims·보유 정보 반영까지 전체 로딩을 유지하고 추가 HTTP를 만들지 않는다',async()=>{
  const b=await chromium.launch();try{const p=await b.newPage(),errors=await fixture(p),logs=[];
  p.on('console',m=>{if(m.text().startsWith('[YGO login'))logs.push(m.text());});
+ await p.evaluate(()=>setServiceLoginPending(true));
+ assert.equal(await p.locator('#loading-text').textContent(),'로그인 중...');
+ await p.evaluate(()=>endOtherLoading());assert.equal(await p.locator('#loading-text').textContent(),'로그인 중...');
  await p.locator('#start').click();assert(await p.locator('#loading-overlay').isVisible());
+ assert.equal(await p.locator('#loading-text').textContent(),'내 인벤토리 로딩 중...');
  assert(!logs.some(x=>x.startsWith('[YGO login entry timing]')));
  await p.evaluate(()=>endOtherLoading());assert(await p.locator('#loading-overlay').isVisible());
+ assert.equal(await p.locator('#loading-text').textContent(),'내 인벤토리 로딩 중...');
  await p.evaluate(()=>releaseSync());await p.waitForFunction(()=>fixtureState().status==='ready');
  assert.equal(await p.locator('#loading-overlay').isVisible(),false);
  assert.equal(await p.locator('[data-requires-inventory]').isDisabled(),false);
@@ -40,6 +45,7 @@ test('호환 별도 조회와 claims 갱신도 전체 화면을 가리며 다른
  const b=await chromium.launch();try{const p=await b.newPage(),errors=await fixture(p);
  await p.evaluate(()=>{summaryOnly=true;holdClaims=true;});await p.locator('#start').click();
  await p.waitForFunction(()=>fixtureState().status==='loading');assert(await p.locator('#loading-overlay').isVisible());
+ assert.equal(await p.locator('#loading-text').textContent(),'내 인벤토리 로딩 중...');
  assert(await p.locator('[data-requires-inventory]').isDisabled());
  await p.evaluate(()=>endOtherLoading());assert(await p.locator('#loading-overlay').isVisible());
  await p.evaluate(()=>releaseSync());await p.waitForTimeout(30);
@@ -65,5 +71,17 @@ test('동기화 중 로그아웃하면 늦은 보유 정보·완료 상태를 �
  await p.evaluate(()=>signOutFixture());await p.evaluate(()=>releaseSync());await p.waitForFunction(()=>!fixtureState().signedIn);
  assert.equal(await p.locator('#home-auth-content').isVisible(),false);assert.equal(await p.locator('#loading-overlay').isVisible(),false);
  assert.equal(await p.evaluate(()=>events.includes('inventory-applied')),false);assert.deepEqual(errors,[]);
+ }finally{await b.close();}
+});
+
+
+test('최초 세션 확인은 실제 로그인·보유 로딩과 문구를 구분한다', async () => {
+ const b=await chromium.launch();try {
+  const p=await b.newPage(),errors=await fixture(p);
+  await p.addScriptTag({content:fn('checkAndHideInitialLoading')});
+  await p.evaluate(()=>{UserStore.isInitialSyncDone=true;window.isAuthInitialized=false;checkAndHideInitialLoading();});
+  assert.equal(await p.locator('#loading-text').textContent(),'로그인 상태 확인 중...');
+  await p.evaluate(()=>{window.isAuthInitialized=true;checkAndHideInitialLoading();});
+  assert.equal(await p.locator('#loading-overlay').isVisible(),false);assert.deepEqual(errors,[]);
  }finally{await b.close();}
 });

@@ -24,7 +24,11 @@ function createRtdbInventoryRepository({ storage, migration } = {}) {
   return {
     // 조회/이관과 같은 실행이 확인한 원본 revision을 반환한다. 나중에 읽은
     // 메타정보를 이전 본문과 조합해 조건부 조회 토큰을 만들지 않는다.
-    async readInventorySnapshot(uid) { return (await updateFull(uid, () => {}, 3)).record; },
+    async readPreparedInventory(uid, options) { return store.readPrepared ? store.readPrepared(uid, options) : undefined; },
+    async readInventorySnapshot(uid) {
+      const prepared = store.readPrepared ? await store.readPrepared(uid) : undefined;
+      return prepared || (await updateFull(uid, () => {}, 3)).record;
+    },
     async downloadInventory(uid) {
       const record = await store.read(uid);
       return { data: record.value, generation: String(record.revision) };

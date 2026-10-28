@@ -5,7 +5,10 @@ const { isRegisteredUser, readRegistrationProfile, completeUserRegistration } = 
 const { measure, withLoginRequestTiming } = require('../services/inventoryRequestTiming');
 const { withWriterRequestScope, rememberInitialWriterRoute } = require('../services/initialWriterRoute');
 const onRequest = (options, handler) => firebaseOnRequest(options,
-  (req, res) => withWriterRequestScope(() => handler(req, res)));
+  (req, res) => withWriterRequestScope(() => req.method === 'GET' && req.query?.includeUserData === 'true'
+    && req.query?.loginMembershipResult === 'true'
+    ? require('../services/loginMembershipResult').withLoginMembershipResult(req, res, response => handler(req, response))
+    : handler(req, res)));
 
 // 공개 문서의 SHA-256. 문서를 변경할 때 이 버전도 함께 갱신한다.
 const CONSENT_VERSIONS = Object.freeze({
@@ -13,7 +16,7 @@ const CONSENT_VERSIONS = Object.freeze({
   privacy: '227208e70b6de548fd8e081b50a0b01dd2adc6537d3c8d05fa80e60879ada2e8',
 });
 
-async function prepare(req, res, method) {
+async function prepare(req, res, method, { onIdentity } = {}) {
   setCors(res, req);
   res.set('Cache-Control', 'no-store');
   if (req.method === 'OPTIONS') { res.status(204).send(''); return null; }
@@ -30,40 +33,76 @@ async function prepare(req, res, method) {
   }
   if (req.method !== method) { res.status(405).json({ success: false, message: `${method} 요청을 사용하세요.` }); return null; }
   if (!(await verifyAppCheck(req, res))) return null;
-  return measure('auth.verify', () => verifyUser(req, res, { includeAccountRole: req.query?.includeUserData === 'true' || req.query?.includeAccountData === 'true' }));
+  return measure('auth.verify', () => verifyUser(req, res, {
+    includeAccountRole: req.query?.includeUserData === 'true' || req.query?.includeAccountData === 'true', onIdentity,
+    ...(req.query?.includeUserData === 'true' && req.query?.loginMembershipResult === 'true'
+      && process.env.USER_STORAGE_BACKEND === 'rtdb'
+      ? { accountWindow: value => require('../services/loginMembershipResult').prepareLoginAccount(value) } : {}),
+  }));
 }
 
 exports.getRegistrationStatus = onRequest({ invoker: 'public' }, withLoginRequestTiming('getRegistrationStatus', async (req, res) => {
-  const uid = await prepare(req, res, 'GET');
-  if (!uid) return;
+  const includeUserData = req.query?.includeUserData === 'true';
+  const includeAccountData = !includeUserData && req.query?.includeAccountData === 'true';
+  const inventoryRead = includeUserData && process.env.USER_STORAGE_BACKEND === 'rtdb'
+    && (process.env.USER_PROFILE_WRITER_MODE === 'production' || process.env.USER_STORAGE_MODE === 'production')
+    && !require('../services/publicReadTransport').isLocal()
+    ? require('../services/loginInventoryRead').createLoginInventoryRead((uid, beforeFinalRead) =>
+      require('../utils/inventoryStorage').readLoginInventory(uid, beforeFinalRead)) : null;
+  let registrationTask, registrationUid;
+  const readRegistration = uid => {
+    if (registrationTask && registrationUid !== uid) throw new Error('가입 확인의 계정이 일치하지 않습니다.');
+    registrationUid = uid;
+    // 서명 검증으로 얻은 UID만 사용한다. 현재 계정 조회와 겹치되 읽기 오류는
+    // 인증 오류로 바꾸지 않고 기존 가입 조회 실패 응답에서 처리한다.
+    return registrationTask ||= Promise.resolve().then(() => measure('registration.check', () =>
+      includeUserData || includeAccountData ? readRegistrationProfile(uid)
+        : isRegisteredUser(uid).then(registered => ({ registered }))))
+      .then(value => {
+        if (value.registered) inventoryRead?.start(uid);
+        return { value };
+      }, error => ({ error }));
+  };
   try {
-    const includeUserData = req.query?.includeUserData === 'true';
-    const includeAccountData = !includeUserData && req.query?.includeAccountData === 'true';
-    const registration = await measure('registration.check', () => includeUserData || includeAccountData
-      ? readRegistrationProfile(uid) : isRegisteredUser(uid).then(registered => ({ registered })));
-    const { registered } = registration;
-    const result = { success: true, registered, consentVersions: CONSENT_VERSIONS };
-    if (registered && includeAccountData) {
-      result.initialAccount = await require('../services/loginUserData').readLoginAccountData(req, uid,
-        { initialProfile: registration.profile });
+    const uid = await prepare(req, res, 'GET', { onIdentity: readRegistration });
+    inventoryRead?.authorize(uid || null);
+    if (!uid) {
+      // 인증 실패 시 선행 결과를 버리고 시작한 읽기를 회수한다. 전체 조회·쓰기는 시작하지 않는다.
+      if (registrationTask) await registrationTask;
+      return;
     }
-    // 기존 호출은 동일 응답을 유지한다. 미가입 계정에는 사용자 본문을 조회하지 않는다.
-    if (registered && includeUserData) {
-      try {
-        result.initialData = await require('../services/loginUserData').readLoginUserData(req, uid,
+    try {
+      // 로컬 운영 인증 프록시·구형 주입 의존성은 UID 확인 뒤 기존 순서로 읽는다.
+      const checked = await readRegistration(uid);
+      if (checked.error) throw checked.error;
+      const registration = checked.value;
+      const { registered } = registration;
+      const result = { success: true, registered, consentVersions: CONSENT_VERSIONS };
+      if (registered && includeAccountData) {
+        result.initialAccount = await require('../services/loginUserData').readLoginAccountData(req, uid,
           { initialProfile: registration.profile });
-      } catch (error) {
-        // 가입 판정과 본문 장애를 구분하고 자동 중복 조회/claims 쓰기를 피한다.
-        console.error('Initial user data failed:', safeErrorSummary(error));
-        result.initialData = { success: false, code: error.code === 'ACCOUNT_ROLE_UNAVAILABLE'
-          ? error.code : 'INITIAL_USER_DATA_UNAVAILABLE', message: '회원 정보를 불러오지 못했습니다. 다시 시도해 주세요.' };
       }
+      // 기존 호출은 동일 응답을 유지한다. 미가입 계정에는 사용자 본문을 조회하지 않는다.
+      if (registered && includeUserData) {
+        try {
+          result.initialData = await require('../services/loginUserData').readLoginUserData(req, uid,
+            { initialProfile: registration.profile,
+              ...(inventoryRead ? { readPreparedInventory: () => inventoryRead.result(uid) } : {}),
+              ...(req.query?.loginMembershipResult === 'true' ? { readMembershipClaims:
+                require('../services/loginMembershipResult').readLoginClaims } : {}) });
+        } catch (error) {
+          // 가입 판정과 본문 장애를 구분하고 자동 중복 조회/claims 쓰기를 피한다.
+          console.error('Initial user data failed:', safeErrorSummary(error));
+          result.initialData = { success: false, code: error.code === 'ACCOUNT_ROLE_UNAVAILABLE'
+            ? error.code : 'INITIAL_USER_DATA_UNAVAILABLE', message: '회원 정보를 불러오지 못했습니다. 다시 시도해 주세요.' };
+        }
+      }
+      return measure('login.response', () => res.json(result));
+    } catch (error) {
+      console.error('Registration status failed:', safeErrorSummary(error));
+      return res.status(503).json({ success: false, message: '가입 상태를 확인하지 못했습니다. 다시 시도해 주세요.' });
     }
-    return measure('login.response', () => res.json(result));
-  } catch (error) {
-    console.error('Registration status failed:', safeErrorSummary(error));
-    return res.status(503).json({ success: false, message: '가입 상태를 확인하지 못했습니다. 다시 시도해 주세요.' });
-  }
+  } finally { await inventoryRead?.close(); }
 }));
 
 exports.completeRegistration = onRequest({ invoker: 'public' }, async (req, res) => {

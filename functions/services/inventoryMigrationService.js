@@ -88,6 +88,11 @@ async function prepareInventoryV2(inventory, memo = new Map()) {
 }
 
 async function ensureInventoryV2(uid) {
+  if (!suppliedUpdate) {
+    const source = require('../utils/inventoryStorage');
+    const prepared = source.readPreparedInventory ? await source.readPreparedInventory(uid) : undefined;
+    if (prepared) return prepared.value;
+  }
   const updateInventoryWithRetry = suppliedUpdate || require('../utils/inventoryStorage').updateInventoryWithRetry;
   return updateInventoryWithRetry(uid, () => {});
 }

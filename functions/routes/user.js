@@ -4,7 +4,12 @@ const { withUserStorageRequestGuard } = require('../services/userStorageRequestG
 const { measure, withLoginRequestTiming } = require('../services/inventoryRequestTiming');
 const onRequest = (options, handler, storageOptions, timingOperation) => {
   const guarded = withUserStorageRequestGuard(withPublicReadRequest(handler), storageOptions);
-  return firebaseOnRequest(options, timingOperation ? withLoginRequestTiming(timingOperation, guarded) : guarded);
+  const result = (req, res) => timingOperation === 'getUserData' && req.method === 'POST'
+    && req.body?.loginMembershipResult === true && !req.body?.membershipPrepare && !req.body?.membershipClaimsOnly
+    && !req.body?.membershipClaimsReadOnly
+    ? require('../services/loginMembershipResult').withLoginMembershipResult(req, res, response => guarded(req, response))
+    : guarded(req, res);
+  return firebaseOnRequest(options, timingOperation ? withLoginRequestTiming(timingOperation, result) : result);
 };
 const { getUserProfileRepository } = require('../services/userProfileRepository');
 const { setCors, verifyRegisteredUser, verifyAppCheck } = require("../utils/auth");
@@ -49,7 +54,9 @@ exports.getUserData = onRequest({ invoker: "public", memory: "256MiB" }, async (
         { auth, readAccount: read });
       checkedClaims = checked.membershipClaims;
       return checked.account;
-    } : undefined;
+    } : !preparing && !claimsOnly && !req.body?.membershipClaimsReadOnly && req.body?.loginMembershipResult === true
+      && !isLocal() && process.env.USER_STORAGE_BACKEND === 'rtdb'
+      ? value => require('../services/loginMembershipResult').prepareLoginAccount(value) : undefined;
   const uid = await verifyRegisteredUser(req, res, { includeAccountRole: true, accountWindow });
   if (!uid) return;
 
@@ -66,6 +73,8 @@ exports.getUserData = onRequest({ invoker: "public", memory: "256MiB" }, async (
       membershipClaimsReadOnly: req.body?.membershipClaimsReadOnly === true,
       inventoryConditional: req.body?.inventoryConditional === true,
       inventoryToken: req.body?.inventoryToken,
+      ...(req.body?.loginMembershipResult === true && !req.body?.membershipClaimsReadOnly
+        ? { readMembershipClaims: require('../services/loginMembershipResult').readLoginClaims } : {}),
     });
     return measure('login.response', () => res.json(data));
   } catch (e) {

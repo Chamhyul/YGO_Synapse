@@ -20,6 +20,9 @@ const inventoryRuntime = process.env.K_SERVICE && process.env.K_REVISION
 const claimsWorkerRuntime = process.env.K_SERVICE && process.env.K_REVISION
   && !process.env.FUNCTIONS_EMULATOR && !process.env.FIREBASE_EMULATOR_HUB
   && process.env.FUNCTION_TARGET === 'syncMembershipClaimsAfterProfile';
+const inventorySnapshotRuntime = process.env.K_SERVICE && process.env.K_REVISION
+  && !process.env.FUNCTIONS_EMULATOR && !process.env.FIREBASE_EMULATOR_HUB
+  && ['refreshInventoryReadSnapshot', 'prepareInventoryReadSnapshot'].includes(process.env.FUNCTION_TARGET);
 const authenticationRouteModules = Object.freeze({
   adminPages: './routes/admin/pages',
   adminBackend: './routes/admin/pages',
@@ -32,7 +35,9 @@ const authenticationRouteModules = Object.freeze({
 const authenticationRuntime = process.env.K_SERVICE && process.env.K_REVISION
   && !process.env.FUNCTIONS_EMULATOR && !process.env.FIREBASE_EMULATOR_HUB
   && Object.hasOwn(authenticationRouteModules, process.env.FUNCTION_TARGET);
-if (claimsWorkerRuntime) {
+if (inventorySnapshotRuntime) {
+  exports[process.env.FUNCTION_TARGET] = require('./tasks/inventoryReadSnapshot')[process.env.FUNCTION_TARGET];
+} else if (claimsWorkerRuntime) {
   exports.syncMembershipClaimsAfterProfile = require('./tasks/membershipClaims').syncMembershipClaimsAfterProfile;
 } else if (inventoryRuntime) {
   const inventoryRoutes = require('./routes/inventory');
@@ -107,6 +112,7 @@ exports.autoCrawlFull = crawlerSchedules.autoCrawlFull;
 exports.autoCrawlQuick = crawlerSchedules.autoCrawlQuick;
 exports.compactUserWriterHistory = require('./schedules/userWriterHistory').compactUserWriterHistory;
 exports.syncMembershipClaimsAfterProfile = require('./tasks/membershipClaims').syncMembershipClaimsAfterProfile;
+Object.assign(exports, require('./tasks/inventoryReadSnapshot'));
 exports.processCardIndexTask = require("./tasks/cardIndexes").processCardIndexTask;
 exports.autoCrawlTask = require("./tasks/autoCrawler").autoCrawlTask;
 exports.migrateCardNumbersTask = require("./tasks/cardNumbers").migrateCardNumbersTask;

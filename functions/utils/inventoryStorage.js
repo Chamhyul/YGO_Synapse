@@ -309,3 +309,12 @@ module.exports.readInventoryForSync = async (uid, token) => {
   const repository = rtdbRepository();
   return repository?.readInventoryForSync ? repository.readInventoryForSync(uid, token) : undefined;
 };
+module.exports.readPreparedInventory = async uid => {
+  const repository = rtdbRepository();
+  return repository?.readPreparedInventory ? repository.readPreparedInventory(uid) : undefined;
+};
+// 인증 완료 장벽은 서버 내부 함수로만 전달하며 미지원 저장소는 기존 경로를 사용한다.
+module.exports.readLoginInventory = async (uid, beforeFinalRead) => {
+  const repository = rtdbRepository();
+  return repository?.readLoginInventory ? repository.readLoginInventory(uid, beforeFinalRead) : undefined;
+};

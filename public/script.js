@@ -481,8 +481,11 @@ class ClientCache {
         this._inventory = [];
         this._inventoryRevision = 0;
         this._allKnownNames = new Set();
+        this._knownNames = [];
+        this._knownNamesNormalized = [];
+        this._inventoryNameIndex = new Map();
+        this._nameIndexKnownSource = null;
         this._indexes = {
-            names: new Set(),
             ownedNumbers: new Set(),
             nameToNos: {},
             locations: new Set()
@@ -689,14 +692,64 @@ class ClientCache {
         this.refreshIndexes();
     }
 
+    // 전체 응답은 서버 요약을 먼저 적용한 뒤 목록·검색 인덱스·집계를 한 번
+    // 갱신한다. 빈 목록과 구형 요약 보존 규칙도 기존 재계산에서 처리한다.
+    setInventorySnapshot(data, amount, locations, rarities) {
+        this._summary.amount = amount || 0;
+        this._summary.locations = locations || {};
+        this._summary.rarities = rarities || {};
+        this.setInventory(data);
+    }
+
     /**
      * [Phase 2] 전체 알려진 카드 이름 저장 및 동기화
      */
     setAllKnownNames(names) {
         if (!names || !Array.isArray(names)) return;
-        this._allKnownNames.clear(); // [중요] 기존 데이터를 비우고 서버의 최신 데이터로 교체
-        names.forEach(n => this._allKnownNames.add(n));
+        const next = new Set(names);
+        if (next.size === this._allKnownNames.size && [...next].every(name => this._allKnownNames.has(name))) return;
+        this._allKnownNames = next;
+        this._knownNames = Array.from(next).sort();
+        this._knownNamesNormalized = this._knownNames.map(name => this.createNameSearchEntry(name));
         this.refreshIndexes();
+    }
+
+    createNameSearchEntry(name) {
+        const normalized = name.replace(/\s+/g, '').toLowerCase();
+        return { original: name, normalized, chosung: getChosung(normalized) };
+    }
+
+    // 공개 이름의 색인은 보존하고, 현재 보유 목록에만 있는 이름을 별도로 관리한다.
+    // 검색에 제공하는 합집합은 기존 문자열 정렬/중복 제거 규칙을 유지한다.
+    refreshInventoryNameIndex(names) {
+        const previous = this._inventoryNameIndex;
+        const extraNames = [...names].filter(name => !this._allKnownNames.has(name)).sort();
+        if (this._nameIndexKnownSource === this._knownNamesNormalized && extraNames.length === previous.size
+            && extraNames.every(name => previous.has(name))) return;
+        this._nameIndexKnownSource = this._knownNamesNormalized;
+        this._inventoryNameIndex = new Map(extraNames.map(name => [name,
+            previous.get(name) || this.createNameSearchEntry(name)]));
+        if (!extraNames.length) {
+            this._sortedNames = this._knownNames;
+            this._sortedNamesNormalized = this._knownNamesNormalized;
+            return;
+        }
+        const mergedNames = [], mergedEntries = [];
+        let known = 0, extra = 0;
+        while (known < this._knownNames.length || extra < extraNames.length) {
+            const useKnown = extra === extraNames.length || known < this._knownNames.length
+                && this._knownNames[known] < extraNames[extra];
+            if (useKnown) {
+                mergedNames.push(this._knownNames[known]);
+                mergedEntries.push(this._knownNamesNormalized[known++]);
+            } else {
+                const name = extraNames[extra++];
+                mergedNames.push(name);
+                mergedEntries.push(this._inventoryNameIndex.get(name));
+            }
+        }
+        this._sortedNames = mergedNames;
+        this._sortedNamesNormalized = mergedEntries;
     }
 
 
@@ -746,7 +799,7 @@ class ClientCache {
             if (!this._ownedByCid.has(cid)) this._ownedByCid.set(cid, []);
             this._ownedByCid.get(cid).push(row);
         }
-        const names = new Set(this._allKnownNames); // 전체 이름에서 시작
+        const names = new Set();
         const nos = new Set();
         const locations = new Set();
         const nameToNos = {};
@@ -766,7 +819,6 @@ class ClientCache {
             }
         });
 
-        this._indexes.names = names;
         this._indexes.ownedNumbers = nos;
         this._indexes.locations = locations;
 
@@ -775,20 +827,10 @@ class ClientCache {
             this._indexes.nameToNos[key] = Array.from(nameToNos[key]).sort();
         }
 
-        // [Phase 3] 정렬된 배열 미리 계산 및 캐싱 (성능 최적화)
-        this._sortedNames = Array.from(names).sort();
+        // 보유 변경은 공개 카드 이름의 정렬·정규화·초성을 재계산하지 않는다.
+        this.refreshInventoryNameIndex(names);
         this._sortedLocations = Array.from(locations).sort();
         this._sortedOwnedNumbers = Array.from(nos).sort();
-
-        // 보유 카드 이름 정규화 캐시 배열 생성
-        this._sortedNamesNormalized = this._sortedNames.map(name => {
-            const normalized = name.replace(/\s+/g, '').toLowerCase();
-            return {
-                original: name,
-                normalized: normalized,
-                chosung: getChosung(normalized)
-            };
-        });
 
         // 로컬 인벤토리 데이터를 바탕으로 대시보드 요약 통계 강제 동기화
         this.rebuildSummaryFromInventory();
@@ -906,7 +948,6 @@ class ClientCache {
         this._inventory = [];
         this._indexes.ownedNumbers = new Set();
         this._indexes.locations = new Set();
-        this._indexes.names = new Set();
         this._summary.amount = 0;
         this._summary.locations = {};
         this._summary.rarities = {};
@@ -5932,8 +5973,12 @@ async function requestApi(action, params = {}, postData = null) {
     if (action === 'searchCardByImage') options.signal = AbortSignal.timeout(45000);
     if (action === 'getRegistrationStatus') options.signal = AbortSignal.timeout(30000);
     const preparingMembership = postData?.membershipPrepare === true;
-    const resultStream = !preparingMembership && ['verifyYoutubeMembership', 'verifyDiscordMembership'].includes(action)
+    const loginResultStream = !preparingMembership && (action === 'getRegistrationStatus' && String(params.includeUserData) === 'true'
+        || action === 'getUserData' && postData && !postData.membershipClaimsOnly && !postData.membershipClaimsReadOnly
+          && params.warmup !== 'true' && postData.warmup !== 'true');
+    const resultStream = !preparingMembership && (loginResultStream || ['verifyYoutubeMembership', 'verifyDiscordMembership'].includes(action))
         && typeof window !== 'undefined' && window.YgoAuthenticationResult;
+    if (resultStream && loginResultStream && action === 'getRegistrationStatus') url.searchParams.set('loginMembershipResult', 'true');
     const resultSerial = resultStream ? ++membershipAuthenticationSerial : 0, resultRevision = resultStream ? authStateRevision : 0;
     // 첫 결과 뒤 화면을 이동해도 작은 인증 요청의 기록 정리를 이어간다.
     if (resultStream) options.keepalive = true;
@@ -5970,7 +6015,7 @@ async function requestApi(action, params = {}, postData = null) {
         // POST 요청 시 ssId를 본문에 포함
         const body = {
             ...postData,
-            ...(resultStream ? { authenticationResultStream: true } : {}),
+            ...(resultStream ? loginResultStream ? { loginMembershipResult: true } : { authenticationResultStream: true } : {}),
             ssId: savedId
         };
         options.body = JSON.stringify(body);
@@ -5994,7 +6039,14 @@ async function requestApi(action, params = {}, postData = null) {
         const currentResult = () => resultSerial === membershipAuthenticationSerial && resultRevision === authStateRevision
             && authUser?.uid === UserStore.user?.uid && firebase.auth().currentUser?.uid === authUser?.uid;
         const parse = () => resultStream ? resultStream.read(response, {
+            // 기존 전체 JSON과 같은 보유 정보 크기를 허용한다. 인증 단독 응답의 1MiB 제한은 유지한다.
+            ...(loginResultStream ? { maxBytes: Infinity } : {}),
             async onRecorded(result) {
+                if (loginResultStream) {
+                    // 첫 응답의 회원 여부/보유 정보를 늦은 기록 프레임으로 덮어쓰지 않는다.
+                    // 전체 데이터 적용에서 시작한 제한된 완료 확인을 중복 시작하지 않는다.
+                    return;
+                }
                 if (!currentResult() || result.uid !== authUser.uid || !result.membershipClaims) return;
                 const ready = await refreshMembershipClaims(authUser, result);
                 if (!currentResult()) return;
@@ -6003,10 +6055,16 @@ async function requestApi(action, params = {}, postData = null) {
                 setInventorySyncStatus(UserStore.inventorySyncStatus);
             },
             onFailure() {
-                if (currentResult()) showToast('인증 결과의 작업 기록을 확인하지 못했습니다. 다시 확인해 주세요.', 'toast-warn');
+                if (currentResult()) showToast(loginResultStream
+                    ? '회원 정보의 권한 동기화 결과를 확인하지 못했습니다. 다시 확인해 주세요.'
+                    : '인증 결과의 작업 기록을 확인하지 못했습니다. 다시 확인해 주세요.', 'toast-warn');
             }
         }) : response.json();
         const res = await (loginTiming ? loginTiming.measure('response_json', parse) : parse());
+        if (resultStream && loginResultStream) {
+            const data = res?.initialData || res;
+            if (data?.membershipClaims) data.membershipClaims.tokenRefreshDeferred = true;
+        }
 
         if (res && res.debug && res.debug.serverTime) {
             // [로그 삭제] 서버 실행 시간 로그 제거
@@ -6879,6 +6937,23 @@ async function performUserDataSync(initialData, options, task) {
         if (!current()) return;
         const applyClaimsResult = async value => {
         if (value?.membershipClaims) {
+            if (value.membershipClaims.status === 'synced' && value.membershipClaims.tokenRefreshDeferred === true) {
+                // 회원 여부는 서버의 현재 원본으로 확정됐다. 토큰 복사본 갱신은
+                // 화면/전체 보유 정보 반영을 막지 않고 현재 계정/revision에 한정해 회수한다.
+                UserStore.claimsSyncStatus = 'checking';
+                Promise.resolve().then(() => current() && refreshMembershipClaims(task.owner, value)).then(ready => {
+                    if (!current()) return;
+                    UserStore.claimsSyncStatus = ready ? 'ready' : 'pending';
+                    if (!ready) followMembershipClaims(task.owner);
+                    setInventorySyncStatus(UserStore.inventorySyncStatus);
+                }).catch(() => {
+                    if (!current()) return;
+                    UserStore.claimsSyncStatus = 'pending';
+                    followMembershipClaims(task.owner);
+                    setInventorySyncStatus(UserStore.inventorySyncStatus);
+                });
+                return;
+            }
             const refreshClaims = () => refreshMembershipClaims(UserStore.user, value);
             const tokenReady = await (loginTiming ? loginTiming.measure('claims_token', refreshClaims) : refreshClaims());
             if (!current()) return;
@@ -7089,12 +7164,15 @@ function applyUserData(res, { includeSettings = true } = {}) {
     }
 
     // 1. 인벤토리 목록 저장
-    if (!unchanged && res.allCards) {
+    const batched = !unchanged && res.allCards && typeof cardCacheInstance.setInventorySnapshot === 'function';
+    if (batched) {
+        cardCacheInstance.setInventorySnapshot(res.allCards, res.amount, res.locations, res.rarities);
+    } else if (!unchanged && res.allCards) {
         cardCacheInstance.setInventory(res.allCards);
     }
 
     // 2. 통계 및 매핑 저장 (초기 로딩 및 로컬 데이터를 바탕으로 통계 강제 동기화 보정)
-    if (!unchanged) {
+    if (!unchanged && !batched) {
         cardCacheInstance.setSummary(res.amount, res.locations, res.rarities);
         cardCacheInstance.rebuildSummaryFromInventory();
     }
@@ -7331,7 +7409,7 @@ function checkAndHideInitialLoading() {
 
     if (!window.isAuthInitialized) {
         // 마스터 동기화는 완료되었으나, 아직 Firebase Auth 검증 진행 중인 경우
-        showLoading(true, "로그인 중...");
+        showLoading(true, "로그인 상태 확인 중...");
     } else {
         // Firebase Auth 검증까지 완전히 종료된 경우
         if (!UserStore.user) {
@@ -7347,7 +7425,9 @@ function showLoading(show, html) {
     // 인증 팝업 완료와 서비스 로그인 완료는 다르다. 확인 중에는 다른 작업도 로딩을 닫지 못한다.
     if (typeof serviceLoginPending !== 'undefined' && serviceLoginPending) {
         show = true;
-        html = '로그인 중...';
+        // Firebase 인증 후 통합 계정·보유 조회 대기를 실제 로그인과 구분한다.
+        html = typeof registrationCheckPending !== 'undefined' && registrationCheckPending
+            ? '내 인벤토리 로딩 중...' : '로그인 중...';
     } else if (typeof UserStore !== 'undefined' && UserStore.user && UserStore.inventorySyncStatus === 'loading') {
         // 공통 데이터 등 다른 작업의 종료가 사용자 데이터 동기화 화면을 닫지 못한다.
         show = true;

@@ -262,7 +262,7 @@ test('서비스 확인 실패 뒤 실제 로그아웃되면 Google·X 로그인 
 });
 
 
-test('팝업 결과 반환 후 가입 확인이 끝나기 전에는 공통 로딩 종료 요청도 로그인 로딩을 닫지 않는다', async () => {
+test('Firebase 인증 후 통합 보유 조회 중에는 공통 종료 요청도 인벤토리 로딩을 닫지 않는다', async () => {
   let finish;
   const f = fixture(() => new Promise(resolve => { finish = resolve; }));
   f.nodes.get('google-login-btn').disabled = false;
@@ -273,7 +273,7 @@ test('팝업 결과 반환 후 가입 확인이 끝나기 전에는 공통 로�
   f.c.showLoading(false);
   f.c.checkAndHideInitialLoading();
   assert.equal(f.nodes.get('loading-overlay').style.display, 'flex');
-  assert.equal(f.nodes.get('loading-text').innerHTML, '로그인 중...');
+  assert.equal(f.nodes.get('loading-text').innerHTML, '내 인벤토리 로딩 중...');
   finish({success:true,registered:true});await checking;
   assert.equal(f.c.UserStore.user.uid, 'new');
   assert.equal(f.nodes.get('loading-overlay').style.display, 'none');

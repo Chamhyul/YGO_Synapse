@@ -29,13 +29,18 @@ async function readLoginAccountData(req, uid, { initialProfile } = {}) {
 
 // 호출은 같은 HTTP 요청에서 인증·가입 판정을 끝낸 서버 경로로 제한한다.
 async function readLoginUserData(req, uid, { initialProfile, membershipClaimsReadOnly = false,
-    inventoryConditional = false, inventoryToken } = {}) {
+    inventoryConditional = false, inventoryToken, readMembershipClaims, readPreparedInventory } = {}) {
     const start = Date.now();
     // 같은 인증 요청 안에서 독립 조회를 시작하고 모든 실패를 함께 회수한다.
     const results = await Promise.allSettled([
       measure('login.account_role', () => getVerifiedAccountRole(req, uid)),
       measure('login.inventory', async () => {
         try {
+          // 같은 요청에서 인증 후 최종 경계를 통과한 선행 읽기만 소비한다.
+          if (typeof readPreparedInventory === 'function') {
+            const prepared = await readPreparedInventory();
+            if (prepared) return { data: prepared.value };
+          }
           if (inventoryConditional === true) {
             const read = require('../utils/inventoryStorage').readInventoryForSync;
             const result = typeof read === 'function' ? await read(uid, inventoryToken) : undefined;
@@ -52,6 +57,7 @@ async function readLoginUserData(req, uid, { initialProfile, membershipClaimsRea
         ? getUserProfileRepository().read(uid) : initialProfile),
       process.env.USER_STORAGE_BACKEND === 'rtdb'
         ? measure('login.claims', () => {
+          if (typeof readMembershipClaims === 'function') return readMembershipClaims(uid);
           const claims = require('./membershipClaims');
           return membershipClaimsReadOnly === true ? claims.readMembershipClaimsAfterVerification(uid)
             : claims.syncMembershipClaims(uid);

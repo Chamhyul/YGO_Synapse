@@ -216,12 +216,13 @@ async function readMembershipClaimsAfterVerification(uid, options = {}) {
 
 // Auth를 수정하지 않는 읽기 경로다. UID 잠금의 revision과 완료된 공통 장벽,
 // 원본/정책 버전·현재 Auth 값·전환 epoch를 모두 대조한다. 미확정 작업은 복구에 남긴다.
-async function matchingClaims(uid, { storage, auth, timeoutMs }, { legacyFallback = false } = {}) {
+async function matchingClaims(uid, { storage, auth, timeoutMs }, { legacyFallback = false, parallelAdmission = false, onRead } = {}) {
   if (!storage.writerTransition?.route || !storage.customClaims.observe || !storage.customClaims.isSettled) return;
   const expires = Date.now() + timeoutMs;
   const bounded = action => { const left = expires - Date.now(); if (left <= 0) throw failure('MEMBERSHIP_CLAIMS_TIMEOUT'); return deadline(action, left); };
-  const check = async read => {
-    const before = await bounded(() => measure('claims.lock_before', () => storage.customClaims.observe(uid)));
+  const observe = () => bounded(() => measure('claims.lock_before', () => storage.customClaims.observe(uid)));
+  const check = async (read, prepared) => {
+    const before = prepared || await observe();
     if (!before.value) return;
     if (before.value.state !== 'idle') return { status: 'pending' };
     // idle 관측의 작업 ID로 완료 증거를 미리 읽는다. 원본/Auth와 독립인
@@ -230,6 +231,7 @@ async function matchingClaims(uid, { storage, auth, timeoutMs }, { legacyFallbac
     // 이 읽기를 기다리지 않고 기존 복구로 넘기며, 늦은 읽기는 권한에 쓰지 않는다.
     const settledTask = bounded(() => measure('claims.settled', () => storage.customClaims.isSettled(uid, before.value.operationId)))
       .then(value => ({ status: 'fulfilled', value }), reason => ({ status: 'rejected', reason }));
+    onRead?.(settledTask);
     const [sourceRead, accountRead] = await bounded(() => Promise.allSettled([
       measure('claims.source', read), measure('claims.account', () => auth.getUser(uid)),
     ]));
@@ -252,19 +254,61 @@ async function matchingClaims(uid, { storage, auth, timeoutMs }, { legacyFallbac
     return { status: 'synced', version: membershipPermissionVersion(record.membership) };
   };
   if (typeof storage.membership.withReadWindow === 'function') {
-    return bounded(() => storage.membership.withReadWindow(uid, ({ writer, read }) => {
+    return bounded(() => storage.membership.withReadWindow(uid, ({ writer, read, prepared }) => {
       // drain 전 얻은 부모 lease의 동기화는 기존 쓰기 경로에서 계속 완료한다.
       if (writer.phase !== 'accepting') return;
-      return legacyFallback && writer.backend === 'legacy' ? LEGACY_SOURCE : check(read);
-    }));
+      return legacyFallback && writer.backend === 'legacy' ? LEGACY_SOURCE : check(read, prepared);
+    }, parallelAdmission ? { prepare: observe } : undefined));
   }
   // 구형/시험 저장소는 기존 reader와 바깥 전후 검사를 그대로 사용한다.
-  const writer = await bounded(() => measure('claims.route_before', () => storage.writerTransition.route()));
+  const admission = await Promise.allSettled([
+    bounded(() => measure('claims.route_before', () => storage.writerTransition.route())),
+    parallelAdmission ? observe() : undefined,
+  ]);
+  const failed = admission.find(value => value.status === 'rejected');
+  if (failed) throw failed.reason;
+  const [writer, prepared] = admission.map(value => value.value);
   if (writer.phase !== 'accepting') return;
   const value = legacyFallback && writer.backend === 'legacy' ? LEGACY_SOURCE
-    : await check(() => storage.membership.read(uid));
+    : await check(() => storage.membership.read(uid), prepared);
   const finalWriter = await bounded(() => measure('claims.route_after', () => storage.writerTransition.route()));
   return same(writer, finalWriter) ? value : { status: 'pending' };
+}
+
+// 서명 검증으로 얻은 UID에만 시작하는 로그인 읽기 세션이다. 계정은 잠금 관측
+// 뒤 처음 읽고 즉시 인증 헬퍼에 돌려준다. 완료 증거/전후 재검사는 계속 회수한다.
+// repair는 서버 내부 클로저이며 인증·가입 완료 뒤에만 호출자가 실행한다.
+function beginLoginMembershipCheck(uid, options = {}) {
+  const started = Date.now();
+  const reads = [];
+  let resolveAccount, rejectAccount, accountTask, timeoutMs = 10000;
+  const account = new Promise((resolve, reject) => { resolveAccount = resolve; rejectAccount = reject; });
+  account.catch(() => {});
+  const readAccount = () => accountTask ||= Promise.resolve().then(() => {
+    const remaining = started + timeoutMs - Date.now();
+    if (remaining <= 0) throw failure('MEMBERSHIP_CLAIMS_TIMEOUT');
+    return deadline(options.readAccount, remaining);
+  }).then(value => {
+    if (!value || value.uid !== uid) throw failure('AUTH_INVALID');
+    resolveAccount(value); return value;
+  }).catch(error => { rejectAccount(error); throw error; });
+  const checked = (async () => {
+    try {
+      if (typeof options.readAccount !== 'function') throw failure('AUTH_INVALID');
+      const runtime = configured(options);
+      timeoutMs = runtime.timeoutMs;
+      const matched = await matchingClaims(uid, { ...runtime, auth: { getUser: readAccount } },
+        { parallelAdmission: true, onRead: task => reads.push(task) });
+      if (matched) return { claims: matched };
+      return { claims: { status: 'pending' }, repair: () => writeClaims(uid, runtime,
+        record => ({ [CLAIM]: membershipClaim(record) }), { expectedBackend: options.expectedBackend }) };
+    } catch (_) { return { claims: { status: 'pending' } }; }
+    finally {
+      // running/uncertain·DB 장애에서도 현재 계정의 disabled/철회 검사는 필수다.
+      try { await readAccount(); } catch (_) { /* 인증 호출자가 같은 실패를 받는다. */ }
+    }
+  })();
+  return { account, checked, async drain() { await checked; await Promise.allSettled(reads); } };
 }
 
 async function updateAccountClaims(uid, patch, options = {}) {
@@ -285,5 +329,5 @@ async function updateAccountClaims(uid, patch, options = {}) {
   return { status: 'synced' };
 }
 
-module.exports = { CLAIM, membershipClaim, mergeClaims, syncMembershipClaims, syncMembershipClaimsForProfileEvent, updateAccountClaims,
+module.exports = { CLAIM, membershipClaim, mergeClaims, syncMembershipClaims, syncMembershipClaimsForProfileEvent, updateAccountClaims, beginLoginMembershipCheck,
   inspectMembershipClaims, recoverMembershipClaims, readMembershipClaimsStatus, readMembershipClaimsStatusWithAccount, readMembershipClaimsAfterVerification };

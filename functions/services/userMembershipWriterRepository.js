@@ -106,9 +106,15 @@ function createMembershipWriterRepository({ transition, adapters, profiles, init
     },
     // 읽기 전용 claims 대조 전체를 한 전환 구간으로 감싼다. 원본은 호출마다
     // 서버에서 다시 읽으며 종료 뒤에는 read 함수를 재사용하지 못한다.
-    async withReadWindow(uid, action) {
+    async withReadWindow(uid, action, { prepare } = {}) {
       checkVerificationKey(`verification/youtube/${uid}`);
-      const before = await measure('claims.route_before', () => transition.route());
+      // 최초 잠금 관측은 저장소 선택과 독립이다. 둘 다 회수한 뒤 원본/Auth를 읽는다.
+      const reads = await Promise.allSettled([
+        measure('claims.route_before', () => transition.route()), prepare?.(),
+      ]);
+      const failed = reads.find(value => value.status === 'rejected');
+      if (failed) throw failed.reason;
+      const [before, prepared] = reads.map(value => value.value);
       let active = true;
       try {
         const read = async () => {
@@ -117,7 +123,7 @@ function createMembershipWriterRepository({ transition, adapters, profiles, init
           if (!active) throw fail('WRITER_FENCED');
           return result(profile);
         };
-        const value = await action({ writer: before, read });
+        const value = await action({ writer: before, read, prepared });
         const after = await measure('claims.route_after', () => transition.route());
         if (before.backend !== after.backend || before.epoch !== after.epoch || before.phase !== after.phase) throw fail('WRITER_FENCED');
         return value;

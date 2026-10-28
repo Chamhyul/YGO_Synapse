@@ -3,7 +3,7 @@
 const { measure } = require('../inventoryRequestTiming');
 const { isDeepStrictEqual } = require('node:util');
 const { encodeKey, encodeValue, decodeValue } = require('./codec');
-const { buildApiSummary, readApiSummary, patchApiSummary, migrationStatus, readSyncMigration } = require('./inventoryApiSummary');
+const { buildApiSummary, readApiSummary, patchApiSummary, migrationStatus, readSyncMigration, canReuseSyncMigration } = require('./inventoryApiSummary');
 const { createRecordStore, DEFAULT_MAX_ATTEMPTS } = require('./recordStore');
 const { createInventoryOperations } = require('./inventoryOperations');
 const { createStorageAccess, validateStoragePath, DEFAULT_TIMEOUT_MS } = require('./storageAccess');
@@ -29,7 +29,7 @@ function selectedNumbers(numbers, allowEmpty = true) {
 // 카드 버전은 매 시도 새 주소에 기록하고, 퇴역한 주소는 절대로 다시 참조하지 않는다.
 function createPartitionedInventoryStore({ database, path = 'inventories', partsPath = 'inventoryCardVersions',
   operationsPath = 'inventoryOperations',
-  prepare = async () => {}, prepareCards = async () => {}, now = () => new Date().toISOString(),
+  prepare = async () => {}, prepareCards = async () => {}, now = () => new Date().toISOString(), readSnapshots,
   maxAttempts = DEFAULT_MAX_ATTEMPTS, timeoutMs, onAmbiguousWrite, publisher, verifyBlob } = {}) {
   if (verifyBlob !== undefined && typeof verifyBlob !== 'function') throw fail('USER_STORAGE_INVALID_CONFIG', '카드 버전 검증 함수가 올바르지 않습니다.');
   if (publisher !== undefined && typeof publisher !== 'function') throw fail('USER_STORAGE_INVALID_CONFIG', '인벤토리 공개 어댑터가 올바르지 않습니다.');
@@ -115,22 +115,52 @@ function createPartitionedInventoryStore({ database, path = 'inventories', parts
     return loaded;
   }
 
-  async function snapshot(uid, numbers) {
+  async function snapshot(uid, numbers, { useReadSnapshot = false, preparedOnly = false, viewOnly = false, beforeFinalRead } = {}) {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const head = await headStore.read(uid);
-      if (!head.exists) return { head, state: { inventory: empty(), locationState: {
-        locationNames: {}, nextLocationId: head.value?.header?.nextLocationId ?? head.value?.legacy?.locationState?.nextLocationId ?? 1,
-      } }, blobs: {}, cards: {} };
+      // 쓰기·복구는 원본만 사용한다. 조회용 복사본은 현재 head와 본문 지문을
+      // 매번 대조하며, 실패/누락이면 같은 head의 원본 읽기로 돌아간다.
+      const [headRead, viewRead] = await Promise.allSettled([
+        headStore.read(uid), useReadSnapshot ? readSnapshots?.load(uid) : undefined,
+      ]);
+      if (headRead.status === 'rejected') throw headRead.reason;
+      const head = headRead.value;
+      if (!head.exists) {
+        if (beforeFinalRead) {
+          if (!await beforeFinalRead()) return { unauthorized: true };
+          // 부재/삭제도 계정 검사를 기다리는 동안 생성·복구될 수 있다.
+          const after = await headStore.read(uid);
+          if (head.revision !== after.revision || head.generation !== after.generation || after.exists) continue;
+        }
+        return { head, state: { inventory: empty(), locationState: {
+          locationNames: {}, nextLocationId: head.value?.header?.nextLocationId ?? head.value?.legacy?.locationState?.nextLocationId ?? 1,
+        } }, blobs: {}, cards: {} };
+      }
+      if (preparedOnly) {
+        const summary = !head.value.legacy && head.value.header?.inventoryVersion === 3
+          ? readApiSummary(head.value, context(uid)) : undefined;
+        if (!summary || !canReuseSyncMigration(summary.migration, Date.now())) return { head, needsPreparation: true };
+      }
       if (head.value.legacy) {
         if (numbers) throw Object.assign(fail('USER_STORAGE_PARTIAL_REQUIRES_UPGRADE', '기존 저장 형식은 전체 갱신을 통해 전환한 뒤 부분 조회·수정할 수 있습니다.'), { generation: head.generation });
         return { head, state: head.value.legacy, blobs: {} };
       }
-      let blobs, state, cards, error;
+      let blobs, state, cards, error, requested;
       try {
-        blobs = await getBlobs(uid, head.value, numbers);
+        if (useReadSnapshot && readSnapshots && viewRead.status === 'fulfilled') {
+          try { blobs = readSnapshots.unpack(uid, head, viewRead.value); } catch (_) { /* 검증 실패는 원본 읽기 */ }
+        }
+        if (!blobs && viewOnly) return { head, viewMissing: true };
+        if (!blobs) {
+          if (useReadSnapshot && readSnapshots) requested = Promise.resolve()
+            .then(() => readSnapshots.request(uid, head, viewRead.status === 'fulfilled' ? viewRead.value : undefined)).catch(() => {});
+          blobs = await getBlobs(uid, head.value, numbers);
+        }
         if (numbers) cards = readSelected(head.value, blobs, { ...context(uid), numbers }).cards;
         else state = hydrateInventory(head.value, blobs, context(uid));
       } catch (caught) { error = caught; }
+      finally { await requested; }
+      // 선행 읽기는 현재 계정 검사가 성공한 뒤 최종 revision을 확인한다.
+      if (beforeFinalRead && !await beforeFinalRead()) return { unauthorized: true };
       // 성공 commit 뒤의 이전 버전 정리와 경합한 독자는 최신 head에서 다시 읽는다.
       const afterRevision = await access.read(`${root(uid)}/revision`);
       if (head.revision !== afterRevision) continue;
@@ -495,6 +525,33 @@ function createPartitionedInventoryStore({ database, path = 'inventories', parts
 
   const api = {
     async read(uid) { const current = await snapshot(uid); return fullRecord(current.head, current.state); },
+    async readPrepared(uid, { viewOnly = false, beforeFinalRead } = {}) {
+      const current = await snapshot(uid, undefined, { useReadSnapshot: true, preparedOnly: true, viewOnly, beforeFinalRead });
+      if (current.needsPreparation || current.viewMissing || current.unauthorized) return;
+      if (!current.head.exists) return fullRecord(current.head, current.state);
+      if (current.head.value.legacy || current.state.inventory.version !== 3) return;
+      // hydrateInventory가 본문과 요약 전체를 대조한 같은 요청의 증거다.
+      const summary = readApiSummary(current.head.value, context(uid));
+      if (!summary || !canReuseSyncMigration(summary.migration, Date.now())) return;
+      return fullRecord(current.head, current.state);
+    },
+    async captureReadSnapshot(uid) {
+      // worker는 복사본을 재복사하거나 조회만으로 CID/원본을 수정하지 않는다.
+      const current = await snapshot(uid, undefined, { preparedOnly: true });
+      if (current.needsPreparation) return;
+      if (!current.head.exists) return current.head.revision > 0 ? { head: current.head, blobs: {} } : undefined;
+      if (current.head.value.legacy || current.state.inventory.version !== 3) return;
+      const summary = readApiSummary(current.head.value, context(uid));
+      if (!summary || !canReuseSyncMigration(summary.migration, Date.now())) return;
+      return { head: current.head, blobs: current.blobs };
+    },
+    readSnapshotHead: uid => headStore.read(uid),
+    async hasReadSnapshot(uid) {
+      try {
+        const value = await snapshot(uid, undefined, { useReadSnapshot: true, preparedOnly: true, viewOnly: true });
+        return value.head.exists && !value.viewMissing && !value.needsPreparation;
+      } catch (_) { return false; }
+    },
     async readCards(uid, inputNumbers) {
       const numbers = selectedNumbers(inputNumbers);
       return selectedSnapshot(uid, numbers);

@@ -152,7 +152,10 @@ async function verifyRegisteredUser(req, res, options) {
   // 서명 검증으로 얻은 UID의 가입 읽기는 현재 계정 조회와 겹친다.
   // 두 결과가 모두 성공하기 전에는 보호된 작업을 시작하지 않는다.
   const uid = await measure('auth.verify', () => verifyUser(req, res, { ...options, onIdentity: read }));
-  if (!uid) return null;
+  if (!uid) {
+    if (registration) await registration; // 거부된 요청도 먼저 시작한 가입 읽기를 회수한다.
+    return null;
+  }
   try {
     const result = await read(uid);
     if (result.error) throw result.error;

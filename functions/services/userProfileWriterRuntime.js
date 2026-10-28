@@ -58,7 +58,7 @@ function createUserWriterRuntime({ resolveConfig = () => resolveProfileWriterCon
         : require('../config/userStorage').createUserStorageConnection());
     const deferWorkerDependencies = config.mode === 'production' && env.K_SERVICE && env.K_REVISION
       && !env.FUNCTIONS_EMULATOR && !env.FIREBASE_EMULATOR_HUB
-      && env.FUNCTION_TARGET === 'syncMembershipClaimsAfterProfile';
+      && ['syncMembershipClaimsAfterProfile', 'refreshInventoryReadSnapshot', 'prepareInventoryReadSnapshot'].includes(env.FUNCTION_TARGET);
     let services;
     try { services = measure('worker.services', () => {
       if (config.mode === 'production') {

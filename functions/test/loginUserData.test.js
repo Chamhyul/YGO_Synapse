@@ -119,3 +119,16 @@ test('조건부 조회 미지원이면 기존 전체 이관을 실행하고 API 
   const data = await pending; assert.equal(data.inventorySync.status, 'full'); assert(Array.isArray(data.allCards));
   assert(f.events.includes('inventory')); assert(!Object.hasOwn(data.inventorySync,'token'));
 });
+
+
+test('인증 후 선행 보유 snapshot을 소비하면 전체 조회를 반복하지 않는다', async () => {
+  const f = fixture(), pending = f.read({}, 'synthetic', { initialProfile: { exists: false },
+    readPreparedInventory: async () => ({ value: { version: 3, amount: 2, cards: { A: { name: '합성', items: [{ qty: 2 }] } } } }) });
+  f.role.resolve('none'); f.claims.resolve({ status: 'pending' }); const result = await pending;
+  assert.equal(result.allCards.length, 1); assert.equal(result.amount, 2); assert(!f.events.includes('inventory'));
+});
+test('선행 보유 snapshot 미적중은 기존 변환·복구 조회를 실행한다', async () => {
+  const f = fixture(), pending = f.read({}, 'synthetic', { initialProfile: { exists: false }, readPreparedInventory: async () => undefined });
+  f.role.resolve('none'); f.claims.resolve({ status: 'pending' }); f.inventory.resolve({ cards: {} });
+  assert.equal((await pending).success, true); assert(f.events.includes('inventory'));
+});

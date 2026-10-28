@@ -7,7 +7,11 @@ const CONTENT_TYPE = 'application/x-ndjson';
 // 인증 결과와 기록 종료를 분리한다. HTTP 요청 자체는 기록/잠금 정리가
 // 끝날 때까지 유지하므로 응답 종료 후의 비보장 fire-and-forget을 만들지 않는다.
 function withAuthenticationResult(req, res, kind, work) {
-  if (req.method !== 'POST' || req.body?.authenticationResultStream !== true
+  const requested = kind === 'login'
+    ? req.method === 'GET' && req.query?.includeUserData === 'true' && req.query?.loginMembershipResult === 'true'
+      || req.method === 'POST' && req.body?.loginMembershipResult === true
+    : req.method === 'POST' && req.body?.authenticationResultStream === true;
+  if (!requested
       || typeof res.write !== 'function' || typeof res.end !== 'function') return work(res);
   const state = { kind, res, published: false, ended: false, status: 200 };
   const proxy = new Proxy(res, { get(target, property) {
@@ -72,7 +76,10 @@ function publishAuthenticationCommit(operation, verifyReceipt) {
     publishAuthenticationResult();
   }
 }
-function isAuthenticationResultRequest() { return !!context.getStore(); }
+function isAuthenticationResultRequest(kind) {
+  const state = context.getStore();
+  return !!state && (kind === undefined || state.kind === kind);
+}
 
 // 고정 운영 주소에서 받은 결과만 로컬 전달 경로에서 중계한다. 호출자가
 // UID·제공자 증명 형식을 검사한 뒤에만 첫 결과를 화면으로 보낼 수 있다.
