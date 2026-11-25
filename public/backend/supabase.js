@@ -181,10 +181,10 @@ const client=(()=>{
   const linkLocale=cardLocales.includes(UIStore.currentRegion)?UIStore.currentRegion:cardLocales[0]||UIStore.currentRegion||'ko';
   return {success:true,cid:card.cid,name:card.name,info,isFull:card.inventoryOnly!==true,cachedAt:Date.now(),linkData:{id:card.cid,locale:linkLocale,locales:cardLocales},sqlArtworks:card.artworks};
  }
- function searchResult(card,key){
+ function searchResult(card,key,matchedNumber){
   if(!card)return {success:false,isError:true,name:'카드 확인하세요',message:'카탈로그에서 카드를 찾을 수 없습니다.'};
-  const printings=card.printings.filter(p=>card.variants.some(v=>v.printingId===p.id)&&(!key?p.locale===UIStore.currentRegion:matchesNumber(p,key))),variants=card.variants.filter(v=>printings.some(p=>p.id===v.printingId));
-  const number=p=>key && packNumberKey(p).toUpperCase()===String(key).toUpperCase()?packNumberKey(p):numberKey(p);
+  const printings=card.printings.filter(p=>card.variants.some(v=>v.printingId===p.id)&&(matchedNumber ? p.number?.toUpperCase()===matchedNumber.toUpperCase() : !key?p.locale===UIStore.currentRegion:matchesNumber(p,key))),variants=card.variants.filter(v=>printings.some(p=>p.id===v.printingId));
+  const number=p=>matchedNumber || (key && packNumberKey(p)===String(key).toUpperCase()) ? packNumberKey(p) : numberKey(p);
   return {...metadata(card),numbers:printings.map(number),illustrations:[...new Set(variants.map(v=>artSlot(card,v)))],rarities:['레어도',...new Set(variants.map(v=>v.rarityId))],raritiesByNo:Object.fromEntries(printings.map(p=>[number(p),['레어도',...new Set(variants.filter(v=>v.printingId===p.id).map(v=>v.rarityId))]]))};
  }
  function registrationOptions(cid,number){
@@ -215,7 +215,9 @@ const client=(()=>{
   CardDataStore.masterJSON.rarity=[['display',...locales],...[...state.cards.reduce((map,c)=>{for(const r of c.rarities||[])if(!map.has(r.id))map.set(r.id,r);return map;},new Map()).values()].map(r=>[r.id,...locales.map(locale=>r.labels[locale]||r.labels.en||r.labels.ja||Object.values(r.labels)[0]||r.displayCode||'미확인')])];
   },'getUserData');
   measureLoginStage('catalog_metadata',()=>{
-  updatePackNamesCache();ClientCache.rebuildMasterIndexes();globalThis.packDatabase=Object.entries(CardDataStore.masterJSON.pack).map(([key,p])=>({id:key.slice(0,key.lastIndexOf('_')),compositeId:key,name:p.name,total:p.totalCards,locales:[key.slice(key.lastIndexOf('_')+1)],cids:[]}));isAppConfigured=true;
+  updatePackNamesCache();
+  ClientCache.rebuildMasterIndexes();
+  isAppConfigured=true;
   for(const card of state.cards){ClientCache.registerCid(card.cid,[card.name,...(card.localizations||[]).map(l=>l.name)],card.printings.map(numberKey));cidMetaMemoryCache.set(card.cid,metadata(card));}
   },'getUserData');
  }
@@ -330,14 +332,69 @@ const client=(()=>{
    if(seedCards.length||ids.length)measureLoginStage('catalog_index',index,'getUserData');
   }finally{signal?.removeEventListener('abort',cancel);}
  }
- async function search(query,{after='0',limit=50,autocomplete=false}={}){
+ async function search(query,{after='0',limit=50,autocomplete=false,field,view,signal,updateIndex=true,continuation=false}={}){
   const params=new URLSearchParams({q:query,locale:UIStore.currentRegion||'ko',after,limit});
   if(autocomplete)params.set('mode','autocomplete');
-  const value=await api('search?'+params,undefined,{includeToken:!autocomplete});
+  if(field)params.set('field',field);
+  if(view)params.set('view',view);
+  if(continuation)params.set('continuation','1');
+  const value=await api('search?'+params,undefined,{includeToken:!autocomplete,signal});
+  if(updateIndex)rememberSearchResults(value);
+  return value;
+ }
+ function rememberSearchResults(value){
   for(const card of value.cards){state.summaries.set(card.cid,card);if(!cardFor(card.cid)){
    const meta={...metadata(card),isFull:false};cidMetaMemoryCache.set(card.cid,meta);catalogCompleteMetadata.add(meta);
    ClientCache.registerCid(card.cid,(card.localizations||[]).map(l=>l.name),card.matchedNumbers||[]);
-  }}index();return value;
+  }}index();
+ }
+ async function searchAutocomplete(query,options){
+  const args={...options,autocomplete:true};
+  const matching=root.YgoCardNameAutocomplete;
+  const versions=options.field==='number'||!matching ? [] : matching.variants(matching.normalize(query));
+  if(versions.length<=1)return search(query,args);
+  if(state.nameAutocompleteContinuation)return search(query,{...args,continuation:true});
+
+  // 구형 시험 API도 기존 인덱스에서 각 완성형을 조회한다.
+  const replies=await Promise.all(versions.map((value,i)=>search(value,{
+   ...args,field:i===0?args.field:'name',updateIndex:false
+  })));
+  const cards=new Map();
+  for(const reply of replies)for(const card of reply.cards){
+   const previous=cards.get(card.cid);
+   const matchedNames=[...new Set([...(previous?.matchedNames||[]),...(card.matchedNames||[])])];
+   const matchedNumbers=[...new Set([...(previous?.matchedNumbers||[]),...(card.matchedNumbers||[])])];
+   cards.set(card.cid,{...card,matchedNames,matchedNumbers});
+  }
+  const prefix=new RegExp('^'+matching.pattern(versions[0],versions),'u');
+  const rank=card=>{
+   const values=[...card.matchedNames,...card.matchedNumbers].map(matching.normalize);
+   if(values.includes(versions[0]))return 0;
+   return values.some(value=>prefix.test(value)) ? 1 : 2;
+  };
+  const ordered=[...cards.values()].map(card=>({card,rank:rank(card)}))
+   .sort((a,b)=>a.rank-b.rank||Number(a.card.cid)-Number(b.card.cid));
+  const visible=ordered.slice(0,options.limit).map(({card})=>card);
+  const result={cards:visible,next:ordered.length>visible.length||replies.some(reply=>reply.next) ? visible.at(-1)?.cid??null : null};
+  if(options.updateIndex!==false)rememberSearchResults(result);
+  return result;
+ }
+ async function registrationSuggestions(query,field,signal){
+  const result=await searchAutocomplete(query,{limit:25,field:field==='name'?'name':'number',view:'suggestions',signal,updateIndex:false});
+  if(field==='name')return result.cards.flatMap(card=>[...new Set(card.matchedNames)]
+   .map(value=>({value,cid:card.cid})));
+  const numbers=new Map();
+  for(const card of result.cards)for(const value of new Set(card.matchedNumbers)){
+   if(!numbers.has(value))numbers.set(value,{value,cards:[],complete:result.next===null});
+   numbers.get(value).cards.push({value:card.name,cid:card.cid});
+  }
+  return [...numbers.values()];
+ }
+ async function registrationNumber(cid,number){
+  const card=await ensureCard(cid);
+  const printings=card.printings.filter(p=>p.number?.toUpperCase()===number.toUpperCase()
+   && card.variants.some(v=>v.printingId===p.id));
+  return {name:card.name,number:printings.length===1?(numberCounts.get(number)===1?printings[0].number:packNumberKey(printings[0])):null,multiple:printings.length>1};
  }
  async function find(query){const result=await search(query,{limit:100});await Promise.all(result.cards.map(c=>ensureCard(c.cid)));return result.cards.map(c=>cardFor(c.cid));}
  async function resolveDeckCardIds(names){
@@ -462,6 +519,45 @@ const client=(()=>{
   try{const value=await api('inventory/commands',pending);forget();if(token===state.token && epoch===resetEpoch)delta(value);return value;}catch(error){if(error.status&&error.status<500)forget();throw error;}
  }
  async function location(name){let found=state.locations.find(l=>l.name===name);if(!found){const token=state.token,epoch=resetEpoch;found=(await api('locations',{name})).location;if(token!==state.token||epoch!==resetEpoch)throw Object.assign(Error('INVENTORY_GENERATION_CHANGED'),{status:409});state.locations=[...state.locations,found];}return found;}
+ async function deleteLocation(name, expectedVersion){
+  const token=state.token, epoch=resetEpoch, sessionEpoch=store.root.session.epoch;
+  const isCurrent=()=>token===state.token && epoch===resetEpoch && sessionEpoch===store.root.session.epoch;
+  const target=state.locations.find(entry=>entry.name===name);
+  if(!target)throw Object.assign(Error('보관 위치를 찾을 수 없습니다.'),{code:'LOCATION_NOT_FOUND'});
+  const key=JSON.stringify(['deleteLocation',target.id]);
+  let pending=state.pending.get(key);
+  if(!pending){
+   const {revision,generation}=expectedVersion;
+   pending={requestId:crypto.randomUUID(),locationId:target.id,revision,generation};
+   state.pending.set(key,pending);
+  }
+  const forget=()=>{if(state.pending.get(key)===pending)state.pending.delete(key);};
+  try{
+   const value=await api('locations/delete',pending);
+   if(!value.success || value.locationId!==target.id || typeof value.revision!=='string' || !/^\d+$/.test(value.revision)
+      || BigInt(value.revision)!==BigInt(pending.revision)+1n)throw Error('위치 삭제 결과를 확인하지 못했습니다.');
+   if(isCurrent() && older(state.profile.revision,value.revision)){
+    if(state.profile.revision===pending.revision && state.generation===pending.generation){
+     state.locations=state.locations.filter(entry=>entry.id!==target.id);
+     for(const item of state.items.values())if(item.locationId===target.id)state.items.delete(item.id);
+     state.profile.revision=value.revision;
+     snapshotRevision=value.revision;
+    }else{
+     inventoryRefresh++;
+     await inventorySnapshot();
+    }
+   }
+   forget();
+   return snapshot();
+  }catch(error){
+   if(error.status && error.status<500)forget();
+   if(isCurrent() && ['INVENTORY_REVISION_CHANGED','INVENTORY_GENERATION_CHANGED','LOCATION_NOT_FOUND'].includes(error.code)){
+    inventoryRefresh++;
+    try{error.inventory=await inventorySnapshot();}catch(_){}
+   }
+   throw error;
+  }
+ }
  async function addCards(rows){
   for(const cid of new Set(rows.map(row=>String(row[6]||'')).filter(Boolean)))if(cardFor(cid)?.projectionOnly)await ensureCard(cid);
   const token=state.token, uid=state.profile?.userId;
@@ -552,6 +648,14 @@ const client=(()=>{
   }
   return {...snapshot(),updatedItems:[],operationResults};
  }
+ async function settingsApi(path,body){
+  if(state.auth!=='firebase')return api(path,body);
+  const user=state.firebaseUser;
+  requireRegistrationOwner(user);
+  const signal=AbortSignal.timeout(30000);
+  const appCheck=await getRegistrationAppCheck(signal);
+  return api(path,body,{appCheck,signal,registrationOwner:user});
+ }
  async function clearInventory(){
   const token=state.token, uid=state.profile?.userId;
   if(!token || !uid)throw Object.assign(Error('로그인 정보를 확인해 주세요.'),{status:401});
@@ -561,7 +665,7 @@ const client=(()=>{
    requestId=sessionStorage.getItem(key);
    if(!requestId){requestId=crypto.randomUUID();sessionStorage.setItem(key,requestId);}
   }catch(_){throw Error('초기화 요청을 보관할 수 없습니다. 브라우저 저장 설정을 확인해 주세요.');}
-  const value=await api('clearUserData',{requestId});
+  const value=await settingsApi('clearUserData',{requestId});
   if(value.success){
    try{if(sessionStorage.getItem(key)===requestId)sessionStorage.removeItem(key);}catch(_){}
    if(token===state.token){
@@ -627,9 +731,14 @@ const client=(()=>{
    return inventorySnapshot();
   }
   if(action==='clearUserData')return clearInventory();
-  if(['checkSheet','migrateFromData','migrateFromSheet'].includes(action)){
+  if(action==='deleteLocation')return deleteLocation(data.name,data.version);
+  if(action==='checkSheet'){
+   const query=new URLSearchParams(params).toString();
+   return settingsApi(action+(query?'?'+query:''),data??undefined);
+  }
+  if(['migrateFromData','migrateFromSheet'].includes(action)){
    const token=state.token, search=new URLSearchParams(params);
-   if(action!=='checkSheet' && data!=null)search.set('inventoryView','delta');
+   if(data!=null)search.set('inventoryView','delta');
    const query=search.toString();
    const value=await api(action+(query?'?'+query:''),data??undefined);
    if(token===state.token && value.success && (data!=null || value.importRequest?.status==='completed') && !applyImportDelta(value))inventoryRefresh++;
@@ -637,7 +746,7 @@ const client=(()=>{
   }
   if(action==='getRamMemoryStats')return {success:true};
   if(action==='searchCardByName'){
-   if(params.cid)return searchResult(await ensureCard(params.cid));
+   if(params.cid)return searchResult(await ensureCard(params.cid),undefined,params.matchedNumber);
    await find(params.name||'');return searchResult(state.cards.find(c=>c.name===params.name||c.localizations?.some(l=>l.name===params.name)));
   }
   if(action==='searchCardByNo'){
@@ -692,7 +801,7 @@ const client=(()=>{
   }
   return unavailable();
  }
- return {state,store,ready,login,loginFirebase,registration,dispatch,snapshot,metadata,artSlot,printingFor,registrationOptions,search,ensureCard,resolveDeckCardIds,lookupPhotoCardNames,prepareMembershipEntry,requestMembership,applyMembershipResult,packSuggestions,fetchPackPage,
+ return {state,store,ready,login,loginFirebase,registration,dispatch,snapshot,metadata,artSlot,printingFor,registrationOptions,registrationSuggestions,registrationNumber,search,searchAutocomplete,ensureCard,resolveDeckCardIds,lookupPhotoCardNames,prepareMembershipEntry,requestMembership,applyMembershipResult,packSuggestions,fetchPackPage,
   isQualifiedNumber:value=>state.cards.some(card=>card.printings.some(printing=>packNumberKey(printing)===value))};
 })();
 let registrationAppCheck;
@@ -819,12 +928,14 @@ async function loadCatalog(state,sequence){
  finally{if(current()){state.pending=false;renderCatalogResults(state);}}
 }
 const suggestionSequences = { desktop: 0, mobile: 0 };
-async function prepareSuggestions(value, mobile) {
+async function prepareSuggestions(value, mobile, signal) {
  const key = mobile ? 'mobile' : 'desktop', sequence = ++suggestionSequences[key];
  if (!value?.trim()) return true;
- try { await client.search(value, { limit: 5, autocomplete: true }); } catch (_) {}
+ try { await client.searchAutocomplete(value, { limit: 5, signal }); } catch (_) {}
  const input = document.getElementById(mobile ? 'mobile-card-search' : 'card-search');
- return sequence === suggestionSequences[key] && (!input || input.value === value && document.activeElement === input);
+ if (signal?.aborted || sequence !== suggestionSequences[key]
+  || (input && ((mobile ? input.value.trim() : input.value) !== value || document.activeElement !== input))) return false;
+ return true;
 }
 const sqlGalleryGroups=new WeakMap();
 function sqlGalleryImages(card){
@@ -872,7 +983,7 @@ function onSelectionChange(input) {
  if(UIStore.mode!=='add'||input.dataset.field!=='illust')return;
  const container=getActiveContainer(input),data=JSON.parse(container?.dataset.cardData||'{}');
  const card=client.state.cards.find(c=>c.cid===String(data.linkData?.id));
- const number=container?.querySelector('[data-field="no"]')?.value;
+ const number=(container?.querySelector('[data-field="no"]')?.value||'').trim();
  const p=client.printingFor(card,number);
  const art=card?.artworks.find(a=>Number(client.artSlot(card,{artworkId:a.id}))===Number(input.dataset.raw));
  const labels=[...new Set(card?.variants.filter(v=>v.printingId===p?.id&&v.artworkId===art?.id).map(v=>v.rarityId)||[])];
@@ -1044,6 +1155,7 @@ function initAuth() {
    throw Error('운영 인증 상태를 확인하지 못했습니다.');
   }
   client.state.auth=environment?.authMode==='firebase'?'firebase':'demo';
+  client.state.nameAutocompleteContinuation=environment?.nameAutocompleteContinuation===true;
   client.state.directLoginRead=productionHost && environment?.environment==='production'
    && environment.authMode==='firebase' && environment.loginReadDirectVersion===1;
   prepareLoginConnection();
@@ -1190,10 +1302,11 @@ root.AppBackend = Object.freeze({
  ready: client.ready, request: client.dispatch, initAuth, prepareSignIn, signIn, retrySignIn, signOut, refreshInitialData, notifyUnavailable,
  finishRegistration:client.loginFirebase,
  get inventoryState(){return {phase:client.store.root.session.phase,uid:client.store.root.session.uid,revision:client.state.profile?.revision,generation:client.state.generation,inventoryState:client.state.inventoryState};},
+ getInventoryLocationNames:()=>client.state.locations.map(location=>location.name).sort(),
  membershipEnabled:provider=>Boolean(client.state.firebaseUser && client.state.membershipProviders?.includes(provider)),
  buildAuthPayload: () => ({}), refreshInventory: () => applyUserData(client.snapshot()),
  loadCatalog, prepareSuggestions, preloadArtwork, preloadCard, getCardLinkData, galleryEntries, galleryLabel, onSelectionChange,applyPhotoIllustration,
- getRegistrationOptions:client.registrationOptions,
+ getRegistrationOptions:client.registrationOptions, registrationSuggestions:client.registrationSuggestions, registrationNumber:client.registrationNumber,
  resolveDeckCardIds:client.resolveDeckCardIds, lookupPhotoCardNames:client.lookupPhotoCardNames, prepareMembershipEntry:client.prepareMembershipEntry, discordReturnSession,
  isQualifiedNumber:client.isQualifiedNumber, packSuggestions:client.packSuggestions, fetchPackPage:client.fetchPackPage,
 });

@@ -55,8 +55,7 @@
   padding-inline: 16px;
 }
 
-.owned-card__locations,
-.owned-card__detail {
+.owned-card__locations {
   grid-area: 1 / 1 / 2 / 2;
 }
 
@@ -146,7 +145,7 @@
 }
 
 .owned-card__detail {
-  grid-column: 1 / -1;
+  grid-area: 1 / 1 / 2 / -1;
   display: block;
   align-self: start;
   min-height: 0;
@@ -1014,4 +1013,3 @@ html.is-mobile-device .search-results__back-label {
 }
 
 .catalog-filter-editor [hidden] { display:none; }
-#inventory-filter-popup[hidden], #mobile-grid-filter-sheet[hidden], #grid-filter-sheet-overlay[hidden] { display:none; }

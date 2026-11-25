@@ -1,0 +1,20 @@
+/* 레어도 선택 목록의 행 배치와 공통 테두리의 연결. */
+.rarity-sheet-options { display: grid; list-style: none; margin: 0; padding: 0; }
+.rarity-sheet-option {
+  min-width: 0;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 20px;
+  font-size: .95rem;
+  text-align: start;
+  transition: var(--transition-colors);
+}
+.rarity-sheet-option .material-icons { flex: none; font-size: 20px; }
+
+/* 맞닿는 경계는 위쪽 선택지의 아래 테두리를 함께 사용한다. */
+.rarity-sheet-option:not(:first-child) {
+  border-block-start-width: 0;
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+.rarity-sheet-option:not(:last-child) { border-end-start-radius: 0; border-end-end-radius: 0; }

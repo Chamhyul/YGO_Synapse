@@ -1,0 +1,732 @@
+/* 카드 관리의 모드, 목록, 행 추가와 실행 조작 */
+
+.add-page-row-btn {
+  width: 100%;
+  padding: 16px;
+  background-color: transparent;
+  color: var(--text-001);
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  transition: all 0.25s ease, var(--transition-colors);
+}
+
+.add-page-row-btn:where(:not(.border-dashed)) {
+  border: 0;
+}
+
+.add-page-row-btn:focus {
+  outline: none;
+}
+
+.add-page-row-btn:hover {
+  background-color: var(--color-highlight-bg, #fafafa);
+  color: var(--theme-000);
+}
+
+html.dark-mode .add-page-row-btn:focus {
+  color: var(--theme-000);
+}
+
+html.dark-mode .add-page-row-btn:hover {
+  background-color: var(--color-highlight-bg, #252525);
+}
+
+/* Safari에서 행 추가 버튼의 내부 전환은 수량 배경과 수량 표시 영역만 실행한다. */
+.add-page-row-btn :where(:not(.qty-control-box, .manage-registration-add__quantity)) {
+  transition: none;
+}
+
+.qty-control-box {
+  display: flex;
+  align-items: center;
+  background-color: var(--color-bg);
+  transition: background-color var(--transition-color-duration) ease;
+  border-radius: 16px;
+  padding: 2px 4px;
+  gap: 8px;
+}
+
+.add-page-row-btn:hover .qty-control-box {
+  background-color: var(--color-highlight-bg);
+}
+
+.ctrl-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  font-weight: 800;
+  user-select: none;
+}
+
+.ctrl-val {
+  min-width: 20px;
+  text-align: center;
+  font-weight: 700;
+}
+
+/* ============================================
+   [통합] 카드 관리 공통 하단 푸터
+   ============================================ */
+.manage-common-footer {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 20px 0;
+  /* 높이 트랜지션 제거: JS 대신 브라우저 엔진에 레이아웃을 맡김 */
+  overflow: visible;
+}
+
+.manage-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.manage-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.manage-footer__primary {
+    height: 36px;
+    padding-inline: 16px;
+    border-radius: 2px;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 36px;
+    letter-spacing: 0.5px;
+}
+
+/* 모드 전환 중 인터랙션 제어 */
+.manage-common-footer.is-updating {
+  pointer-events: none;
+}
+
+.manage-common-footer.is-updating .manage-footer-left,
+.manage-common-footer.is-updating .manage-footer-right {
+  opacity: 0.6;
+  /* 시각적으로 비활성화된 느낌 부여 */
+}
+
+/* 보조 버튼 (모드 전환용) */
+.manage-footer-text-measure {
+  position: absolute;
+  visibility: hidden;
+  white-space: nowrap;
+}
+
+.manage-footer-btn-group {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  width: auto;
+}
+
+@media (max-width: 700px) {
+  .manage-common-footer { align-items: flex-start; }
+  .manage-footer-btn-group { flex-wrap: wrap; }
+}
+
+.manage-footer-btn-group > .btn-manage-action {
+  height: 36px;
+  line-height: 34px;
+  padding: 0 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 2px;
+  border: 0;
+  background-color: #e0e0e0;
+  color: var(--text-000);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  position: relative;
+  text-transform: none;
+  box-shadow: none;
+  transition: all 0.2s ease, var(--transition-colors);
+}
+
+/* 레이블 전환 중 숨긴 버튼의 폭을 유지한다. */
+.btn-manage-action.btn-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 버튼 내부 텍스트 크로스페이드용 */
+.btn-manage-action .btn-text-content {
+  display: block;
+  opacity: 1;
+  /* 최종 밸런스 커브 (0.3s) */
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), var(--transition-colors);
+  white-space: nowrap;
+}
+
+/* 새로 나타나는 텍스트 */
+.btn-manage-action .btn-text-content.incoming {
+  position: absolute;
+  opacity: 0;
+  transform: translateY(4px);
+  /* 살짝 아래에서 위로 나타나는 효과 */
+}
+
+/* 사라지는 텍스트 */
+.btn-manage-action .btn-text-content.outgoing {
+  position: absolute;
+  opacity: 0;
+  transform: translateY(-4px);
+  /* 위로 밀리며 사라짐 */
+  pointer-events: none;
+}
+
+/* 활성 상태 텍스트 (기본) */
+.btn-manage-action .btn-text-content.active {
+  position: relative;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.manage-footer-btn-group > .is-action-primary {
+  background-color: var(--theme-000);
+}
+
+.manage-footer-btn-group > .is-action-danger {
+  background-color: #f44336;
+}
+
+.manage-footer-btn-group > :is(.is-action-primary, .is-action-danger) {
+  transition: transform 0.3s ease, var(--transition-colors);
+}
+
+.manage-footer-btn-group > .btn-manage-action:hover {
+  background-color: #fafafa;
+}
+
+.manage-footer-btn-group > .is-action-primary:focus {
+  background-color: #00796b;
+}
+
+.manage-footer-btn-group > .is-action-danger:focus {
+  background-color: #d32f2f;
+}
+
+html.dark-mode .manage-footer-btn-group > .btn-manage-action {
+  background-color: #424242;
+}
+
+html.dark-mode .manage-footer-btn-group > .is-action-primary {
+  background-color: var(--theme-000);
+  color: #282828;
+}
+
+html.dark-mode .manage-footer-btn-group > .is-action-danger {
+  background-color: #ef5350;
+}
+
+html.dark-mode .manage-footer-btn-group > .btn-manage-action:hover {
+  background-color: #252525;
+}
+
+html.dark-mode .manage-footer-btn-group > .is-action-primary:focus {
+  background-color: #26a69a;
+}
+
+html.dark-mode .manage-footer-btn-group > .is-action-danger:focus {
+  background-color: #d32f2f;
+}
+
+/* =========================================
+   [New Feature] Segment Control & Modes
+   ========================================= */
+
+/* Segment Control Wrapper */
+.segment-control-wrapper {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  width: auto;
+}
+
+.mode-form {
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 0fr;
+  width: 100%;
+  background-color: transparent;
+  z-index: 1;
+  visibility: hidden;
+  opacity: 0;
+
+  /* 애니메이션 설정: 기본 트랜지션(ease) 사용 */
+  transition: grid-template-rows 0.4s, opacity 0.4s, visibility 0.4s, var(--transition-colors);
+  will-change: grid-template-rows, opacity;
+}
+
+.mode-form-content {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  align-self: start;
+  /* 추가: 부모 크기 변화 시 내부 콘텐츠 찌그러짐 방지 (마스킹 효과) */
+}
+
+.mode-form.anim-active {
+  order: -1;
+  /* 항상 최상단에 배치하여 아래로 밀어내는 효과 */
+  grid-template-rows: 1fr;
+  opacity: 1;
+  z-index: 5;
+  pointer-events: auto;
+  visibility: visible;
+  /* 나타날 때: 기본 속도로 확장 */
+  transition: grid-template-rows 0.4s, visibility 0s, var(--transition-colors);
+}
+
+.mode-form.anim-hidden {
+  order: 0;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  z-index: 1;
+  pointer-events: none;
+  visibility: hidden;
+  /* 사라질 때: 기본 속도로 수축 및 투명화 */
+  transition: grid-template-rows 0.4s, opacity 0.4s, visibility 0.4s, var(--transition-colors);
+}
+
+/* 관리 폼 및 보유 현황 폼 컨테이너 공통 속성 */
+#manage-mode-forms,
+#inventory-mode-forms {
+  width: 100%;
+  margin-inline: auto;
+  margin-top: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto;
+  row-gap: 0;
+  /* 요소 간 간격 제거 */
+  position: relative;
+  overflow: visible;
+  /* 세로 나열 모드: grid-area: 1/1 제거로 인해 자식들이 순서대로 쌓임 */
+}
+
+#manage-mode-forms {
+  margin-bottom: 15px;
+}
+
+#inventory-mode-forms {
+  margin-bottom: 30px;
+}
+
+/* General Wrapper shouldn't have border/padding itself */
+#general-mode-wrapper {
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  border-radius: 8px;
+}
+
+#manage-move-wrapper,
+#manage-discard-wrapper {
+  border-radius: 8px;
+}
+
+/* [Fix] Absolute Positioning for Overlay Removed from here as it's defined in .mode-form */
+
+/* Animation Classes */
+/* Animation Classes - Refactored into .mode-form states */
+/* Old classes removed to prevent conflict */
+
+/* --- 상위 탭 / 하위 칩 (Chip) 커스텀 레이아웃 --- */
+.chips-row-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 0px;
+}
+
+/* 관리 페이지 폼 애니메이션 스위칭 공통 조정 */
+#manage-mode-forms .mode-form {
+  width: 100%;
+}
+
+/* 카드 관리 하단의 일괄 이동·위치 삭제 입력란 */
+.manage-footer__location-fields {
+  display: flex;
+  gap: 8px;
+}
+
+.rename-capsule-wrap {
+  width: 130px;
+  height: 36px;
+  border-radius: 8px;
+  background-color: #ffffff;
+  border: 1px solid #ddd;
+  transition: border-radius 0.2s ease, var(--transition-colors);
+}
+
+:where(html.dark-mode) .rename-capsule-wrap {
+  background-color: #2c2c2c;
+  border: 1px solid #424242;
+}
+
+.rename-capsule-wrap.active {
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.manage-footer__location-input {
+  display: block;
+  position: relative;
+  z-index: 20;
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 19px;
+  background: transparent;
+  color: var(--text-000);
+  font-size: 0.8rem;
+  text-align: center;
+  outline: none;
+  cursor: pointer;
+}
+
+html:not(.dark-mode) .manage-footer__location-input:disabled {
+  color: rgb(0 0 0 / 42%);
+}
+
+.manage-footer__location-input::placeholder {
+  color: #555555;
+  opacity: 1;
+}
+
+:where(html.dark-mode) .manage-footer__location-input::placeholder {
+  color: #A0A0A0;
+}
+
+/* =========================================
+   [모바일 개편] 카드 뷰 등록 모드 스타일
+   ========================================= */
+
+/* 모바일 상태에서만 모바일 카드 뷰를 보여준다. */
+html.is-mobile-device .mobile-cards-wrapper {
+  display: block;
+}
+
+.mobile-cards-wrapper {
+  display: none;
+  width: 100%;
+  margin-top: 15px;
+}
+
+/* 목록은 행 관리와 배치만 담당한다. 외형은 개별 카드에 조합한다. */
+.mobile-cards-list {
+  width: 100%;
+}
+
+/* 개별 정보 카드 */
+.mobile-info-card {
+  padding: 14px 16px 15px;
+}
+
+.mobile-info-card:last-child {
+  padding-bottom: 14px;
+}
+
+.card-num-badge {
+  background-color: transparent;
+  font-size: 0.9rem;
+  font-weight: 700;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.card-num-divider {
+  font-size: 0.9rem;
+  font-weight: 300;
+  margin: 0 6px 0 2px;
+  flex-shrink: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.card-title-text {
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-align: left;
+  flex-grow: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.card-code-text {
+  font-size: 0.8rem;
+  font-family: monospace;
+  margin-left: auto; /* 우측 버튼 좌측에 고정 */
+  margin-right: 4px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.card-info-badge {
+  font-size: 0.75rem;
+  padding: 0;
+  border-radius: 0;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+}
+
+.card-info-badge:is(.illust, .rarity) {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-info-badge.location {
+  margin-left: auto; /* 보관 위치 우측 고정 */
+  min-width: 0;
+  flex: 0 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.card-info-badge.location.to-loc {
+  margin-left: 0; /* 이동 위치는 화살표 바로 옆에 정렬 */
+  text-align: left;
+}
+
+.mobile-info-card .card-info-badge.location {
+  max-width: 100px; /* 텍스트가 너무 길어져서 레이아웃이 뭉개지지 않도록 제한 */
+}
+
+.card-info-badge.qty {
+  font-weight: 700;
+  flex-shrink: 0;
+  min-width: 40px; /* 99장 기준의 너비 확보 */
+  text-align: right;
+}
+
+/* 모바일 카드 한정: 수량 배지를 삭제 버튼(28px) 너비 + 중앙 정렬로 수직 정렬 */
+.mobile-info-card .card-info-badge.qty {
+  width: 28px;
+  min-width: 28px;
+  text-align: center;
+  justify-content: center;
+}
+
+/* 카드 추가용 점선 테두리 카드 */
+.mobile-add-dashed-card {
+  text-align: center;
+  justify-content: center;
+  color: var(--text-001);
+  font-weight: 700;
+  font-size: 0.95rem;
+  background-color: transparent;
+  transition: all 0.2s ease, var(--transition-colors);
+  margin-top: 12px;
+}
+
+.mobile-add-dashed-card:where(:not(.manage-registration-add__controls)) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 18px;
+  cursor: pointer;
+}
+
+.mobile-add-dashed-card:active {
+  background-color: rgba(0, 150, 136, 0.05);
+  color: var(--theme-000);
+}
+
+.mobile-add-dashed-card.card-add-split {
+  padding: 0;
+  gap: 0;
+  cursor: default;
+  overflow: hidden;
+  position: relative;
+}
+
+.mobile-add-dashed-card.card-add-split > button {
+  display: flex;
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 54px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mobile-add-dashed-card.card-add-split > button:active,
+.mobile-add-dashed-card .manage-registration-options > .ui-button:active {
+  background: rgba(0, 150, 136, 0.05);
+  color: var(--theme-000);
+}
+
+#sheet-card-qty {
+  padding-right: 0;
+}
+
+.loc-arrow {
+  font-size: 1rem;
+  vertical-align: middle;
+}
+
+.loc-arrow:where(:not(.color-text-table)) {
+  margin: 0 8px;
+  color: var(--text-001);
+}
+
+.mobile-info-card .loc-arrow.color-text-table {
+  align-self: center;
+  margin: 0 -2px;
+}
+
+/* ==========================================================================
+   데스크톱 카드 UI 및 인라인 편집 개편 스타일
+   ========================================================================== */
+
+html.is-mobile-device .desktop-cards-wrapper,
+.desktop-cards-wrapper:has(> .desktop-cards-list:empty),
+.mobile-cards-list:empty {
+  display: none;
+}
+
+/* 2. 데스크톱 카드 목록 배치 */
+.desktop-cards-list {
+  display: grid;
+  width: 100%;
+  margin-top: 12px;
+}
+
+.desktop-info-card {
+  padding: 14px 16px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: var(--transition-colors);
+  position: relative;
+  box-shadow: none;
+}
+
+.desktop-info-card:last-child {
+  padding-bottom: 14px;
+}
+
+/* 정보 카드의 기본 글자와 장식 아이콘에 테이블 글자색을 적용한다. */
+.desktop-info-card,
+.desktop-info-card .card-num-badge,
+.desktop-info-card .material-icons:where(:not(.btn-card-action.ui-button *)),
+.desktop-info-card .loc-arrow,
+.mobile-info-card,
+.mobile-info-card .card-num-badge,
+.mobile-info-card .material-icons:where(:not(.btn-card-action.ui-button *, .loc-arrow.color-text-table)),
+html.dark-mode .desktop-info-card,
+html.dark-mode .desktop-info-card .card-num-badge,
+html.dark-mode .desktop-info-card .material-icons:where(:not(.btn-card-action.ui-button *)),
+html.dark-mode .desktop-info-card .loc-arrow,
+html.dark-mode .mobile-info-card,
+html.dark-mode .mobile-info-card .card-num-badge,
+html.dark-mode .mobile-info-card .material-icons:where(:not(.btn-card-action.ui-button *, .loc-arrow.color-text-table)) {
+  color: var(--text-table);
+}
+
+/* 4. 카드 추가를 위한 점선 카드 버튼 (데스크톱 전용) */
+.desktop-add-dashed-card-container {
+  width: 100%;
+  margin-top: 16px;
+  margin-bottom: 24px;
+}
+
+#general-mode-wrapper .desktop-add-dashed-card-container {
+  margin-bottom: 0;
+}
+
+.desktop-info-card .card-num-badge {
+  height: 30px;
+  line-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.desktop-info-card .card-num-divider {
+  height: 30px;
+  line-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.desktop-info-card .loc-arrow {
+  height: 30px;
+  line-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Chrome, Safari, Edge, Opera - 스피너 비활성화 */
+.desktop-card-qty::-webkit-outer-spin-button,
+.desktop-card-qty::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+/* Firefox - 스피너 비활성화 */
+.desktop-card-qty {
+  -moz-appearance: textfield;
+}
+
+/* 수량 필드가 비활성(readonly)일 때는 스피너와 '장' 텍스트 숨김 */
+.desktop-card-qty[readonly] ~ span,
+.desktop-card-qty[readonly] ~ .desktop-qty-controls {
+  display: none;
+}

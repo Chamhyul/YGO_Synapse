@@ -1,6 +1,99 @@
+.synapse-text-logo {
+  position: relative;
+  z-index: 2;
+  font-size: 2.6rem;
+  font-weight: 900;
+  color: #000000;
+  letter-spacing: 2px;
+  line-height: 1;
+  transition: var(--transition-colors);
+}
+
+.logo-bg-wrapper {
+  --logo-gradient-start: rgba(0, 150, 136, 0.8);
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 0;
+  right: 0;
+  z-index: 1;
+}
+
+.bg-triangle-top,
+.bg-triangle-bottom {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(var(--logo-gradient-direction), var(--logo-gradient-start), color-mix(in srgb, var(--theme-000) 60%, transparent) 50%, transparent);
+}
+
+.bg-triangle-top {
+  --logo-gradient-direction: to right;
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+
+.bg-triangle-bottom {
+  --logo-gradient-direction: to left;
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+
+.title-ygo {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-000);
+  letter-spacing: 2px;
+  opacity: 0.8;
+  transition: opacity 0.3s ease, var(--transition-colors);
+}
+
+.title-beta {
+  position: absolute;
+  bottom: -25px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f44336;
+  letter-spacing: 3px;
+  transition: opacity 0.3s ease, var(--transition-colors);
+}
+
+html.dark-mode .synapse-text-logo {
+  color: #ffffff;
+}
+
+html.dark-mode .logo-bg-wrapper {
+  --logo-gradient-start: rgba(77, 182, 172, 0.5);
+}
+
+html.dark-mode .title-beta {
+  color: #ef5350;
+}
+
 /* 앱 셸·내비게이션·헤더·검색 영역 배치·푸터.
  * 앞쪽 좁은 폭 헤더 보정을 포함하여 원래 규칙의 상대 순서를 유지한다.
- * 로고 내부 그래픽과 전역 전환 정책은 style.css에 남아 있다. */
+ * 로고 그래픽과 전역 전환 정책을 포함한다. */
+
+@font-face {
+  font-family: 'Material Symbols Registration';
+  src: url('/vendor/ui/5b329228b164193e1fb230bbfb83d7c29d9ca2ca6798f81cd3d155b274f11923.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Material Symbols Registration';
+  src: url('/vendor/ui/02a41375ecb695c6e64d65fc0c21329137b6d7ace481ce70ec8a8f43e5430cda.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 600;
+  font-display: block;
+}
 
 /* 공통 앱 셸: 내비게이션과 페이지 콘텐츠의 레이아웃 책임을 분리한다. */
 .app-main-shell {
@@ -43,8 +136,6 @@ html.is-mobile-device .app-main-shell {
 /* 반응형: 모바일 레이아웃 대응 */
 @media only screen and (max-width: 992px) {
   .app-header {
-    left: 0;
-    width: 100%;
     padding-inline: var(--app-content-gutter);
   }
 }
@@ -71,10 +162,10 @@ html.is-mobile-device .app-main-shell {
   align-items: center;
   z-index: 2;
   width: 220px;
-  margin: 0 !important;
+  margin: 0;
   top: 30px;
   left: 50%;
-  margin-left: -110px !important;
+  margin-left: -110px;
   transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), var(--transition-colors);
 }
 
@@ -87,11 +178,10 @@ html.is-mobile-device .app-main-shell {
   flex-direction: column;
   align-items: center;
   z-index: 1;
-  margin: 0 !important;
+  margin: 0;
   top: 130px;
   left: 10px;
   width: calc(100% - 20px);
-  margin-left: 0 !important;
   transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), var(--transition-colors);
   will-change: top, left, width;
 }
@@ -125,14 +215,13 @@ body.mode-compact #app-search-masthead {
 body.mode-compact .app-title-container {
   top: 25px;
   left: 10px;
-  margin-left: 0 !important;
-  width: 3.9rem !important;
+  margin-left: 0;
+  width: 3.9rem;
 }
 
 body.mode-compact .search-box {
   top: 22px;
   left: 80px;
-  margin-left: 0 !important;
   width: calc(100% - 90px);
   align-items: flex-start;
 }
@@ -152,7 +241,7 @@ body.mode-compact .synapse-text-logo {
 
 body.mode-compact .title-ygo,
 body.mode-compact .title-beta {
-  display: none !important;
+  display: none;
 }
 
 body.mode-compact .search-header-row {
@@ -184,6 +273,10 @@ body.mode-compact .search-header-row {
   flex-direction: column;
   padding-top: calc(80px + env(safe-area-inset-top));
   transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), var(--transition-colors);
+}
+
+.app-sidebar__spacer {
+  flex-grow: 1;
 }
 
 .app-navi-item {
@@ -278,16 +371,82 @@ html.modal-open .app-mobile-dock {
   overflow: hidden;
 }
 
+/* 광고 슬롯: 배치와 표시 상태만 제어한다. */
+.ad-slot {
+  transition: opacity 0.4s ease, var(--transition-colors);
+}
+
+.ad-slot[hidden] {
+  display: none;
+}
+
+.ad-slot.is-refreshing {
+  opacity: 0.2;
+}
+
+.ad-slot > .adsbygoogle {
+  display: block;
+}
+
+.ad-slot-inline,
+.sidebar-ad-slot,
+.mobile-ad-anchor {
+  align-items: center;
+  justify-content: center;
+}
+
+.ad-slot-inline {
+  display: flex;
+  width: 100%;
+  height: 90px;
+  min-height: 50px;
+  margin: 10px auto 20px;
+  overflow: hidden;
+  transition: height 0.3s ease, margin 0.3s ease, opacity 0.4s ease, var(--transition-colors);
+}
+
+@media only screen and (max-width: 992px) {
+  .ad-slot-inline {
+    height: 50px;
+    margin-bottom: 15px;
+  }
+}
+
+.ad-slot-inline.ad-margin-top {
+  margin-top: 30px;
+}
+
+.sidebar-ad-slot {
+  display: flex;
+  width: 100%;
+  min-height: 100px;
+  margin: 15px 0;
+  overflow: hidden;
+}
+
 .mobile-ad-anchor {
   display: none;
   flex: none;
   height: 50px;
-  justify-content: center;
-  align-items: center;
+  border-width: 1px 0 0;
+}
+
+#loading-ad-container {
+  margin-bottom: 20px;
+}
+
+.ad-slot-inline::before,
+.sidebar-ad-slot::before,
+.mobile-ad-anchor::before {
+  content: "AD Slot";
+  font-size: 0.65rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
 }
 
 @media only screen and (max-width: 992px) {
-  html.is-mobile-device .mobile-ad-anchor {
+  html.is-mobile-device .mobile-ad-anchor:not([hidden]) {
     display: flex;
   }
 }
@@ -356,7 +515,7 @@ html:has(#mobile-search-overlay.active) .mobile-ad-anchor {
 /* 실제 모바일 기기 접속 시의 레이아웃 (화면 너비 무관) */
 html.is-mobile-device body {
   padding-bottom: calc(var(--navi-mobile-height) + env(safe-area-inset-bottom));
-  padding-left: 0 !important;
+  padding-left: 0;
 }
 
 html.is-mobile-device .app-sidebar {
@@ -388,12 +547,6 @@ html.is-mobile-device .app-page-content {
   align-items: stretch;
   z-index: 950;
   transition: left 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), right 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), var(--transition-colors);
-}
-
-@media only screen and (max-width: 992px) {
-  .app-header {
-    left: var(--navi-sidebar-compact-width);
-  }
 }
 
 /* 모바일 기기 접속 시 헤더 위치 조정 */
@@ -651,7 +804,7 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
 }
 
 .content-section.active {
-  order: -1 !important;
+  order: -1;
   grid-template-rows: 1fr;
   opacity: 1;
   visibility: visible;
@@ -679,6 +832,314 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
   overflow-y: clip;
 }
 
+.manage-top-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+  margin: 20px auto 12px;
+  width: 100%;
+}
+
+.manage-top-controls > .auto-location {
+  margin-inline-start: auto;
+}
+
+.manage-top-controls > .auto-location.anim-hidden {
+  display: none;
+}
+
+.is-following-row-motion {
+  overflow-anchor: none;
+}
+
+.manage-registration-add {
+  overflow: hidden;
+}
+
+.desktop-add-dashed-card-container.manage-registration-add {
+  position: relative;
+  --registration-outline-width: 2px;
+  --registration-outer-radius: 12px;
+  --registration-inner-radius: calc(var(--registration-outer-radius) - var(--registration-outline-width));
+  padding: var(--registration-outline-width);
+}
+
+.manage-registration-add__outline {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: var(--registration-outline-width) dashed var(--border-000);
+  border-radius: inherit;
+  pointer-events: none;
+  transition: var(--transition-colors);
+}
+
+.manage-registration-add.is-expanded > .manage-registration-add__outline {
+  inset: var(--registration-outline-width) var(--registration-outline-width) auto;
+  height: var(--height-outline-target-size, 36px);
+}
+
+.manage-registration-add__controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  align-items: stretch;
+}
+
+.desktop-add-dashed-card-container > .manage-registration-add__controls {
+  grid-template-rows: auto auto;
+  --registration-button-row-height: calc(32px + max(28px, 1.5rem));
+}
+
+.desktop-add-dashed-card-container > .manage-registration-add__controls :is(.add-page-row-btn, .manage-registration-options) {
+  min-block-size: var(--registration-button-row-height);
+}
+
+.manage-registration-add__input-row {
+  position: relative;
+  min-height: 0;
+  overflow: clip;
+}
+
+.desktop-add-dashed-card-container.manage-registration-add .manage-registration-add__input-row > .add-page-row-btn {
+  --color-highlight-bg: var(--surface-001);
+  gap: 0;
+  transition: var(--transition-colors);
+}
+
+.desktop-add-dashed-card-container.is-expanded .manage-registration-add__input-row {
+  padding-block-end: 8px;
+}
+
+.desktop-add-dashed-card-container.is-expanded .manage-registration-add__input-row > .add-page-row-btn {
+  min-block-size: 36px;
+  padding-block: 8px;
+  border-radius: var(--registration-outer-radius);
+}
+
+.manage-registration-add__quantity {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 0;
+  align-items: center;
+  /* 일반 행 추가 버튼의 자식 트랜지션 제한에서 이 조작부만 제외한다. */
+  transition: grid-template-columns var(--transition-color-duration) ease,
+    opacity var(--transition-color-duration) ease, visibility 0s;
+}
+
+.manage-registration-add__quantity-inner {
+  min-inline-size: 0;
+}
+
+.manage-registration-add__quantity .qty-control-box {
+  inline-size: max-content;
+  margin-inline-start: 20px;
+}
+
+.manage-registration-add.is-expanded .manage-registration-add__quantity {
+  grid-template-columns: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: grid-template-columns var(--transition-color-duration) ease,
+    opacity var(--transition-color-duration) ease,
+    visibility 0s var(--transition-color-duration);
+}
+
+.manage-registration-add__workspace {
+  position: relative;
+  border-radius: var(--registration-inner-radius);
+}
+
+.manage-add-row-label,
+.manage-registration-options > .ui-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.mobile-add-dashed-card .manage-add-row-label {
+  gap: 7px;
+}
+
+.manage-add-row-label > .material-icons,
+.manage-registration-options :is(.material-icons, .material-symbols-registration) {
+  flex: none;
+  font-size: 18px;
+}
+
+.manage-add-row-label > .material-icons,
+:where(.desktop-add-dashed-card-container) .manage-registration-options > .ui-button > :is(.material-icons, .material-symbols-registration) {
+  transform: translateY(-1px);
+}
+
+.manage-registration-inline__content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.manage-registration-inline {
+  padding: 20px;
+}
+
+.manage-registration-inline__viewport {
+  position: relative;
+  overflow-x: clip;
+  border-radius: var(--registration-inner-radius);
+}
+
+/* 전환 중에도 마지막 패널에 맞춰 바깥 버튼과 이어지는 모서리를 편다. */
+.manage-registration-inline__viewport:has(> [data-registration-pane="photo"]:last-child) {
+  border-start-start-radius: 0;
+}
+
+.manage-registration-inline__viewport:has(> [data-registration-pane="deck"]:last-child) {
+  border-start-end-radius: 0;
+}
+
+.manage-registration-inline__viewport:has(> .is-leaving:only-child) {
+  position: absolute;
+  inset-inline: 0;
+}
+
+.manage-registration-inline__viewport > .is-leaving:not(:only-child) {
+  position: absolute;
+  inset: 0 0 auto;
+}
+
+.manage-registration-inline .photo-upload-panel {
+  border-width: 1px;
+}
+
+.material-symbols-registration {
+  font: 400 18px/1 'Material Symbols Registration';
+  font-feature-settings: 'liga';
+  letter-spacing: normal;
+  white-space: nowrap;
+}
+
+.manage-registration-options .material-symbols-registration--deck-code {
+  font-size: 36px;
+  font-weight: 600;
+}
+
+.manage-registration-options {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.manage-registration-add__input-row::after,
+.manage-registration-options::before,
+.manage-registration-options > .ui-button + .ui-button::before {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+.manage-registration-add__input-row::after,
+.manage-registration-options::before {
+  z-index: 1;
+  inset-inline: 10px;
+  border-block-start: 1px solid var(--border-000);
+}
+
+.manage-registration-add__input-row::after {
+  inset-block-end: 0;
+  transition: opacity var(--transition-color-duration) ease, var(--transition-colors);
+}
+
+.desktop-add-dashed-card-container.is-expanded .manage-registration-add__input-row::after {
+  opacity: 0;
+}
+
+.manage-registration-options::before {
+  inset-block-start: 0;
+}
+
+.desktop-add-dashed-card-container .manage-registration-options::before {
+  content: none;
+}
+
+.manage-registration-options > .ui-button {
+  min-height: 44px;
+  padding: 8px 4px;
+  border: 0;
+  font-weight: 600;
+}
+
+.manage-registration-options > .ui-button:has(> .material-symbols-registration--deck-code) {
+  column-gap: 1px;
+}
+
+.desktop-add-dashed-card-container .manage-registration-options > .ui-button {
+  position: relative;
+  --color-bg: transparent;
+  --color-highlight-bg: var(--color-bg);
+}
+
+.desktop-add-dashed-card-container.manage-registration-add:not(.is-expanded) .manage-registration-options > .ui-button {
+  --color-highlight-bg: var(--surface-001);
+  --color-highlight-text: var(--theme-000);
+  border-radius: 0;
+}
+
+.manage-registration-add__workspace:has(> .manage-registration-inline__viewport > .manage-registration-inline) > .manage-registration-options {
+  border-start-start-radius: inherit;
+  border-start-end-radius: inherit;
+  overflow: clip;
+}
+
+.manage-registration-add__workspace:has(> .manage-registration-inline__viewport > .manage-registration-inline) > .manage-registration-options > .ui-button {
+  border-radius: 0;
+}
+
+.desktop-add-dashed-card-container.is-expanded .manage-registration-options > .ui-button[aria-expanded="true"] {
+  --color-bg: var(--surface-001);
+  color: var(--color-selected-text);
+}
+
+.desktop-add-dashed-card-container.is-expanded .manage-registration-options > .ui-button[aria-expanded="true"]:is(:hover, :focus-visible) {
+  color: var(--color-selected-highlight-text);
+}
+
+.manage-registration-options > .ui-button > .manage-registration-options__collapse {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-end: 12px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition-color-duration) ease, var(--transition-colors);
+}
+
+.manage-registration-options > .ui-button[aria-expanded="true"] > .manage-registration-options__collapse {
+  opacity: 1;
+}
+
+.manage-registration-options > .ui-button + .ui-button {
+  position: relative;
+}
+
+.manage-registration-options > .ui-button + .ui-button::before {
+  inset-block: 10px;
+  inset-inline-start: 0;
+  border-inline-start: 1px solid var(--border-000);
+}
+
+.desktop-add-dashed-card-container .manage-registration-options >
+  :is([aria-expanded="true"] + .ui-button, .ui-button + [aria-expanded="true"])::before,
+.desktop-add-dashed-card-container:not(.is-expanded) .manage-registration-options >
+  :is(.ui-button:is(:hover, :focus-visible) + .ui-button:not(:hover, :focus-visible),
+      .ui-button:not(:hover, :focus-visible) + .ui-button:is(:hover, :focus-visible))::before {
+  content: none;
+}
+
 .centered-content-area {
   text-align: center;
   padding-top: 10px;
@@ -691,7 +1152,7 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
 }
 
 .content-subtitle {
-  color: var(--text-001) !important;
+  color: var(--text-001);
   margin-bottom: 20px;
 }
 
@@ -793,7 +1254,7 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
 }
 
 html.is-mobile-device .search-box {
-  display: none !important;
+  display: none;
 }
 
 /* 모바일 로고는 홈 본문 위치를 유지한 채 페이지 전환과 함께 사라진다.
@@ -803,7 +1264,7 @@ html.is-mobile-device #app-search-masthead {
   transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1), margin 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.4s, var(--transition-colors);
 }
 
-html.is-mobile-device body:not(.mode-compact) #app-search-masthead {
+:where(html.is-mobile-device) body:not(.mode-compact) #app-search-masthead {
   height: 100px;
   opacity: 1;
   visibility: visible;
@@ -828,14 +1289,14 @@ html.is-mobile-device body .app-title-container {
   position: absolute;
   top: 30px;
   left: 50%;
-  width: 220px !important;
-  margin-left: -110px !important;
+  width: 220px;
+  margin-left: -110px;
 }
 
 html.is-mobile-device body .synapse-logo-container {
-  width: 186px !important;
-  max-width: 186px !important;
-  text-align: center !important;
+  width: 186px;
+  max-width: 186px;
+  text-align: center;
 }
 
 html.is-mobile-device body .synapse-text-logo {
@@ -843,11 +1304,21 @@ html.is-mobile-device body .synapse-text-logo {
 }
 
 html.is-mobile-device body .title-ygo {
-  display: block !important;
-  opacity: 0.8 !important;
+  display: block;
+  opacity: 0.8;
 }
 
 html.is-mobile-device body .title-beta {
-  display: block !important;
-  opacity: 1 !important;
+  display: block;
+  opacity: 1;
+}
+
+/* 즉시 이동 중에도 모바일 검색과 등록 행 추가 버튼·펼쳐진 수량 영역은 자체 전환을 유지한다. */
+#synapse-app.no-transition :not(.mobile-search, .mobile-search__toolbar, .mobile-dropdown):not(:where(
+  .manage-registration-add__input-row > .add-page-row-btn,
+  .manage-registration-add.is-expanded .manage-registration-add__quantity
+)),
+#synapse-app.no-transition *::before,
+#synapse-app.no-transition *::after {
+  transition: none;
 }

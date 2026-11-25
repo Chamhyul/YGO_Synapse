@@ -1,23 +1,14 @@
 'use strict';
 const { createHash, randomUUID } = require('node:crypto');
-const Hangul = require('../../public/vendor/ui/1c892e8a26f8b37e51cd118e4cc61d864de6e4fc1f1df5d3386bdfe5277a0b7f.js');
+const { confirmedPack, createPackSuggestions } = require('./pack-suggestions.cjs');
 const { importIdentity, prepareImport, storeImportRows, ensureInventoryLocations } = require('./inventory-import.cjs');
 const fail = (code, status = 400) => Object.assign(Error(code), { status });
 const id = value => typeof value === 'string' && /^[1-9]\d{0,17}$/.test(value);
 const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const clearFingerprint = createHash('sha256').update(JSON.stringify({ action:'clear' })).digest('hex');
 const locales = ['ko','ja','ae','cn','en','de','fr','it','es','pt'];
-const hangulInitials = [...'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ'];
-const isOpenHangulSyllable = point => point >= 0xac00 && point <= 0xd7a3 && (point - 0xac00) % 28 === 0;
-function namePattern(query){
-  return [...query].map((char,index,chars)=>{
-    const initial=hangulInitials.indexOf(char),point=char.codePointAt(0);
-    if(initial>=0){const start=0xac00+initial*588;return '['+String.fromCodePoint(start)+'-'+String.fromCodePoint(start+587)+']';}
-    // 입력 중인 마지막 음절은 받침이 확정되기 전까지 같은 초성·중성 범위에서 찾는다.
-    if(index===chars.length-1&&isOpenHangulSyllable(point))return '['+char+'-'+String.fromCodePoint(point+27)+']';
-    return char.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  }).join('');
-}
+const { initials: hangulInitials, isOpenSyllable: isOpenHangulSyllable, variants: nameVariants,
+  pattern: namePattern } = require('../../public/card-name-autocomplete.js');
 function autocompleteKeys(query, hangul) {
   const tokens = [...query].map((char, index, chars) => {
     if (hangul && hangulInitials.includes(char)) return 'i' + char;
@@ -307,41 +298,142 @@ function createRepository(db) {
       order by c.cid limit 50`, [query.normalize('NFC').trim(), locale]);
     return rows;
   }
-  async function search(query,locale='ko',after='0',limit=50,{autocomplete=false}={}){
+  async function search(query,locale='ko',after='0',limit=50,{autocomplete=false,field,view,continuation=false,onTiming,traceId}={}){
     if(typeof query!=='string'||query.length>100||!locales.includes(locale)||!/^\d{1,10}$/.test(after)||Number(after)>2147483647||!Number.isInteger(limit)||limit<1||limit>100)throw fail('INVALID_QUERY');
     const normalized=query.normalize('NFC').replace(/\s+/gu,'').toLowerCase();
-    // 후보를 기존 인덱스로 좁힌 뒤 원래 이름·번호 조건과 CID 정렬을 그대로 적용한다.
+    if (field != null && (!autocomplete || !['name', 'number'].includes(field))) throw fail('INVALID_QUERY');
+    if (view != null && (view !== 'suggestions' || !autocomplete || !field)) throw fail('INVALID_QUERY');
     const indexed = normalized !== '';
-    const args = [normalized, locale, after, limit + 1, namePattern(normalized)];
+    const ranked = autocomplete && indexed;
+    const variants = ranked && continuation && field !== 'number' ? nameVariants(normalized) : [normalized];
+    const args = [normalized, locale, after, limit + 1, namePattern(normalized, variants)];
     if (indexed) {
       const exactCid = /^[1-9]\d{0,9}$/.test(normalized) && Number(normalized) <= 2147483647 ? Number(normalized) : null;
       args.push(autocompleteKeys(normalized, true), autocompleteKeys(normalized, false), exactCid);
     }
-    const candidates = indexed ? `with candidates as materialized (
-      select cid from (
-        select n.cid from catalog.card_localizations n where n.cid > $3::integer
-          and catalog.autocomplete_keys(lower(regexp_replace(n.name,'[[:space:]]','','g')),true) @> $6::text[]
-          and lower(regexp_replace(n.name,'[[:space:]]','','g')) ~ $5
-        union
-        select p.cid from catalog.card_printings p where p.cid > $3::integer and p.number is not null
-          and catalog.autocomplete_keys(lower(p.number),false) @> $7::text[]
-          and position($1 in lower(p.number))>0
-        union
-        select cid from catalog.cards where cid = $8::integer and cid > $3::integer
-      ) matches order by cid limit $4
-    )` : '';
-    const rows=(await db.pool.query(`${candidates} select c.cid::text,coalesce(l.name,fallback.name) as name,c.card_type as type,
-      c.atk,c.def,c.properties,c.lv,c.attribute,c.race,c.pendulum_scale as "pendulumScale",c.revision::text,
-      (select jsonb_agg(jsonb_build_object('locale',n.locale,'name',n.name) order by n.locale) from catalog.card_localizations n where n.cid=c.cid) as localizations,
-      array(select n.name from catalog.card_localizations n where n.cid=c.cid and ($1='' or lower(regexp_replace(n.name,'[[:space:]]','','g')) ~ $5) order by n.locale) as "matchedNames",
-      array(select distinct p.number from catalog.card_printings p where p.cid=c.cid and p.number is not null and $1<>'' and position($1 in lower(p.number))>0 order by p.number) as "matchedNumbers"
+    const name = "lower(regexp_replace(n.name,'[[:space:]]','','g'))";
+    const hasInitial = [...normalized].some(char => hangulInitials.includes(char));
+    const fullNameMatch = value => hasInitial ? `${value} ~ ('^(' || $5 || ')$')` : `${value} = $1`;
+    const prefixNameMatch = value => `${value} ~ ('^(' || $5 || ')')`;
+    const nameRank = `case when ${fullNameMatch(name)} then 0 when ${prefixNameMatch(name)} then 1 else 2 end`;
+    const numberRank = 'case position($1 in lower(p.number)) when 1 then case when lower(p.number)=$1 then 0 else 1 end else 2 end';
+    if (ranked) args.push(field ?? null);
+    const nameKeys = `catalog.autocomplete_keys(${name},true)`;
+    const keyFilters = [`${nameKeys} @> $6::text[]`];
+    for (const variant of variants.slice(1)) {
+      args.push(autocompleteKeys(variant, true));
+      keyFilters.push(`${nameKeys} @> $${args.length}::text[]`);
+    }
+    const nameMatches = `(${keyFilters.join(' or ')}) and ${name} ~ $5`;
+    const numberMatches = `catalog.autocomplete_keys(lower(p.number),false) @> $7::text[]
+          and position($1 in lower(p.number))>0`;
+    const matches = ({ rank = false } = {}) => `
+      select n.cid${rank ? `, ${nameRank} as rank` : ''}
+      from catalog.card_localizations n where ${rank ? "$9::text is distinct from 'number'" : 'n.cid > $3::integer'} and ${nameMatches}
+      ${rank ? 'union all' : 'union'}
+      select p.cid${rank ? `, ${numberRank} as rank` : ''}
+      from catalog.card_printings p where ${rank ? "$9::text is distinct from 'name'" : 'p.cid > $3::integer'} and p.number is not null and ${numberMatches}
+      ${rank ? 'union all' : 'union'}
+      select cid${rank ? ', 0 as rank' : ''}
+      from catalog.cards where cid = $8::integer and ${rank ? '$9::text is null' : 'cid > $3::integer'}`;
+    let candidates = '';
+    if (ranked && Number(after) === 0 && [...normalized].length === 1) {
+      const initial = field === 'number' ? -1 : hangulInitials.indexOf(normalized);
+      let upperNameMatches = nameMatches;
+      if (initial >= 0) {
+        const firstNameCharacter = `left(${name}, 1) COLLATE "C"`;
+        const firstSyllable = 0xac00 + initial * 588;
+        args.push(String.fromCodePoint(firstSyllable), String.fromCodePoint(firstSyllable + 587));
+        upperNameMatches = `${firstNameCharacter} BETWEEN '가' AND '힣' and ${firstNameCharacter} BETWEEN $10::text AND $11::text`;
+      }
+      const numeric = /^[0-9]$/.test(normalized);
+      const exactNumber = numeric ? 'p.number=$1' : `${numberMatches} and lower(p.number)=$1`;
+      const firstNumberCharacter = 'left(p.number, 1) COLLATE "C"';
+      const prefixNumber = numeric
+        ? `${firstNumberCharacter} BETWEEN '0' AND '9' and ${firstNumberCharacter}=$1`
+        : `${numberMatches} and starts_with(lower(p.number),$1)`;
+      const selectMatches = (nameCondition, numberCondition, { exact = false, excluded = [], afterLow = false } = {}) => {
+        const filter = cid => [
+          ...excluded.map(stage => `${cid} not in (select cid from ${stage})`),
+          ...(afterLow ? [`${cid} > coalesce((select max(cid) from low_cards),0)`] : []),
+        ].map(condition => ' and ' + condition).join('');
+        const nameSource = afterLow ? 'catalog.card_localizations' : 'upper_names';
+        return `select n.cid from ${nameSource} n
+          where $9::text is distinct from 'number' and ${nameCondition}${filter('n.cid')}
+          union
+          select p.cid from catalog.card_printings p
+          where $9::text is distinct from 'name' and p.number is not null and ${numberCondition}${filter('p.cid')}
+          ${exact ? 'union select cid from catalog.cards where $9::text is null and cid=$8::integer' : ''}`;
+      };
+      // LIMIT 0에서는 하위 순위의 후보 조회를 실행하지 않는다. 다음 페이지 판정용 한 장도 예산에 포함한다.
+      const remaining = stages => `(select $4::integer - ${stages.map(stage => `(select count(*) from ${stage})`).join(' - ')})`;
+      const middleBudget = remaining(['exact_matches','prefix_matches']);
+      const lowMiddle = `, low_cards as materialized (
+        select cid from catalog.cards order by cid limit 640
+      ), low_middle as materialized (
+        select c.cid from low_cards c
+        where c.cid not in (select cid from exact_matches) and c.cid not in (select cid from prefix_matches)
+          and (
+            ($9::text is distinct from 'number' and exists (
+              select from catalog.card_localizations n where n.cid=c.cid and ${name} ~ $5
+            )) or ($9::text is distinct from 'name' and exists (
+              select from catalog.card_printings p where p.cid=c.cid and p.number is not null and position($1 in lower(p.number))>0
+            ))
+          )
+        order by c.cid limit ${middleBudget}
+      )`;
+      candidates = `with upper_names as materialized (
+        select n.cid, ${name} as normalized_name
+        from catalog.card_localizations n where $9::text is distinct from 'number' and ${upperNameMatches}
+      ), exact_matches as materialized (
+        ${selectMatches(initial >= 0 ? 'char_length(n.normalized_name)=1' : fullNameMatch('n.normalized_name'), exactNumber, {exact:true})}
+        order by cid limit $4
+      ), prefix_matches as materialized (
+        ${selectMatches(initial >= 0 ? 'true' : prefixNameMatch('n.normalized_name'), prefixNumber, {excluded:['exact_matches']})}
+        order by cid limit ${remaining(['exact_matches'])}
+      )${lowMiddle}, middle_matches as materialized (
+        ${selectMatches(nameMatches, numberMatches, {excluded:['exact_matches','prefix_matches'],afterLow:true})}
+        order by cid limit ${remaining(['exact_matches','prefix_matches','low_middle'])}
+      ), candidates as materialized (
+        select cid, 0 as rank from exact_matches where $3::integer=0
+        union all select cid, 1 as rank from prefix_matches
+        union all select cid, 2 as rank from low_middle
+        union all select cid, 2 as rank from middle_matches
+      )`;
+    } else if (ranked) {
+      candidates = `with scored as materialized (
+        select cid, min(rank) as rank from (${matches({ rank: true })}) matches group by cid
+      ), candidates as materialized (
+        select cid, rank from scored
+        where ($3::integer=0 or (rank,cid) > (coalesce((select rank from scored where cid=$3::integer),2),$3::integer))
+        order by rank,cid limit $4
+      )`;
+    } else if (indexed) {
+      candidates = `with candidates as materialized (${matches()} order by cid limit $4)`;
+    }
+    // PostgreSQL 세션에서 같은 요청을 찾을 수 있게 쿼리 앞에 UUID만 기록한다.
+    const trace=autocomplete && typeof traceId==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(traceId)
+      ? `/* preview-trace:${traceId} */\n` : '';
+    const matchedNames = `array(select n.name from catalog.card_localizations n
+      where n.cid=c.cid and ($1='' or ${name} ~ $5)
+      order by ${ranked ? `${nameRank}, ` : ''}n.locale) as "matchedNames"`;
+    const matchedNumbers = `array(select p.number from catalog.card_printings p
+      where p.cid=c.cid and p.number is not null and $1<>'' and position($1 in lower(p.number))>0
+      group by p.number order by ${ranked ? `${numberRank}, ` : ''}p.number) as "matchedNumbers"`;
+    const resultFields = view === 'suggestions' ? (field === 'name' ? matchedNames : matchedNumbers)
+      : `c.card_type as type,c.atk,c.def,c.properties,c.lv,c.attribute,c.race,c.pendulum_scale as "pendulumScale",c.revision::text,
+        (select jsonb_agg(jsonb_build_object('locale',n.locale,'name',n.name) order by n.locale) from catalog.card_localizations n where n.cid=c.cid) as localizations,
+        ${matchedNames},${matchedNumbers}`;
+    const sql=`${trace}${candidates} select c.cid::text,coalesce(l.name,fallback.name) as name,${resultFields}
       from catalog.cards c ${indexed ? 'join candidates using (cid)' : ''}
       left join catalog.card_localizations l on l.cid=c.cid and l.locale=$2
       left join lateral(select name from catalog.card_localizations where cid=c.cid order by locale limit 1) fallback on true
       ${indexed ? '' : `where c.cid>$3::integer and ($1='' or c.cid::text=$1
        or exists(select from catalog.card_localizations n where n.cid=c.cid and lower(regexp_replace(n.name,'[[:space:]]','','g')) ~ $5)
        or exists(select from catalog.card_printings p where p.cid=c.cid and position($1 in lower(p.number))>0))`}
-      order by c.cid limit $4`,args)).rows;
+      order by ${ranked ? 'candidates.rank, ' : ''}c.cid limit $4`;
+    const rows=(await (autocomplete && onTiming && typeof db.queryCatalog==='function'
+      ? db.queryCatalog(sql,args,{onTiming}) : db.pool.query(sql,args))).rows;
     const more=rows.length>limit,cards=rows.slice(0,limit);return {cards,next:more?cards.at(-1).cid:null};
   }
   async function details(cards, locale, { combine = false, inventoryOnly = false, rarityGroups, queryable = db.pool, timing = (_name,work)=>work() } = {}) {
@@ -525,62 +617,7 @@ function createRepository(db) {
     return { cards,matches };
   }
   const packDisplayName = "regexp_replace(btrim(p.name),'[[:space:]]+',' ','g')";
-  const confirmedPack = `count(distinct m.position)=count(*)
-    and (p.reported_card_count is null or p.reported_card_count=count(*))
-    and bool_and(coalesce(l.name,'')<>'' and exists(
-      select from catalog.card_printings cp where cp.pid=m.pid and cp.locale=m.locale and cp.cid=m.cid
-        and exists(select from catalog.printing_variants v where v.printing_id=cp.id and v.is_active)
-    ))`;
-  const normalizePackSearch = value => value.normalize('NFC').replace(/\s+/gu,'').toLowerCase();
-  let packNameCatalog, packNameCatalogRequest;
-  async function loadPackNameCatalog() {
-    const {rows} = await db.pool.query(`select p.pid,p.locale,${packDisplayName} as name
-      from catalog.packs p where p.pid ~ '^[a-zA-Z0-9-]{1,40}$' order by name`);
-    const versionsByName = new Map();
-    for (const {name,pid,locale} of rows) {
-      if (!versionsByName.has(name)) versionsByName.set(name,[]);
-      versionsByName.get(name).push({pid,locale});
-    }
-    return [...versionsByName].flatMap(([name,versions]) => {
-      const normalized = normalizePackSearch(name);
-      if (!normalized) return [];
-      return [{name,normalized,versions:JSON.stringify(versions)}];
-    });
-  }
-  async function getPackNameCatalog() {
-    if (packNameCatalog && Date.now()<packNameCatalog.expiresAt) return packNameCatalog.entries;
-    packNameCatalogRequest ??= loadPackNameCatalog().then(entries => {
-      packNameCatalog = { entries, expiresAt:Date.now()+30_000 };
-      return entries;
-    }).finally(() => { packNameCatalogRequest = null; });
-    return packNameCatalogRequest;
-  }
-  async function findPackSuggestions(query) {
-    if (typeof query !== 'string' || query.length>160) throw fail('INVALID_QUERY');
-    const term = normalizePackSearch(query);
-    const catalog = await getPackNameCatalog();
-    const matches = catalog.flatMap(({name,normalized,versions}) => {
-      const position = term ? Hangul.search(normalized,term) : 0;
-      return position < 0 ? [] : [{name,versions,rank:normalized===term?0:position===0?1:2}];
-    }).sort((a,b)=>a.rank-b.rank);
-    if (!matches.length) return [];
-    const names = matches.map(({name})=>name);
-    const versions = matches.map(entry=>entry.versions);
-    // 수록 확정 상태는 카탈로그 캐시와 별도로 매번 확인한다.
-    const available = await db.pool.query(`select candidate.name
-      from unnest($1::text[],$2::text[]) with ordinality as candidate(name,versions,position)
-      where exists (
-        select 1 from jsonb_to_recordset(candidate.versions::jsonb) as version(pid text,locale text)
-        where exists (
-          select 1 from catalog.packs p join catalog.pack_cards m using(pid,locale)
-          left join catalog.card_localizations l on l.cid=m.cid and l.locale=m.locale
-          where p.pid=version.pid and p.locale=version.locale and ${packDisplayName}=candidate.name
-          group by p.pid,p.locale,p.reported_card_count having ${confirmedPack}
-        )
-      )
-      order by candidate.position limit 5`,[names,versions]);
-    return available.rows.map(({name})=>name);
-  }
+  const findPackSuggestions = createPackSuggestions(db.pool);
   async function findPacks(name) {
     if (typeof name !== 'string' || !name.trim() || name.length>160) throw fail('INVALID_QUERY');
     const normalized=name.normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/\s+/gu,' ').trim();
@@ -657,6 +694,36 @@ function createRepository(db) {
       return (await client.query(`insert into app.storage_locations(user_id,name,position,location_number)
         select $1,$2,coalesce(max(position),0)+1,$3 from app.storage_locations where user_id=$1
         returning id,name,position`, [uid,name,head.number])).rows[0];
+    });
+  }
+  async function deleteLocation(uid, body) {
+    const { requestId, locationId, generation, revision } = body;
+    const version = /^(0|[1-9]\d{0,18})$/;
+    if (!uuid(requestId) || !uuid(locationId) || typeof generation !== 'string' || !version.test(generation)
+        || typeof revision !== 'string' || !version.test(revision)
+        || Object.keys(body).length !== 4) throw fail('INVALID_COMMAND');
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify({ action: 'deleteLocation', locationId, generation, revision })).digest('hex');
+    return db.withUser(uid, async client => {
+      await lockSubject(client, uid);
+      const state = await requireRegistered(client, uid);
+      const { rows: [prior] } = await client.query(
+        'select fingerprint,result from app.inventory_operations where user_id=$1 and request_id=$2', [uid,requestId]);
+      if (prior) {
+        if (prior.fingerprint !== fingerprint) throw fail('IDEMPOTENCY_CONFLICT', 409);
+        return { ...prior.result, replayed: true };
+      }
+      checkGeneration(state.generation, generation);
+      if (state.revision !== revision) throw fail('INVENTORY_REVISION_CHANGED', 409);
+      await client.query('delete from app.inventory_items where location_id=$1 and user_id=$2', [locationId,uid]);
+      const removed = await client.query('delete from app.storage_locations where id=$1 and user_id=$2', [locationId,uid]);
+      if (!removed.rowCount) throw fail('LOCATION_NOT_FOUND', 404);
+      const { rows: [head] } = await client.query(
+        'update app.inventory_heads set revision=revision+1 where user_id=$1 returning revision::text', [uid]);
+      const result = { locationId, revision: head.revision };
+      await client.query('insert into app.inventory_operations(user_id,request_id,fingerprint,result) values($1,$2,$3,$4)',
+        [uid,requestId,fingerprint,result]);
+      return result;
     });
   }
   function validateCommand(body) {
@@ -809,7 +876,7 @@ function createRepository(db) {
       return profile;
     });
   }
-  return {prepareLoginRead,loginView, preferences,nickname,bootstrap, createDemo, search,catalog: catalogDetails, card, registrationCards,inventoryCardBatches, findPackSuggestions,findPacks,packCards,addLocation, command,addBatch,
+  return {prepareLoginRead,loginView, preferences,nickname,bootstrap, createDemo, search,catalog: catalogDetails, card, registrationCards,inventoryCardBatches, findPackSuggestions,findPacks,packCards,addLocation,deleteLocation,command,addBatch,
     registrationStatus, membershipWriteGate, membershipStatus, completeRegistration, importStatus, inventoryGeneration, clearInventory, reserveImport, importInventory };
 }
 module.exports = { createRepository, fail, randomUUID };

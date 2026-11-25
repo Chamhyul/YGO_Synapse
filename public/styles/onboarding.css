@@ -4,20 +4,19 @@
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: 2000000 !important;
+  z-index: 2000000;
   pointer-events: auto;
 }
 
 .onboarding-dim {
-  fill: var(--surface-black);
-  fill-opacity: 0.6;
+  fill: var(--color-bg);
   transition: var(--transition-colors);
 }
 
 /* 가이드 툴팁 */
 .onboarding-tooltip {
   position: absolute;
-  z-index: 2000001 !important;
+  z-index: 2000001;
   width: 350px;
   max-width: calc(100vw - 40px);
   padding: 24px;
@@ -27,8 +26,11 @@
   pointer-events: auto;
 }
 
-.onboarding-tooltip.visible {
+.onboarding-tooltip.has-target {
   opacity: 1;
+}
+
+.onboarding-tooltip.visible {
   transform: translateY(0);
 }
 

@@ -15,27 +15,18 @@ function getActiveViewMode() {
 function getOnboardingTarget(type, index = 0) {
     const viewMode = getActiveViewMode();
     const mode = typeof UIStore !== 'undefined' ? UIStore.mode : 'add';
-    const subMode = typeof addSubMode !== 'undefined' ? addSubMode : 'general';
     
     if (type === 'container') {
         if (viewMode === 'desktop-card') {
             let containerId = 'desktop-cards-list-general';
             if (mode === 'move') containerId = 'desktop-cards-list-move';
             else if (mode === 'discard') containerId = 'desktop-cards-list-discard';
-            else if (mode === 'add') {
-                if (subMode === 'pack') containerId = 'desktop-cards-list-pack';
-                else if (subMode === 'deck') containerId = 'desktop-cards-list-deck';
-            }
             return '#' + containerId;
         }
         // mobile-card인 경우
         let containerId = 'mobile-cards-list-general';
         if (mode === 'move') containerId = 'mobile-cards-list-move';
         else if (mode === 'discard') containerId = 'mobile-cards-list-discard';
-        else if (mode === 'add') {
-            if (subMode === 'pack') containerId = 'mobile-cards-list-pack';
-            else if (subMode === 'deck') containerId = 'mobile-cards-list-deck';
-        }
         return '#' + containerId;
     }
     
@@ -115,13 +106,13 @@ const ONBOARDING_STEPS = {
         {
             target: '#manage-top-segment',
             title: '모드 선택',
-            content: '3가지 모드(등록, 이동, 제거) 중 하나를 선택하여 카드 정보를 관리할 수 있습니다.',
+            content: '등록, 이동, 제거에서 카드 정보를 관리할 수 있습니다.',
             position: 'bottom',
         },
         {
             target: () => getOnboardingTarget('row_or_card', 0) || getOnboardingTarget('container'),
             title: '등록 카드 소개',
-            content: '카드 정보를 입력하는 공간입니다. 올바른 카드 정보가 입력된 경우 일러스트와 레어도, 보관 위치, 수량을 선택할 수 있습니다. (*일러스트는 임의로 선택해야 합니다.)',
+            content: '카드 이름과 수록번호를 확인한 뒤 일러스트 선택창에서 보유한 그림을 고르세요. 해당 수록의 일러스트가 하나면 자동으로 선택됩니다. 이어서 레어도, 보관 위치, 수량을 정할 수 있습니다.',
             position: 'bottom',
         },
         {
@@ -131,7 +122,7 @@ const ONBOARDING_STEPS = {
                 if (viewMode === 'desktop-card') {
                     const card = document.querySelector('.desktop-cards-list .desktop-info-card[data-index="0"]');
                     if (card) targets.push(card.querySelector('.card-actions'));
-                    const addBtn = document.querySelector('.desktop-add-dashed-card-container');
+                    const addBtn = document.querySelector('#general-mode-wrapper .manage-registration-add:not(.is-expanded) .manage-registration-add__input-row > .add-page-row-btn');
                     if (addBtn) targets.push(addBtn);
                 } else if (viewMode === 'mobile-card') {
                     const card = document.querySelector('.mobile-cards-list .mobile-info-card[data-index="0"]');
@@ -152,28 +143,13 @@ const ONBOARDING_STEPS = {
             skipCondition: () => getActiveViewMode() === 'desktop-card',
         },
         {
-            multiTarget: () => {
-                const footerBtns = document.querySelectorAll('#manage-footer-left .btn-manage-action');
-                return Array.from(footerBtns).filter(btn => !btn.classList.contains('btn-hidden'));
-            },
-            mergeMask: true,
-            title: '전용 등록 모드 전환',
-            content: '하단 버튼을 누르면 일반 개별 등록 외에 팩 추가 또는 덱 불러오기 등 카드 대량 등록을 위한 전용 모드로 전환됩니다.',
-            position: 'top'
-        },
-        {
             target: () => {
-                return '#pack-search-box';
+                const wrapper = getActiveViewMode() === 'mobile-card' ? '.mobile-cards-wrapper' : '.desktop-cards-wrapper';
+                return document.querySelector(`#general-mode-wrapper ${wrapper} .manage-registration-options`);
             },
-            title: '팩 등록 및 국가 선택',
-            content: '팩 등록 모드에서는 팩 이름을 검색하여 수록 카드를 원클릭으로 일괄 생성합니다. 중복 팩 발매 시 국가 라디오 버튼을 선택할 수 있습니다.',
-            position: 'top',
-        },
-        {
-            target: '#deck-search-box',
-            title: '덱 불러오기 가이드',
-            content: '덱 코드를 입력하여 뉴런에 등록한 덱의 데이터를 가져올 수 있습니다.',
-            position: 'top',
+            title: '등록 부가 기능',
+            content: '사진 등록, 팩 검색, 덱코드로 불러온 카드를 현재 등록 목록에 추가할 수 있습니다.',
+            position: 'top'
         }
     ],
     move: [
@@ -374,7 +350,7 @@ const OnboardingManager = (() => {
                     <g id="onboarding-holes-container"></g>
                 </mask>
             </defs>
-            <rect class="onboarding-dim" x="0" y="0" width="100%" height="100%" mask="url(#onboarding-mask)"/>
+            <rect class="onboarding-dim color-backdrop-navi" x="0" y="0" width="100%" height="100%" mask="url(#onboarding-mask)"/>
         `;
         document.body.appendChild(overlay);
 
@@ -513,14 +489,12 @@ const OnboardingManager = (() => {
             holesContainer.appendChild(hole);
         }
 
+        tooltip?.classList.toggle('has-target', Boolean(combinedRect));
         if (!combinedRect) {
             // 타겟 요소를 찾지 못하면 하이라이트 구멍을 지우고 툴팁을 숨깁니다.
             holesContainer.innerHTML = '';
-            if (tooltip) tooltip.style.opacity = '0';
             return;
         }
-
-        if (tooltip) tooltip.style.opacity = '1';
 
         // SVG 전체 크기를 문서 크기로 설정
         const docW = Math.max(document.documentElement.scrollWidth, window.innerWidth);

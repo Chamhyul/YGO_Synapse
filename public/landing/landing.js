@@ -13,7 +13,7 @@ themeButton.addEventListener('click', () => { overridden = true; setTheme(!docum
 systemTheme.addEventListener('change', event => { if (!overridden) setTheme(event.matches); });
 setTheme(systemTheme.matches);
 
-const destinations = { add: ['등록', '#add/general'], move: ['이동', '#move'], discard: ['제거', '#discard'] };
+const destinations = { add: ['등록', '#add'], move: ['이동', '#move'], discard: ['제거', '#discard'] };
 const radios = [...document.querySelectorAll('#preview-manage-top-segment input')];
 const panels = [...document.querySelectorAll('[data-manage-panel]')];
 const openMode = document.querySelector('.landing-open-mode');

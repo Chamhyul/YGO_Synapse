@@ -3,3 +3,4 @@ COPY --chown=node:node transition/api/ /app/api/
 COPY --chown=node:node transition/runtime/functions/ /functions/
 COPY --chown=node:node transition/prepare-parser.cjs /app/transition/
 COPY --chown=node:node transition/supabase/migrations/20261030071800_link_existing_images_only.sql /app/migrations/
+COPY --chown=node:node public/card-name-autocomplete.js /public/

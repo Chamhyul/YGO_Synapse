@@ -1,0 +1,337 @@
+/* 데스크톱 카드 관리의 행·입력·추천 목록 배치와 상태 */
+.desktop-info-card--editable :is(.card-row-top, .card-row-bottom) {
+    --card-field-gap: 12px;
+    --card-row-end-width: 72px;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 30px;
+    line-height: 30px;
+    gap: var(--card-field-gap);
+    padding-left: 30px;
+    box-sizing: border-box;
+}
+
+.desktop-info-card--editable .card-row-top {
+    --card-number-width: 120px;
+    position: relative;
+}
+
+.desktop-card-index,
+.desktop-card-index-badge,
+.desktop-info-card--editable .card-num-divider {
+    position: absolute;
+}
+
+.desktop-card-index,
+.desktop-card-index-badge {
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.desktop-card-index {
+    width: 30px;
+    height: 100%;
+}
+
+.desktop-card-index-badge {
+    width: 14px;
+}
+
+.desktop-info-card--editable .card-num-divider {
+    left: 22px;
+    margin: 0;
+}
+
+.desktop-info-card--editable .custom-select-wrapper {
+    position: relative;
+    align-items: center;
+    height: 30px;
+    box-sizing: border-box;
+}
+
+.desktop-info-card--editable .custom-select-wrapper:where(:not([data-card-field="name"])) {
+    display: flex;
+}
+
+.desktop-info-card--editable [data-card-field="name"] {
+    --card-name-clear-size: 1.1rem;
+    --card-name-clear-inset: -2px;
+    --card-name-clear-padding: 10px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    flex: 0 1 auto;
+    min-width: min(50%, calc(100% - var(--card-number-width) - var(--card-row-end-width) - 2 * var(--card-field-gap)));
+}
+
+.desktop-info-card--editable [data-card-field="name"]::before {
+    content: "";
+    grid-area: 1 / 1;
+    width: max(var(--card-name-value-width, 0px), var(--card-suggestion-width, 0px));
+    max-width: 100%;
+    pointer-events: none;
+}
+
+.desktop-info-card--editable [data-card-field="name"] > .desktop-card-name {
+    grid-area: 1 / 1;
+    width: 0;
+    min-width: 100%;
+    padding-inline: 8px calc(var(--card-name-clear-inset) + var(--card-name-clear-size) + 2 * var(--card-name-clear-padding) + 2px);
+    font-weight: 700;
+}
+
+@supports (field-sizing: content) {
+    .desktop-info-card--editable [data-card-field="name"] > .desktop-card-name {
+        justify-self: stretch;
+        field-sizing: content;
+        width: auto;
+        min-width: 0;
+    }
+}
+
+.desktop-info-card--editable [data-card-field="no"] {
+    width: var(--card-number-width);
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.desktop-info-card--editable [data-card-field="illust"] {
+    width: 65px;
+    flex: none;
+}
+
+.desktop-info-card--editable [data-card-field="rare"] {
+    width: 90px;
+    flex: none;
+}
+
+.desktop-info-card--editable :is([data-card-field="loc"], [data-card-field="to"]) {
+    width: 120px;
+    flex: none;
+}
+
+.desktop-info-card--editable .card-row-bottom > [data-card-field="loc"],
+.desktop-card-move-locations {
+    margin-left: auto;
+}
+
+.desktop-card-move-locations {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex: none;
+    max-width: 320px;
+    gap: 6px;
+}
+
+.desktop-card-move-locations .loc-arrow {
+    flex-shrink: 0;
+    font-size: 1rem;
+}
+
+.desktop-info-card--editable .card-actions {
+    width: var(--card-row-end-width);
+    height: 30px;
+    gap: 6px;
+    margin-inline-start: 0;
+}
+
+.desktop-info-card--editable .card-actions .material-icons {
+    font-size: 1.25rem;
+}
+
+.desktop-info-card--editable .arrow-icon {
+    right: 8px;
+    font-size: 1rem;
+    line-height: 30px;
+}
+
+.desktop-info-card--editable .clear-name-btn {
+    position: absolute;
+    right: var(--card-name-clear-inset);
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    font-size: var(--card-name-clear-size);
+    padding: var(--card-name-clear-padding);
+    opacity: 0;
+    visibility: hidden;
+}
+
+.desktop-info-card--editable [data-card-field="name"]:hover .clear-name-btn {
+    opacity: 1;
+    visibility: visible;
+}
+
+.desktop-info-card--editable .desktop-card-input {
+    width: 100%;
+    height: 30px;
+    line-height: 30px;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0 10px;
+    background: transparent;
+    font-size: 0.85rem;
+    text-align: center;
+    cursor: pointer;
+    box-shadow: none;
+    outline: none;
+    vertical-align: middle;
+}
+
+.desktop-info-card--editable .desktop-card-input::placeholder {
+    color: var(--color-text);
+    opacity: 0.6;
+}
+
+.desktop-info-card--editable .desktop-card-qty::placeholder {
+    text-align: right;
+    padding-inline-end: 3px;
+}
+
+.desktop-info-card--editable :is(.desktop-card-name, .desktop-card-rare, .desktop-card-illust) {
+    text-align: left;
+    padding: 0 8px;
+}
+
+.desktop-info-card--editable .desktop-card-illust {
+    text-overflow: ellipsis;
+}
+
+.desktop-info-card--editable [data-card-field="illust"]:not(.no-arrow, .no-option, .single-option) > .desktop-card-illust {
+    padding-right: 10px;
+}
+
+.desktop-info-card--editable [data-card-field="illust"] > .arrow-icon {
+    right: 1px;
+    font-size: 9px;
+}
+
+.desktop-info-card--editable :is(.desktop-card-no, .desktop-card-loc, .desktop-card-to) {
+    text-align: right;
+    padding-inline: 8px 24px;
+}
+
+.desktop-info-card--editable .desktop-card-no {
+    padding-inline-start: 2px;
+    text-transform: uppercase;
+}
+
+.desktop-info-card--editable .desktop-card-input:where(:not([readonly], :disabled, [data-error-retry="true"])) {
+    cursor: text;
+}
+
+.desktop-info-card--editable .desktop-card-input[data-error-retry="true"],
+.desktop-info-card--editable .desktop-card-name.hyperlink-style[readonly] {
+    cursor: pointer;
+}
+
+.desktop-info-card--editable .desktop-card-name.hyperlink-style {
+    text-decoration: underline;
+}
+
+.desktop-info-card--editable .border-cardinput {
+    --border-highlight: var(--theme-004);
+}
+
+.desktop-info-card--editable .desktop-qty-wrapper {
+    display: flex;
+    align-items: center;
+    width: var(--card-row-end-width);
+    height: 30px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    padding: 0 4px;
+    gap: 2px;
+}
+
+.desktop-info-card--editable .desktop-card-qty {
+    flex: 1;
+    width: 0;
+    border: none;
+    text-align: right;
+    padding: 0 2px 0 0;
+}
+
+.desktop-info-card--editable .desktop-card-qty:is([readonly], :disabled),
+.desktop-info-card--editable :is(.desktop-card-illust, .desktop-card-rare, .desktop-card-loc):disabled {
+    caret-color: transparent;
+    cursor: default;
+    transition-property: color;
+}
+
+.desktop-info-card--editable .desktop-card-loc:disabled {
+    opacity: 1;
+    -webkit-text-fill-color: currentColor;
+}
+
+.desktop-qty-wrapper > span {
+    flex-shrink: 0;
+    font-size: 0.85rem;
+    font-weight: 700;
+    pointer-events: none;
+    margin-right: 2px;
+}
+
+.desktop-qty-controls {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    gap: 1px;
+    flex-shrink: 0;
+}
+
+.desktop-qty-controls :is(.qty-up-btn, .qty-down-btn) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 12px;
+    line-height: 12px;
+    cursor: pointer;
+}
+
+.desktop-qty-controls .material-icons {
+    font-size: 0.9rem;
+}
+
+.desktop-card-width-tester {
+    position: absolute;
+    visibility: hidden;
+    white-space: pre;
+    height: 0;
+    overflow: hidden;
+}
+
+/* 목록의 외곽은 공통 조합, 선택지는 제품의 li 배치와 상태를 사용한다. */
+.desktop-card-dropdown {
+    width: max-content;
+    white-space: nowrap;
+}
+
+.desktop-card-dropdown > .custom-option {
+    padding: 8px 12px;
+}
+
+.desktop-card-dropdown[data-card-search-field] {
+    box-sizing: border-box;
+}
+
+.desktop-card-dropdown[data-card-search-field="name"] > .custom-option {
+    text-align: left;
+}
+
+.desktop-card-dropdown[data-card-search-field="no"] > .custom-option {
+    padding-inline: 4px;
+}
+
+.desktop-card-dropdown > .custom-option:not(.item-no-match):is(:hover, .selected) {
+    background-color: var(--surface-002);
+}
+
+.desktop-card-dropdown > .item-no-match {
+    color: var(--text-002);
+}

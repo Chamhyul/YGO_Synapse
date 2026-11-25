@@ -1,0 +1,247 @@
+/* 공통 입력 보조 상태와 추천 목록 */
+
+input::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+.custom-input:where(:not(.card-info-fields *)):focus:where(:not(.desktop-info-card--editable *)) {
+  background-color: rgba(0, 0, 0, 0.15);
+  color: var(--text-000);
+}
+
+.error-placeholder:where(:not(.card-info-fields *, .desktop-info-card--editable *))::placeholder {
+  color: #f44336;
+  font-weight: 700;
+  opacity: 1;
+}
+
+:where(html.dark-mode) .error-placeholder:where(:not(.card-info-fields *, .desktop-info-card--editable *))::placeholder {
+  color: #ef5350;
+}
+
+.custom-select-wrapper:where(:not(.card-info-fields *, .desktop-info-card--editable *, .auto-location__control)) {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.custom-input:where(:not(.card-info-fields *, .desktop-info-card--editable *)) {
+  width: 100%;
+  height: 100%;
+  padding-right: 25px;
+  box-sizing: border-box;
+  background-color: #ffffff;
+  cursor: pointer;
+  text-align: center;
+  color: var(--text-table);
+}
+
+.custom-input:where(:not(.border-cardinput, .border-basic)) {
+  border: none;
+}
+
+html.dark-mode .custom-input:where(:not(.desktop-info-card--editable *)) {
+  background: transparent;
+  color: var(--text-table);
+}
+
+.custom-input:read-only {
+  cursor: pointer;
+}
+
+.arrow-icon:where(:not(.card-info-fields *)) {
+  position: absolute;
+  right: 5px;
+  pointer-events: none;
+  font-size: 1.2rem;
+  opacity: 0.7;
+  color: var(--text-table);
+}
+
+html.dark-mode .arrow-icon:where(:not(.card-info-fields *)) {
+  color: var(--text-table);
+}
+
+.custom-select-wrapper.active:where(:not(.card-info-fields *)) .arrow-icon {
+  transform: rotate(180deg);
+}
+
+.custom-select-wrapper.single-option:where(:not(.card-info-fields *)) .arrow-icon,
+.custom-select-wrapper.no-option:where(:not(.card-info-fields *)) .arrow-icon {
+  display: none;
+}
+
+.custom-select-wrapper.no-arrow:where(:not(.card-info-fields *)) .arrow-icon {
+  display: none;
+}
+
+/* 추천 목록 */
+.global-dropdown {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 0;
+  /* 슬라이드 효과를 위해 0으로 시작 */
+  overflow: hidden;
+  /* 내용물 가림용 */
+
+  /* 애니메이션 설정 (찌그러짐 방지) */
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, visibility 0.25s, var(--transition-colors);
+}
+
+.global-dropdown:where(:not(.desktop-card-dropdown)) {
+  background-color: #ffffff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  border-radius: 0 0 8px 8px;
+}
+
+html.dark-mode .global-dropdown:where(:not(.desktop-card-dropdown)) {
+  background-color: #2c2c2c;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+.global-dropdown:where(:not(.border-basic)) {
+  border: 1px solid #ddd;
+  border-top: none;
+}
+
+html.dark-mode .global-dropdown:where(:not(.border-basic)) {
+  border: 1px solid #444;
+}
+
+.global-dropdown.active {
+  max-height: 250px;
+  /* 실제 내용보다 충분히 큰 값 */
+  overflow-y: auto;
+  /* 펼쳐진 후에는 스크롤 허용 */
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.custom-option {
+  cursor: pointer;
+  transition: background 0.1s, var(--transition-colors);
+  font-size: 0.9rem;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-000);
+}
+
+.custom-option:where(:not(.desktop-card-dropdown *)) {
+  padding: 8px 5px;
+}
+
+.custom-option:where(:not(.desktop-card-dropdown *)):is(:hover, .selected) {
+  background-color: #fafafa;
+  color: var(--theme-000);
+  font-weight: 700;
+}
+
+:where(html.dark-mode) .custom-option:where(:not(.desktop-card-dropdown *)):is(:hover, .selected) {
+  background-color: #252525;
+}
+
+.custom-option.item-no-match:where(:not(.desktop-card-dropdown *)) {
+  color: #9e9e9e;
+}
+
+:where(html.dark-mode) .custom-option.item-no-match:where(:not(.desktop-card-dropdown *)) {
+  color: #757575;
+}
+
+.custom-option.item-no-match {
+  cursor: default;
+  background-color: transparent;
+  font-weight: 400;
+}
+
+/* 검색 입력의 글자색은 공통 검색 스타일이 소비하는 색상 조합에서 정한다. */
+html.dark-mode input:is([type="text"], [type="number"]):not(.ui-input--filled):where(:not(.desktop-info-card--editable *, .search-input)) {
+  color: var(--text-000);
+}
+
+/* 입력란 지우기(X) 버튼 스타일 */
+.clear-btn:where(:not(.card-info-fields *)) {
+  position: absolute;
+  right: 2px;
+  /* 패딩 10px 고려 (기존 12px - 10px) */
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.2rem;
+  color: #9e9e9e;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s, transform 0.2s, var(--transition-colors);
+  z-index: 25;
+  padding: 10px;
+  /* 클릭 영역 확장 */
+}
+
+:where(html.dark-mode) .clear-btn:where(:not(.card-info-fields *)) {
+  color: #757575;
+}
+
+.clear-btn:where(:not(.card-info-fields *)):hover {
+  transform: translateY(-50%);
+}
+
+/* 값이 있는 입력란의 지우기 버튼 */
+.custom-select-wrapper.has-value:where(:not(.card-info-fields *)) .clear-btn {
+  opacity: 0.7;
+  visibility: visible;
+}
+
+.custom-select-wrapper.has-value:where(:not(.card-info-fields *)) .clear-btn:hover {
+  opacity: 1;
+}
+
+/* Clear Name Button (카드 이름 셀 지우기) */
+.clear-name-btn:where(:not(.card-info-fields *)) {
+  position: absolute;
+  right: 0px;
+  /* 패딩 10px 고려 (기존 10px - 10px) */
+  top: 50%;
+  transform: translateY(-50%) scale(0.8);
+  font-size: 18px;
+  color: var(--text-table);
+  opacity: 0.7;
+  cursor: pointer;
+  z-index: 5;
+  padding: 10px;
+  /* 클릭 영역 확장 */
+}
+
+/* CID 상세로 연결되는 카드 이름의 링크 표시 */
+.hyperlink-style {
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* 자체 수량 조절 버튼을 사용하는 입력에서는 브라우저 기본 스피너를 숨긴다. */
+input.qty-input::-webkit-inner-spin-button,
+input.qty-input::-webkit-outer-spin-button,
+input.qty-input:focus::-webkit-inner-spin-button,
+input.qty-input:focus::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+  display: none;
+}
+
+input.qty-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

@@ -82,7 +82,7 @@ const assets = { '/':['index.html','text/html; charset=utf-8'], '/index.html':['
 const errors = new Set(['UNAUTHORIZED','ACCOUNT_UNAVAILABLE','NOT_FOUND','INVALID_QUERY','INVALID_COMMAND','INVALID_LOCATION','REGISTRATION_REQUIRED',
   'IDEMPOTENCY_CONFLICT','INSUFFICIENT_QUANTITY','SAME_LOCATION','LOCATION_NOT_FOUND','VARIANT_UNAVAILABLE','UNRESOLVED_ITEM','DEMO_BUSY',
   'CONSENT_VERSION_CHANGED','IMPORT_REQUEST_INVALID','IMPORT_REQUEST_CONFLICT','IMPORT_RETRY_UNAVAILABLE',
-  'IMPORT_REQUEST_CANCELLED','IMPORT_REQUEST_PENDING','INVENTORY_GENERATION_CHANGED','SHEET_CHANGED','QUANTITY_LIMIT',
+  'IMPORT_REQUEST_CANCELLED','IMPORT_REQUEST_PENDING','INVENTORY_GENERATION_CHANGED','INVENTORY_REVISION_CHANGED','SHEET_CHANGED','QUANTITY_LIMIT',
   'APPCHECK_REQUIRED','APPCHECK_INVALID','INVALID_IMPORT','PACK_UNAVAILABLE','DECK_UNAVAILABLE','INVALID_PHOTO',
   'MEMBERSHIP_PROVIDER_UNAVAILABLE','MEMBERSHIP_TOO_MANY_REQUESTS','MEMBERSHIP_VERIFICATION_EXPIRED','MEMBERSHIP_ROSTER_CHANGED','DISCORD_REDIRECT_INVALID']);
 const importMessages = {
@@ -208,7 +208,7 @@ function createServer({ config, database, authentication, repository, loadNotice
         res.writeHead(204,{'Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization,X-Firebase-AppCheck'});return res.end();
       }
       // 공개 준비 요청에도 기존 허용 Origin 정책을 적용한다. 응답은 인증·DB 접근 권한이 아니다.
-      if (req.method === 'GET' && endpoint === '/api/v2/environment') return json(200,{success:true,environment:config.environment,authMode:config.mode,
+      if (req.method === 'GET' && endpoint === '/api/v2/environment') return json(200,{success:true,environment:config.environment,authMode:config.mode,nameAutocompleteContinuation:true,
         ...(config.environment==='production'&&config.mode==='firebase'?{loginReadDirectVersion:1}:{}),
         membershipProviders:Object.keys(membershipWriter?.providers || {})});
       if (endpoint === '/api/v2/notices') return req.method === 'GET' ? json(200, await loadNotices()) : json(405, {success:false,code:'METHOD_NOT_ALLOWED'});
@@ -232,7 +232,11 @@ function createServer({ config, database, authentication, repository, loadNotice
         if(body.includeDetails===true)await authentication.verifyAppCheck(req.headers['x-firebase-appcheck']);
         return await catalogJson({success:true,...await repository.registrationCards(body)});
       }
-      if (req.method === 'GET' && endpoint === '/api/v2/search') return await catalogJson({success:true,...await repository.search(url.searchParams.get('q')||'',url.searchParams.get('locale')||'ko',url.searchParams.get('after')||'0',Number(url.searchParams.get('limit')||50),{autocomplete:url.searchParams.get('mode')==='autocomplete'})});
+      if (req.method === 'GET' && endpoint === '/api/v2/search') {
+        const autocomplete=url.searchParams.get('mode')==='autocomplete';
+        const continuation = autocomplete && url.searchParams.get('continuation') === '1';
+        return await catalogJson({success:true,...await repository.search(url.searchParams.get('q')||'',url.searchParams.get('locale')||'ko',url.searchParams.get('after')||'0',Number(url.searchParams.get('limit')||50),{autocomplete,field:url.searchParams.get('field') ?? undefined,view:url.searchParams.get('view') ?? undefined,continuation})});
+      }
       const card = /^\/api\/v2\/cards\/([1-9]\d{0,9})$/.exec(endpoint);
       if (req.method === 'GET' && card) {
         const locale = url.searchParams.get('locale') || 'ko';
@@ -244,7 +248,8 @@ function createServer({ config, database, authentication, repository, loadNotice
         return json(200,{success:true,packs:await repository.findPacks(url.searchParams.get('name'))});
       }
       if (req.method==='GET' && endpoint==='/api/v2/packs/suggestions') {
-        return json(200,{success:true,names:await repository.findPackSuggestions(url.searchParams.get('q')||'')});
+        const names = await timed('pack_suggestions', () => repository.findPackSuggestions(url.searchParams.get('q') || ''));
+        return json(200,{success:true,names});
       }
       const pack=/^\/api\/v2\/packs\/([a-z0-9-]{1,40})\/(cids|cards)$/i.exec(endpoint);
       if (req.method==='GET' && pack) {
@@ -274,7 +279,7 @@ function createServer({ config, database, authentication, repository, loadNotice
         }
       }
       const membershipAction=/^\/api\/v2\/membership\/(discord|youtube)\/(start|verify)$/.exec(endpoint);
-      const protectedPath = ['/api/v2/bootstrap','/api/v2/locations','/api/v2/inventory/commands','/api/v2/preferences',
+      const protectedPath = ['/api/v2/bootstrap','/api/v2/locations','/api/v2/locations/delete','/api/v2/inventory/commands','/api/v2/preferences',
         '/api/v2/profile','/api/v2/registration','/api/v2/membership','/api/v2/clearUserData','/api/v2/checkSheet','/api/v2/inventory/add-batch'].includes(endpoint) || importStatusPaths.has(endpoint);
       if (!protectedPath && !membershipAction) return json(404,{success:false,code:'NOT_FOUND'});
       const registrationRead=endpoint==='/api/v2/registration' && req.method==='GET';
@@ -436,6 +441,9 @@ function createServer({ config, database, authentication, repository, loadNotice
         const generation=await repository.inventoryGeneration(uid);
         const body=await readBody(req); if(Object.keys(body).some(k=>k!=='name'))return json(400,{success:false,code:'INVALID_COMMAND'});
         return json(201,{success:true,location:await repository.addLocation(uid,body.name,generation)});
+      }
+      if (req.method === 'POST' && endpoint === '/api/v2/locations/delete') {
+        return json(200,{success:true,...await repository.deleteLocation(uid,await readBody(req))});
       }
       if (req.method === 'POST' && endpoint === '/api/v2/inventory/commands') {
         const generation=await repository.inventoryGeneration(uid);

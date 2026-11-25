@@ -129,7 +129,6 @@ const CardDataStore = {
     allCardNumbers: [],
     allProcessingTypes: [],
     cachedPackNames: null,
-    crawledPacksCache: {},
     masterJSON: { pack: {}, rarity: [] }
 };
 
@@ -256,19 +255,6 @@ function getAllPackNames() {
     return CardDataStore.cachedPackNames;
 }
 
-/**
- * 팩 및 덱 검색/크롤링/수록카드 생성 전역 스토어
- */
-const PackDeckStore = {
-    isSearching: false,
-    isPackTableGenerated: false,
-    isDeckTableGenerated: false,
-    currentPackInfo: null,
-    currentDeckDetailUrl: '',
-    currentDeckName: '',
-    packCardResults: [],
-    isPackCrawlDone: false
-};
 let migrationValidationTimeout = null; // 마이그레이션 링크 검증용 타임아웃
 
 // Master JSON 원형 저장 및 관리를 위한 IndexedDB 유틸리티
@@ -1006,7 +992,6 @@ const UIStore = {
     mode: null,
     inventoryMode: 'dashboard',
     lastManageMode: 'add',
-    chipState: { add: 'general', move: 'card', discard: 'card' },
     pendingBlurFn: null,
     dropdownFocus: -1,
     activeDropdownInput: null,
@@ -1106,20 +1091,6 @@ function mergeCardMetaToCache(cid, metaData, isFull = false) {
 }
 
 /**
- * 카드 메타데이터에서 카드 종류 (몬스터 0, 마법 1, 함정 2) 판별
- */
-function parseMetaKind(cardMeta) {
-    if (!cardMeta || !cardMeta.info) return { kind: 0, kindStr: "몬스터" };
-    const info = cardMeta.info;
-    const k = info[10] !== undefined ? info[10] : (info["10"] !== undefined ? info["10"] : 0);
-    const etcList = Array.isArray(info[11] || info["11"]) ? (info[11] || info["11"]) : [];
-
-    if (k === 1 || etcList.some(e => e >= 15 && e <= 20)) return { kind: 1, kindStr: "마법" };
-    if (k === 2 || etcList.some(e => e >= 21 && e <= 23)) return { kind: 2, kindStr: "함정" };
-    return { kind: 0, kindStr: "몬스터" };
-}
-
-/**
  * 단일 카드 상세 메타 캐시 조회 (isFull 미달 시 langOnly 증분 요청 연동)
  */
 async function fetchCardMetaWithCache(cid, cardName = '', cardNo = '') {
@@ -1198,27 +1169,12 @@ async function fetchCardsMetaBatch(cids = [], { force = false } = {}) {
  * 입력폼 수량/행 카운트 전역 스토어
  */
 const FormRowStore = {
-    addCounts: { general: 1, pack: 1, deck: 1 },
+    addCount: 1,
     moveCount: 1,
     discardCount: 1
 };
 
-let currentToastInstance = null;
-let currentToastMessage = null;
-
 let syncCounter = 0;
-
-
-let deckCardsPromise = null;     // 덱 카드 상세 검색 promise 저장 (미리 로딩)
-let deckSearchRevision = 0;
-
-// 카드이름 기반 팩 등록 메커니즘 상태 변수
-let _packCrawlNewRunning = false; // 신규 배경 크롤링 실행 플래그 (기존과 분리)
-let packCrawlRevision = 0;
-let packPageController;
-let _currentDisplayCrawlCount = 0; // 화면에 표시 중인 현재 크롤링 수량 (애니메이션용)
-let _crawlIntervalId = null;       // 애니메이션 인터벌 ID
-
 
 
 /* --- AD Units Refresh Logic --- */
@@ -1240,8 +1196,7 @@ function refreshAdUnit(slotId) {
         return;
     }
 
-    container.style.transition = 'opacity 0.4s ease, var(--transition-colors)';
-    container.style.opacity = '0.2';
+    container.classList.add('is-refreshing');
 
     setTimeout(() => {
         // [주의] 실제 광고 코드가 삽입되는 지점입니다. 
@@ -1254,7 +1209,7 @@ function refreshAdUnit(slotId) {
             }
         } catch (e) { }
 
-        container.style.opacity = '1';
+        container.classList.remove('is-refreshing');
         adLastRefreshTime[slotId] = now;
     }, 400);
 }
@@ -1276,35 +1231,6 @@ function refreshPageAds(mode) {
     else if (mode === 'move') refreshAdUnit('move-page-ad');
     else if (mode === 'discard') refreshAdUnit('discard-page-ad');
     else if (mode === 'search') refreshAdUnit('search-result-ad');
-}
-
-function showToast(html, classes) {
-
-    if (currentToastMessage === html) return;
-
-    if (currentToastInstance) {
-        currentToastInstance.dismiss();
-    }
-
-    const instance = M.toast({
-        html: html,
-        classes: classes,
-        completeCallback: () => {
-            if (currentToastMessage === html) {
-                currentToastMessage = null;
-                currentToastInstance = null;
-            }
-        }
-    });
-
-    currentToastInstance = instance;
-    currentToastMessage = html;
-
-    const toastContainer = document.getElementById('toast-container');
-    const mainContainer = document.querySelector('.app-page-content');
-    if (toastContainer && mainContainer && toastContainer.parentNode !== mainContainer) {
-        mainContainer.appendChild(toastContainer);
-    }
 }
 
 function updateLocalInventory(updates) {
@@ -1329,7 +1255,7 @@ function refreshLocalLookups() {
     }
 
     // [데스크톱 카드 뷰 대응] 모든 데스크톱 카드를 돌며 보관 위치(loc) 및 이동 위치(to) 드롭다운 갱신
-    const allDesktopCards = document.querySelectorAll('.desktop-info-card');
+    const allDesktopCards = document.querySelectorAll('.desktop-info-card[data-index]');
     allDesktopCards.forEach(card => {
         const locInp = card.querySelector('[data-field="loc"]');
         const locWrap = locInp ? locInp.closest('.custom-select-wrapper') : null;
@@ -1431,11 +1357,11 @@ function handleHashChange(skipAutomation = false) {
 
                 if (cid) {
                     if (!skipAutomation) void renderTargetByCid(cid, code, true);
-                    else switchToMode('search', true, null, null, true);
+                    else switchToMode('search', true);
                 } else if (code || targetName) {
                     const inputEl = document.getElementById('card-search');
                     if (inputEl) inputEl.value = code || targetName;
-                    switchToMode('search', true, null, null, skipAutomation);
+                    switchToMode('search', true);
                     if (!skipAutomation) void startSearch(true, code ? 'number' : 'name', true);
                 } else if (key !== null || q !== null) {
                     const searchKey = key !== null ? key : q;
@@ -1446,43 +1372,30 @@ function handleHashChange(skipAutomation = false) {
                     const inputEl = document.getElementById('card-search');
                     if (inputEl) inputEl.value = searchKey;
                     checkClearBtn();
-                    switchToMode('search', true, null, null, skipAutomation);
+                    switchToMode('search', true);
                     if (!skipAutomation) {
                         startSearch(true, searchType);
                     }
                 } else {
-                    switchToMode('search', true, null, null, skipAutomation);
+                    switchToMode('search', true);
                 }
             } else {
-                switchToMode('search', true, null, null, skipAutomation);
+                switchToMode('search', true);
             }
         } else {
-            // 해시를 슬래시(/) 기준으로 분리하고 쿼리 파라미터 파싱
-            const mainParts = hash.split('?');
-            const pathParts = mainParts[0].split('/');
-            const mainMode = pathParts[0];
-            const subMode = pathParts[1] || null;
-
-            // 쿼리 파라미터 추출 (name, loc, code 등)
-            const params = new URLSearchParams(mainParts[1] || "");
-            const targetName = params.get('name');
-            const targetLoc = params.get('loc');
-            const targetCode = params.get('code');
-
-            const validModes = ['home', 'inventory', 'add', 'move', 'discard', 'settings', 'manage'];
-            if (validModes.includes(mainMode)) {
-                const targetParams = (targetName || targetLoc || targetCode) ? { name: targetName, loc: targetLoc, code: targetCode } : null;
-                if (mainMode === 'manage') {
-                    // #manage/탭모드/칩모드
-                    const targetTab = pathParts[1] || 'add';
-                    const targetChip = pathParts[2] || null;
-                    // 기존 add/move/discard 로직 수행
-                    switchToMode(targetTab, true, targetChip, targetParams, skipAutomation);
-                } else {
-                    switchToMode(mainMode, true, subMode, targetParams, skipAutomation);
+            const [mainMode, subMode] = hash.split('?')[0].split('/');
+            const isLegacyManagePath = mainMode === 'manage';
+            const targetMode = isLegacyManagePath ? (subMode || 'add') : mainMode;
+            const validModes = isLegacyManagePath
+                ? ['add', 'move', 'discard']
+                : ['home', 'inventory', 'add', 'move', 'discard', 'settings'];
+            if (validModes.includes(targetMode)) {
+                if (targetMode === 'add' && hash !== 'add') {
+                    window.history.replaceState(window.history.state, '', '#add');
                 }
+                switchToMode(targetMode, true, targetMode === 'inventory' ? subMode : null);
             } else {
-                switchToMode('home', true, null, null, skipAutomation);
+                switchToMode('home', true);
             }
         }
 
@@ -1557,7 +1470,9 @@ async function initApp() {
     fetchNotices();
 
     if (!globalThis.AppBackend?.discordReturnSession) handleDiscordOAuthCallback();
-    if (typeof initSearchButtonBlurListeners === 'function') initSearchButtonBlurListeners();
+    document.getElementById('manage-common-footer')?.addEventListener('click', event => {
+        if (event.target.tagName === 'BUTTON') event.target.blur();
+    });
     if (typeof initMobileSearchListeners === 'function') initMobileSearchListeners();
     if (typeof initOverlaySearchListeners === 'function') initOverlaySearchListeners();
     if (document.documentElement.classList.contains('is-mobile-device')) {
@@ -1565,7 +1480,6 @@ async function initApp() {
     } else {
         renderDesktopCards();
     }
-    initPackSearch(); // [이동] 초기화 시점에 함께 실행
 
     // 구 버전에서 유입된 사용자 온보딩 처리
     startOnboarding();
@@ -1583,7 +1497,9 @@ async function initApp() {
     if (searchInput && !searchInput._isInputBound) {
         searchInput._isInputBound = true;
         let isSearchComposing = false;
+        let searchEditPending = false;
         const handleFocusOrClick = () => {
+            if (searchEditPending) return;
             const val = searchInput.value.trim();
             if (isSearchComposing && !val) return;
             if (!val) { showRecentInDropdown(); } else { filterAndShowDropdown(searchInput.value); }
@@ -1591,13 +1507,15 @@ async function initApp() {
         searchInput.addEventListener('click', handleFocusOrClick);
         searchInput.addEventListener('focus', handleFocusOrClick);
         const debouncedFilter = debounce((val) => {
+            searchEditPending = false;
             if (document.activeElement !== searchInput || searchInput.value !== val) return;
             if (isSearchComposing && !val.trim()) return;
             filterAndShowDropdown(val);
-        }, 150);
+        }, 100);
 
         searchInput.addEventListener('compositionstart', () => {
             isSearchComposing = true;
+            searchEditPending = true;
             debouncedFilter.cancel();
         });
         searchInput.addEventListener('compositionend', () => {
@@ -1609,10 +1527,20 @@ async function initApp() {
             const val = e.target.value;
             debouncedFilter.cancel();
             checkClearBtn();
+            if (globalThis.AppBackend) {
+                if (val.trim() || isSearchComposing || e.isComposing) {
+                    updatePendingCatalogDropdown(val);
+                } else {
+                    searchEditPending = false;
+                    showRecentInDropdown();
+                    return;
+                }
+            }
             if (!val.trim() && (isSearchComposing || e.isComposing)) {
                 // 한글 조합 도중의 일시적인 빈 값으로 최근 검색을 표시하지 않습니다.
                 return;
             }
+            searchEditPending = true;
             debouncedFilter(val);
         });
 
@@ -1655,9 +1583,10 @@ async function initApp() {
 
         searchInput.addEventListener('keydown', function (e) {
             if (e.isComposing) return;
-            let list = document.getElementById('custom-dropdown');
-            if (list.style.display === 'none' && e.key !== 'Enter') return;
-            let items = list.querySelectorAll('li:not(.recent-header-item):not(.no-result-item)');
+            const list = document.getElementById('custom-dropdown');
+            const listOpen = !list.hidden && list.classList.contains('active');
+            if (!listOpen && e.key !== 'Enter') return;
+            const items = list.querySelectorAll('li:not(.recent-header-item):not(.no-result-item)');
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 UIStore.dropdownFocus++;
@@ -1670,8 +1599,7 @@ async function initApp() {
                 updateHighlight(items, UIStore.dropdownFocus);
             } else if (e.key === 'Enter') {
                 e.preventDefault();
-                const selectedItem = list.style.display !== 'none' && list.classList.contains('active')
-                    ? items[UIStore.dropdownFocus] : null;
+                const selectedItem = listOpen ? items[UIStore.dropdownFocus] : null;
                 if (selectedItem?.dataset.val) {
                     this.value = selectedItem.dataset.val;
                     checkClearBtn();
@@ -1685,9 +1613,10 @@ async function initApp() {
 
         searchInput.addEventListener('blur', () => {
             if (debouncedFilter.cancel) debouncedFilter.cancel();
+            searchEditPending = false;
+            if (globalThis.AppBackend) clearCatalogDropdownCandidates(dropdown);
             setTimeout(() => {
-                const list = document.getElementById('custom-dropdown');
-                list.classList.remove('active');
+                if (document.activeElement === searchInput) return;
                 toggleSearchWrapper(false);
             }, 75);
         });
@@ -1704,32 +1633,29 @@ async function initApp() {
     document.addEventListener('click', function (e) {
         // 지역 설정 드롭다운 외부 클릭 감지 (새로운 구조 대응)
         if (!e.target.closest('.region-container')) closeDropdowns();
-
-        // 팩 추가 팝업 외부 클릭 감지
-        const packAddContainer = document.getElementById('pack-add-container');
-        if (packAddContainer && !packAddContainer.contains(e.target)) {
-            togglePackAddPopup(e, false);
-        }
     });
 
     document.addEventListener('scroll', function (e) {
         if (e.target.classList && e.target.classList.contains('custom-options')) return;
         if (UIStore.activeDropdownInput) {
-            // [근본 해결] 검색바 드롭다운은 CSS 중첩 구조이므로 JS 포지셔닝이 개입하면 클리핑이 깨짐
-            if (UIStore.activeDropdownInput.id === 'card-search') return;
+            // 검색바와 보관 위치 자동 입력의 중첩 목록은 CSS로 배치한다.
+            const { id } = UIStore.activeDropdownInput;
+            if (id === 'card-search' || id === 'auto-location-input') return;
 
             const wrapper = UIStore.activeDropdownInput.closest('.custom-select-wrapper') || UIStore.activeDropdownInput.closest('.search-input-wrapper');
             if (wrapper) {
                 const globalDropdown = wrapper._dropdown || document.getElementById('custom-dropdown');
                 if (globalDropdown && globalDropdown.classList.contains('active')) {
+                    if (globalDropdown.classList.contains('desktop-card-dropdown')) {
+                        positionDropdown(globalDropdown, wrapper);
+                        return;
+                    }
                     const rect = wrapper.getBoundingClientRect();
-                    const isAutoLoc = (wrapper.id === 'wrap-auto-loc');
-                    const offset = isAutoLoc ? -1 : 0;
 
                     const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
                     const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft || document.body.scrollLeft || 0;
 
-                    globalDropdown.style.top = (rect.bottom + scrollTop + offset) + 'px';
+                    globalDropdown.style.top = (rect.bottom + scrollTop) + 'px';
                     globalDropdown.style.left = (rect.left + scrollLeft) + 'px';
                     globalDropdown.style.width = rect.width + 'px';
                 }
@@ -1737,7 +1663,13 @@ async function initApp() {
         }
     }, true);
 
-    updateDisconnectBtn();
+    window.addEventListener('resize', () => {
+        const wrapper = UIStore.activeDropdownInput?.closest('[data-card-field]');
+        const dropdown = wrapper?._dropdown;
+        if (dropdown?.dataset.cardSearchField && dropdown.classList.contains('active')) {
+            positionDropdown(dropdown, wrapper);
+        }
+    });
 
     // 초기 로드 시 트랜지션 차단 (이미 index.html에서 추가되었을 수 있음)
     document.body.classList.remove('no-transition');
@@ -1754,22 +1686,6 @@ async function initApp() {
     const currentHash = window.location.hash.substring(1);
     if (currentHash.startsWith('search')) {
         if (!lastSearchState) handleHashChange(false);
-    } else if (currentHash) {
-        const hParts = currentHash.split('?');
-        // URL path에서 서브모드를 직접 추출하여 강제 동기화
-        const pathParts = hParts[0].split('/');
-        if (pathParts[0] === 'add' && pathParts[1]) {
-            UIStore.chipState.add = pathParts[1];
-        }
-        if (hParts[1]) {
-            const hParams = new URLSearchParams(hParts[1]);
-            const pObj = {
-                name: hParams.get('name'),
-                loc: hParams.get('loc'),
-                code: hParams.get('code')
-            };
-            handleAutomationParams(pObj);
-        }
     }
 
     const autoLocWrap = document.getElementById('wrap-auto-loc');
@@ -1782,7 +1698,6 @@ async function initApp() {
     // 모든 초기화 완료 후 트랜지션 차단 해제 및 FODC 방지 클래스 제거
     requestAnimationFrame(() => {
         document.body.classList.remove('no-transition');
-        document.documentElement.classList.remove('route-add-pack', 'route-add-deck');
     });
 
     // 단축키(Ctrl+Enter / Cmd+Enter)를 통한 작업 실행 기능 추가
@@ -2048,8 +1963,9 @@ function openManagedSheet(sheet, { backdrop = null, trigger = null, initialFocus
     }
     state.onDismiss = onDismiss;
     sheet.hidden = false;
-    sheet.style.display = 'flex';
-    if (backdrop) backdrop.style.display = 'block';
+    if (backdrop) backdrop.hidden = false;
+    // active를 붙이기 전 닫힌 위치와 배경막의 초기 스타일을 계산한다.
+    void sheet.offsetHeight;
     beginModalLifecycle(sheet, trigger, backdrop);
     state.frame = requestAnimationFrame(() => {
         if (sheetAnimationStates.get(sheet) !== state || !isManagedSheetOpen(sheet)) return;
@@ -2069,8 +1985,8 @@ function closeManagedSheet(sheet, { backdrop = null, duration = globalThis.AppOv
     if (backdrop) backdrop.classList.remove('active');
     state.timer = setTimeout(() => {
         if (sheetAnimationStates.get(sheet) !== state) return;
-        sheet.style.display = 'none';
-        if (backdrop) backdrop.style.display = 'none';
+        sheet.hidden = true;
+        if (backdrop) backdrop.hidden = true;
         finishModalLifecycle(sheet);
         if (onClose) onClose();
     }, duration);
@@ -2147,56 +2063,6 @@ function setActivePage(page) {
     });
 }
 
-/**
- * URL 해시 및 쿼리 파라미터 업데이트 공통 유틸리티
- */
-function setHashQuery(subPath, urlParams) {
-    const qs = urlParams ? urlParams.toString() : '';
-    const finalHash = subPath + (qs ? '?' + qs : '');
-    if (window.location.hash !== '#' + finalHash) {
-        isInternalHashChange = true;
-        window.history.replaceState(null, '', window.location.pathname + window.location.search + '#' + finalHash);
-        setTimeout(() => { isInternalHashChange = false; }, 100);
-    }
-}
-
-/**
- * 팩 모드에서 상태 변경 시 현재 상태에 맞는 URL 해시를 동기화합니다.
- */
-function updatePackUrl() {
-    if (UIStore.mode !== 'add' || UIStore.chipState.add !== 'pack') return;
-
-    const urlParams = new URLSearchParams();
-    if (typeof PackDeckStore.currentPackInfo !== 'undefined' && PackDeckStore.currentPackInfo && PackDeckStore.currentPackInfo.packName) {
-        urlParams.set('name', PackDeckStore.currentPackInfo.packName);
-        if (typeof PackDeckStore.isPackTableGenerated !== 'undefined' && PackDeckStore.isPackTableGenerated && PackDeckStore.currentPackInfo.validLocale) {
-            urlParams.set('loc', PackDeckStore.currentPackInfo.validLocale);
-        }
-    }
-    setHashQuery('add/pack', urlParams);
-}
-
-/**
- * 덱 모드에서 상태 변경 시 현재 상태에 맞는 URL 해시를 동기화합니다.
- */
-function updateDeckUrl() {
-    if (UIStore.mode !== 'add' || UIStore.chipState.add !== 'deck') return;
-
-    const urlParams = new URLSearchParams();
-    const input = document.getElementById('deck-code-input');
-    const code = input ? input.value.trim() : "";
-    if (code) {
-        urlParams.set('code', code);
-    }
-    setHashQuery('add/deck', urlParams);
-}
-/**
- * 앱의 메인 모드(페이지)를 전환합니다.
- * @param {string} mode - 전환할 모드 ('home', 'add', 'move' 등)
- * @param {boolean} isInstant - 애니메이션 없이 즉시 전환할지 여부
- * @param {string|null} subMode - 세부 상태 (예: 'add' 모드의 'pack', 'deck' 등)
- * @param {Object|null} params - 추가적인 쿼리 파라미터 (name, loc 등)
- */
 /* ==========================================================================
    보유 현황 목록 (Inventory Grid) 엔진
    ========================================================================== */
@@ -2239,7 +2105,7 @@ async function renderInventoryGrid(forceSync = false) {
         const area = document.getElementById('grid-status-area');
         if (area) {
             area.textContent = UserStore.inventorySyncStatus === 'error' ? '보유 정보 동기화에 실패했습니다. 위의 다시 시도를 눌러주세요.' : '보유 정보를 동기화하는 중입니다.';
-            area.style.display = 'flex';
+            area.hidden = false;
         }
         return;
     }
@@ -2249,22 +2115,7 @@ async function renderInventoryGrid(forceSync = false) {
         if (window._inventorySyncWaitInterval) return;
 
         // 대기 중임을 알리는 로딩 UI 표시
-        const statusArea = document.getElementById('grid-status-area');
-        if (statusArea) {
-            statusArea.innerHTML = `
-                <div class="grid-loader-overlay">
-                    <div class="preloader-wrapper active">
-                        <div class="spinner-layer spinner-teal-only">
-                            <div class="circle-clipper left"><div class="circle"></div></div>
-                            <div class="gap-patch"><div class="circle"></div></div>
-                            <div class="circle-clipper right"><div class="circle"></div></div>
-                        </div>
-                    </div>
-                    <div class="grid-loader-text">정보 가져오는 중</div>
-                </div>
-            `;
-            statusArea.style.display = 'flex';
-        }
+        renderInventoryLoadingState(document.getElementById('grid-status-area'));
 
         // Promise.all로 두 동기화 완료를 직접 대기 (폴링 제거)
         Promise.all([
@@ -2309,6 +2160,18 @@ async function renderInventoryGrid(forceSync = false) {
     }
 }
 
+function renderInventoryLoadingState(statusArea) {
+    if (!statusArea) return;
+
+    statusArea.innerHTML = `
+        <div class="grid-loader-overlay">
+            <div class="loading-spinner-small color-theme-002" aria-hidden="true"></div>
+            <div class="grid-loader-text">정보 가져오는 중</div>
+        </div>
+    `;
+    statusArea.hidden = false;
+}
+
 /**
  * 사용자 데이터 동기화 확인 및 진행
  */
@@ -2316,22 +2179,7 @@ async function checkAndSyncInventoryData(force = false) {
     const statusArea = document.getElementById('grid-status-area');
     const tbody = document.getElementById('inventory-grid-body');
     if (tbody) tbody.innerHTML = '';
-
-    if (statusArea) {
-        statusArea.innerHTML = `
-            <div class="grid-loader-overlay">
-                <div class="preloader-wrapper active">
-                    <div class="spinner-layer spinner-teal-only">
-                        <div class="circle-clipper left"><div class="circle"></div></div>
-                        <div class="gap-patch"><div class="circle"></div></div>
-                        <div class="circle-clipper right"><div class="circle"></div></div>
-                    </div>
-                </div>
-                <div class="grid-loader-text">정보 가져오는 중</div>
-            </div>
-        `;
-        statusArea.style.display = 'flex';
-    }
+    renderInventoryLoadingState(statusArea);
 
     try {
         if (!UserStore.isInitialSyncDone || force) {
@@ -2344,11 +2192,7 @@ async function checkAndSyncInventoryData(force = false) {
         const loaderText = statusArea ? statusArea.querySelector('.grid-loader-text') : null;
         if (loaderText) loaderText.textContent = "리스트 생성 중";
 
-        setTimeout(() => {
-            startGridRendering();
-            // 로딩 종료 후 높이 재조정
-            setTimeout(updateInventoryContainerHeight, 50);
-        }, 300);
+        setTimeout(startGridRendering, 300);
 
     } catch (e) {
         console.error("인벤토리 동기화 실패:", e);
@@ -2394,10 +2238,10 @@ function renderInventoryReadyState(message = "데이터를 불러옵니다.") {
     statusArea.innerHTML = `
         <div class="grid-ready-view">
             <div class="grid-ready-text">${message}</div>
-            <button class="btn cyan-theme waves-effect waves-light" onclick="manualSyncInventory()">불러오기</button>
+            <button type="button" class="ui-button grid-ready-action color-theme shape-capsule" onclick="manualSyncInventory()">불러오기</button>
         </div>
     `;
-    statusArea.style.display = 'flex';
+    statusArea.hidden = false;
 }
 
 function renderInventoryLoginRequiredState() {
@@ -2410,10 +2254,10 @@ function renderInventoryLoginRequiredState() {
     statusArea.innerHTML = `
         <div class="grid-ready-view">
             <div class="grid-ready-text">로그인 후 보유 현황을 확인하고 관리할 수 있습니다.</div>
-            <button class="btn cyan-theme waves-effect waves-light" onclick="toggleAuthModal()">로그인하기</button>
+            <button type="button" class="ui-button ui-button--sign-in color-theme shape-capsule" onclick="toggleAuthModal()">로그인하기</button>
         </div>
     `;
-    statusArea.style.display = 'flex';
+    statusArea.hidden = false;
 }
 
 /**
@@ -2494,7 +2338,7 @@ function renderInventoryListTable() {
     if (!tbody || !scrollArea) return;
 
     // 상태 영역 숨김
-    if (statusArea) statusArea.style.display = 'none';
+    if (statusArea) statusArea.hidden = true;
 
     // 헤더 상태 업데이트
     updateGridHeaderUI();
@@ -2551,7 +2395,7 @@ function renderInventoryBatch(isInitial = false) {
     const tbody = document.getElementById('inventory-grid-body');
     if (!tbody) return;
 
-    if (isInitial) tbody.innerHTML = '';
+    if (isInitial) tbody.replaceChildren();
 
     const start = isInitial ? 0 : inventoryGridState.displayLimit - 50;
     const end = Math.min(inventoryGridState.displayLimit, inventoryGridState.filteredData.length);
@@ -2576,7 +2420,7 @@ function renderInventoryBatch(isInitial = false) {
     // 더 불러올 데이터가 없으면 센서 숨김
     const sensor = document.getElementById('grid-append-sensor');
     if (sensor) {
-        sensor.style.display = end >= inventoryGridState.filteredData.length ? 'none' : 'block';
+        sensor.hidden = end >= inventoryGridState.filteredData.length;
     }
 }
 
@@ -2593,15 +2437,13 @@ function handleGridScroll(e) {
 
         inventoryGridState.isRendering = true;
         const loader = document.getElementById('grid-bottom-loader');
-        if (loader) loader.style.display = 'flex';
+        if (loader) loader.hidden = false;
 
         setTimeout(() => {
             inventoryGridState.displayLimit += 50;
             renderInventoryBatch(false);
-            if (loader) loader.style.display = 'none';
+            if (loader) loader.hidden = true;
             inventoryGridState.isRendering = false;
-            // 추가 렌더링 후 높이 재조정
-            updateInventoryContainerHeight();
         }, 300);
     }
 }
@@ -2609,10 +2451,10 @@ function handleGridScroll(e) {
 /**
  * 정렬 버튼 핸들러
  */
-function handleGridSort(colIdx) {
+function handleGridSort(colIdx, trigger) {
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
     if (isMobile) {
-        openGridFilterMobile(colIdx);
+        openGridFilterMobile(colIdx, trigger);
         return;
     }
 
@@ -2634,7 +2476,7 @@ function openGridFilter(event, colIdx) {
     event?.stopPropagation?.();
     openInventoryFilter(colIdx, event?.currentTarget || event?.target?.closest?.('.filter-trigger-btn'));
 }
-function openGridFilterMobile(colIdx) { openInventoryFilter(colIdx, document.activeElement); }
+function openGridFilterMobile(colIdx, trigger = document.activeElement) { openInventoryFilter(colIdx, trigger); }
 function openInventoryFilter(colIdx, trigger) {
     if (inventoryFilterEditor) closeInventoryFilter({restoreFocus:false});
     const mobile = document.documentElement.classList.contains('is-mobile-device');
@@ -2674,11 +2516,13 @@ function openInventoryFilter(colIdx, trigger) {
         }
         closeInventoryFilter();startGridRendering();
     };
-    footer.append(apply);root.replaceChildren(header,content,footer);render();root.hidden=false;root.inert=false;
+    footer.append(apply);root.replaceChildren(header,content,footer);render();
     if (mobile) {
-        backdrop.hidden=false;root.style.removeProperty('display');root.classList.remove('active');backdrop.classList.remove('active');root.getBoundingClientRect();backdrop.getBoundingClientRect();
         openManagedSheet(root,{backdrop,trigger,initialFocus:tools.lastElementChild,onDismiss:closeInventoryFilter});
-    } else { root.style.removeProperty('display'); AppOverlays.openPopup(root,trigger);tools.lastElementChild.focus({preventScroll:true}); }
+    } else {
+        AppOverlays.openPopup(root, trigger, { anchorElement: trigger?.closest?.('th'), gap: 0, fitBelow: true });
+        tools.lastElementChild.focus({preventScroll:true});
+    }
 }
 function closeInventoryFilter({restoreFocus=true} = {}) {
     const editor=inventoryFilterEditor;if (!editor) return;inventoryFilterEditor=null;
@@ -2693,7 +2537,7 @@ document.addEventListener('pointerdown',event=>{
 });
 document.addEventListener('keydown',event=>{if (event.key==='Escape' && inventoryFilterEditor) {event.preventDefault();closeInventoryFilter();}});
 
-function switchToMode(mode, isInstant = false, subMode = null, params = null, skipAutomation = false) {
+function switchToMode(mode, isInstant = false, subMode = null) {
     if (typeof OnboardingManager !== 'undefined' && OnboardingManager.isActive()) OnboardingManager.stop();
     if (mode !== 'search' && UIStore.mode === 'search' && typeof SearchNavigation !== 'undefined') SearchNavigation.leave();
     // 모바일 검색 모드 활성화 시 다른 페이지로 이동하면 검색창 자동 닫기 + 실제 페이지는 전환 애니메이션 스킵
@@ -2708,11 +2552,7 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     // [AD] 모드 전환 시 광고 갱신
     if (typeof refreshPageAds === 'function') refreshPageAds(mode);
 
-    if (currentToastInstance) {
-        currentToastInstance.dismiss();
-        currentToastInstance = null;
-        currentToastMessage = null;
-    }
+    globalThis.AppFeedback?.dismissToast();
 
     // 'manage' 모드로 진입 시 실제 내부 모드로 매핑
     if (mode === 'manage') {
@@ -2720,11 +2560,12 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     }
 
     // 새로고침 시 인증 세션 복원이 완료될 때까지 라우팅 및 렌더링을 안전하게 대기
-    if (['add', 'move', 'discard', 'inventory', 'settings'].includes(mode)) {
-        if (['add', 'move', 'discard'].includes(mode)) UIStore.lastManageMode = mode;
+    const isManageMode = ['add', 'move', 'discard'].includes(mode);
+    if (isManageMode || mode === 'inventory' || mode === 'settings') {
+        if (isManageMode) UIStore.lastManageMode = mode;
         if (!window.isAuthInitialized) {
             waitForAuthInit().then(() => {
-                switchToMode(mode, isInstant, subMode, params, skipAutomation);
+                switchToMode(mode, isInstant, subMode);
             });
             return;
         }
@@ -2732,46 +2573,16 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
 
     if (mode === 'settings') prepareMembershipEntry();
 
-    // subMode가 명시되지 않은 경우, 현재 저장된 상태를 복원하여 가드 로직 및 UI에 반영
-    if (mode === 'add' && !subMode) {
-        subMode = UIStore.chipState.add || 'general';
-    }
-    if (mode === 'add' && subMode === 'photo') subMode = 'general';
-
-    // [중요] 가드 로직 고도화: 메인 모드, 세부 모드, 그리고 쿼리 파라미터가 모두 현재와 동일하면 중단 (무한 루프 방지)
-    const isSameMode = (UIStore.mode === mode);
-    const isSameSubMode = (
-        (mode !== 'add' && mode !== 'inventory') ||
-        (mode === 'add' && (subMode === UIStore.chipState.add)) ||
-        (mode === 'inventory' && (!subMode || subMode === UIStore.inventoryMode))
-    );
-
-    // 현재 URL의 파라미터 추출 및 비교용 헬퍼
-    const getCurrentParamsString = () => {
-        const hash = window.location.hash;
-        const qIdx = hash.indexOf('?');
-        return qIdx !== -1 ? hash.substring(qIdx + 1) : '';
-    };
-
-    const getNewParamsString = (p) => {
-        if (!p) return '';
-        const sp = new URLSearchParams();
-        Object.keys(p).forEach(k => { if (p[k]) sp.set(k, p[k]); });
-        return sp.toString();
-    };
-
-    const isSameParams = (getCurrentParamsString() === getNewParamsString(params));
-
-    if (isSameMode && isSameSubMode && isSameParams && mode !== 'search') return;
+    const isSameMode = UIStore.mode === mode;
+    const isSameSubMode = mode !== 'inventory' || !subMode || subMode === UIStore.inventoryMode;
+    if (isSameMode && isSameSubMode && mode !== 'search') return;
 
     // hash/뒤로가기로 이동해도 이전 모드의 입력 노드를 먼저 제자리에 돌려놓는다.
+    window.RegistrationLookup?.closeInline(false);
+    window.RegistrationLookup?.close();
     if (typeof currentEditingRow !== 'undefined' && currentEditingRow) closeEntryBottomSheet();
 
-    // 세부 모드 상태 즉시 동기화 (가드 통과 시 가장 먼저 수행)
-    if (mode === 'add' && subMode) {
-        UIStore.chipState.add = subMode;
-        if (typeof addSubMode !== 'undefined') addSubMode = subMode;
-    } else if (mode === 'inventory') {
+    if (mode === 'inventory') {
         if (subMode) {
             UIStore.inventoryMode = subMode;
         } else {
@@ -2800,34 +2611,10 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
             } else {
                 finalHash = 'search';
             }
+        } else if (mode === 'inventory') {
+            finalHash = `${mode}/${UIStore.inventoryMode}`;
         } else {
-            if (mode === 'inventory') {
-                subMode = subMode || UIStore.inventoryMode;
-            }
-            // 세부 모드가 있다면 슬래시(/)를 사용하여 URL 구성
-            finalHash = subMode ? `${mode}/${subMode}` : mode;
-
-            // 팩 모드로 명시적 파라미터 없이 진입 시 저장된 상태 복원
-            if (mode === 'add' && subMode === 'pack') {
-                if (!params || Object.keys(params).length === 0) {
-                    if (typeof PackDeckStore.currentPackInfo !== 'undefined' && PackDeckStore.currentPackInfo && PackDeckStore.currentPackInfo.packName) {
-                        params = { name: PackDeckStore.currentPackInfo.packName };
-                        if (typeof PackDeckStore.isPackTableGenerated !== 'undefined' && PackDeckStore.isPackTableGenerated && PackDeckStore.currentPackInfo.validLocale) {
-                            params.loc = PackDeckStore.currentPackInfo.validLocale;
-                        }
-                    }
-                }
-            }
-
-            // 파라미터가 있다면 쿼리 스트링 추가
-            if (params && Object.keys(params).length > 0) {
-                const searchParams = new URLSearchParams();
-                for (const key in params) {
-                    if (params[key]) searchParams.set(key, params[key]);
-                }
-                const qs = searchParams.toString();
-                if (qs) finalHash += `?${qs}`;
-            }
+            finalHash = mode;
         }
 
         if (finalHash === '') {
@@ -2841,15 +2628,18 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
 
     if (mode === 'home') {
         searchInput.value = ''; document.getElementById('clear-btn').hidden = true;
-        document.getElementById('custom-dropdown').classList.remove('active'); toggleSearchWrapper(false); searchInput.placeholder = "";
+        toggleSearchWrapper(false); searchInput.placeholder = "";
         window.scrollTo(0, 0);
     } else if (mode === 'search') { searchInput.placeholder = ""; }
     else {
         searchInput.value = ''; document.getElementById('clear-btn').hidden = true;
-        document.getElementById('custom-dropdown').classList.remove('active'); toggleSearchWrapper(false); searchInput.placeholder = "카드 검색";
+        toggleSearchWrapper(false); searchInput.placeholder = "카드 검색";
     }
 
     if (mode === 'home') { body.classList.remove('mode-compact'); } else { body.classList.add('mode-compact'); }
+
+    const helpButton = document.querySelector('.help-trigger-btn');
+    if (helpButton) helpButton.inert = mode !== 'home';
 
     // 모바일에서 홈을 벗어나면 퇴장 애니메이션 중에도 로고 링크를 탐색하지 않는다.
     const masthead = document.getElementById('app-search-masthead');
@@ -2866,16 +2656,17 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     }
     if (transitionTimer) {
         clearTimeout(transitionTimer); transitionTimer = null;
-        const ghost = document.getElementById('result-ghost'); if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
     }
 
     let targetContentId = '';
     if (mode === 'home') targetContentId = 'app-page-home';
     else if (mode === 'inventory') targetContentId = 'app-page-inventory';
     else if (mode === 'search') targetContentId = 'app-page-search';
-    else if (mode === 'discard') { targetContentId = 'app-page-manage'; initPageDiscard(); }
-    else if (mode === 'add') { targetContentId = 'app-page-manage'; }
-    else if (mode === 'move') { targetContentId = 'app-page-manage'; initPageMove(); }
+    else if (isManageMode) {
+        targetContentId = 'app-page-manage';
+        if (mode === 'move') initPageMove();
+        if (mode === 'discard') initPageDiscard();
+    }
     else if (mode === 'settings') targetContentId = 'app-page-settings';
 
     const currentEl = wrapper.querySelector('.content-section.active');
@@ -2884,11 +2675,8 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     // [버그 수정] 동일 페이지 내에서 세부 모드(탭)만 바뀌는 경우 애니메이션을 생략함
     if (currentEl === nextEl) {
         setActivePage(nextEl);
-        if (['add', 'move', 'discard'].includes(mode)) {
+        if (isManageMode) {
             handleManageUI(mode, previousMode === 'search');
-            if (mode === 'add' && !skipAutomation) {
-                handleAutomationParams(params);
-            }
         } else if (mode === 'inventory') {
             switchInventoryMode(UIStore.inventoryMode, true);
         }
@@ -2905,21 +2693,15 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
 
         setActivePage(nextEl);
 
-        if (['add', 'move', 'discard'].includes(mode)) {
+        if (isManageMode) {
             handleManageUI(mode, previousMode === 'search');
-            // skipAutomation 옵션에 따라 자동화 처리 수행
-            if (mode === 'add' && !skipAutomation) {
-                handleAutomationParams(params);
-            }
         } else if (mode === 'inventory') {
             switchInventoryMode(UIStore.inventoryMode, true);
         }
 
-        if ((mode === 'home' || mode === 'inventory' || mode === 'discard' || mode === 'add' || mode === 'move' || mode === 'settings') && previousMode === 'search') {
+        if ((isManageMode || mode === 'home' || mode === 'inventory' || mode === 'settings') && previousMode === 'search') {
             document.getElementById('result-area').innerHTML = '';
         }
-
-
 
         pageTransitionFrame = requestAnimationFrame(() => {
             if (transitionRevision !== pageTransitionRevision) return;
@@ -2931,13 +2713,10 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
 
     // 절대 위치 배치 제거: 문서 흐름을 유지하여 높이 붕괴 방지
 
-    if (['add', 'move', 'discard'].includes(mode)) {
+    if (isManageMode) {
         handleManageUI(mode, previousMode === 'search');
         const innerContainer = document.getElementById('manage-mode-forms');
         if (innerContainer) void innerContainer.offsetHeight;
-        if (mode === 'add' && !skipAutomation) {
-            handleAutomationParams(params);
-        }
     } else if (mode === 'inventory') {
         switchInventoryMode(UIStore.inventoryMode, true);
         const innerContainer = document.getElementById('inventory-mode-forms');
@@ -2955,10 +2734,7 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     transitionTimer = setTimeout(() => {
         if (transitionRevision !== pageTransitionRevision) return;
 
-        const ghost = document.getElementById('result-ghost');
-        if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
-
-        if ((mode === 'home' || mode === 'discard' || mode === 'add' || mode === 'move' || mode === 'settings') && previousMode === 'search') {
+        if ((isManageMode || mode === 'home' || mode === 'settings') && previousMode === 'search') {
             document.getElementById('result-area').innerHTML = '';
         }
 
@@ -2978,94 +2754,75 @@ function checkClearBtn() {
     const button = document.getElementById('clear-btn');
     if (button) button.hidden = !input?.value || input.disabled;
 }
-function toggleSearchWrapper(isOpen) {
+function toggleSearchWrapper(isOpen, { immediate = false } = {}) {
     const wrapper = document.getElementById('search-wrapper');
     const list = document.getElementById('custom-dropdown');
-    if (wrapper && list) {
-        if (isOpen && Number(wrapper.dataset.suppressDropdownUntil || 0) > Date.now()) {
-            wrapper.classList.remove('active', 'photo-search-open');
-            wrapper.style.setProperty('--dropdown-height', '0px');
+    if (!wrapper || !list) return;
+    clearTimeout(wrapper._dropdownHeightTimer);
+
+    if (isOpen && Number(wrapper.dataset.suppressDropdownUntil || 0) > Date.now()) {
+        list.classList.remove('active');
+        list.hidden = true;
+        wrapper.classList.remove('active', 'photo-search-open');
+        wrapper.style.setProperty('--dropdown-height', '0px');
+        return;
+    }
+
+    if (isOpen) {
+        wrapper.classList.add('active');
+        if (wrapper.classList.contains('photo-search-open')) {
             list.classList.remove('active');
-            list.style.display = 'none';
             return;
         }
-        if (isOpen) {
-            wrapper.classList.add('active');
-            if (wrapper.classList.contains('photo-search-open')) {
-                list.classList.remove('active'); list.style.display = 'none';
-                return;
+        list.hidden = false;
+        list.classList.add('active');
+        wrapper._dropdownHeightTimer = setTimeout(() => {
+            if (!list.classList.contains('active')) return;
+            const height = `${Math.min(list.scrollHeight, 250)}px`;
+            if (wrapper.style.getPropertyValue('--dropdown-height') !== height) {
+                wrapper.style.setProperty('--dropdown-height', height);
             }
-            // Only measure the latest dropdown update.
-            clearTimeout(wrapper._dropdownHeightTimer);
-            wrapper._dropdownHeightTimer = setTimeout(() => {
-                const scrollHeight = list.scrollHeight;
-                // scrollHeight에 이미 CSS의 padding-bottom(15px)이 포함되어 있으므로 추가 합산 제거
-                // CSS max-height: 250px와 일치하도록 보정
-                const finalHeight = Math.min(scrollHeight, 250);
-                if (wrapper.style.getPropertyValue('--dropdown-height') !== finalHeight + 'px') {
-                    wrapper.style.setProperty('--dropdown-height', finalHeight + 'px');
-                }
-            }, 50); // 약간의 지연으로 레이아웃 안정화 보장
-        } else {
-            clearTimeout(wrapper._dropdownHeightTimer);
-            if (window.PhotoCardSearch?.hasDesktopPhoto?.()) {
-                list.classList.remove('active'); list.style.display = 'none';
-                wrapper.classList.add('active', 'photo-search-open');
-                return;
-            }
-            wrapper.classList.remove('active');
-            wrapper.classList.remove('photo-search-open');
-            const photoPanel = document.getElementById('desktop-photo-search-panel');
-            if (photoPanel) photoPanel.hidden = true;
-            wrapper.style.setProperty('--dropdown-height', '0px');
-        }
+        }, 50);
+        return;
     }
+
+    list.classList.remove('active');
+    if (immediate) list.hidden = true;
+    if (window.PhotoCardSearch?.hasDesktopPhoto?.()) {
+        wrapper.classList.add('active', 'photo-search-open');
+        return;
+    }
+    wrapper.classList.remove('active', 'photo-search-open');
+    const photoPanel = document.getElementById('desktop-photo-search-panel');
+    if (photoPanel) photoPanel.hidden = true;
+    wrapper.style.setProperty('--dropdown-height', '0px');
 }
 
 
 function initPageAdd() {
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
-    const subMode = UIStore.chipState.add || addSubMode;
-    if (isMobile) {
-        let listContainerId = (subMode === 'pack') ? 'mobile-cards-list-pack' : (subMode === 'deck') ? 'mobile-cards-list-deck' : 'mobile-cards-list-general';
-        const listContainer = document.getElementById(listContainerId);
-        if (listContainer) {
-            listContainer.innerHTML = '';
-            mobileAddEntry('add', subMode);
-        }
-    } else {
-        let listContainerId = (subMode === 'pack') ? 'desktop-cards-list-pack' : (subMode === 'deck') ? 'desktop-cards-list-deck' : 'desktop-cards-list-general';
-        const listContainer = document.getElementById(listContainerId);
-        if (listContainer) {
-            listContainer.innerHTML = '';
-            desktopAddEntry('add', subMode);
-        }
-    }
+    const list = document.getElementById(isMobile ? 'mobile-cards-list-general' : 'desktop-cards-list-general');
+    if (!list) return;
+    list.innerHTML = '';
+    manageAddEntry();
 }
 
 function adjustAddCount(delta) {
-    if (!FormRowStore.addCounts[UIStore.chipState.add]) FormRowStore.addCounts[UIStore.chipState.add] = 1;
-    FormRowStore.addCounts[UIStore.chipState.add] += delta;
-    if (FormRowStore.addCounts[UIStore.chipState.add] < 1) FormRowStore.addCounts[UIStore.chipState.add] = 1;
-
-    let targetId = 'add-count';
-    if (UIStore.chipState.add === 'pack') targetId = 'pack-add-count';
-    else if (UIStore.chipState.add === 'deck') targetId = 'deck-add-count';
-
-    const el = document.getElementById(targetId);
-    if (el) el.innerText = FormRowStore.addCounts[UIStore.chipState.add] + "장";
-    
-    const elDesktop = document.getElementById(targetId + "-desktop");
-    if (elDesktop) elDesktop.innerText = FormRowStore.addCounts[UIStore.chipState.add] + "장";
+    FormRowStore.addCount = Math.max(1, FormRowStore.addCount + delta);
+    const label = `${FormRowStore.addCount}장`;
+    const mobile = document.getElementById('add-count');
+    const desktop = document.getElementById('add-count-desktop');
+    if (mobile) mobile.innerText = label;
+    if (desktop) desktop.innerText = label;
 }
 
-function addMultipleRows(e, targetTbodyId) {
+function addMultipleRows(e) {
     if (e && e.target) e.target.blur();
-    const count = FormRowStore.addCounts[UIStore.chipState.add] || 1;
+    const count = FormRowStore.addCount;
 
     let firstNewCard = null;
     for (let i = 0; i < count; i++) {
-        const card = desktopAddEntry('add', UIStore.chipState.add);
+        const card = desktopAddEntry('add');
         if (i === 0) firstNewCard = card;
     }
     if (firstNewCard && e && e.detail === 0) {
@@ -3079,7 +2836,7 @@ function addMultipleMoveRows(e) {
 
     let firstNewCard = null;
     for (let i = 0; i < FormRowStore.moveCount; i++) {
-        const card = desktopAddEntry('move', null);
+        const card = desktopAddEntry('move');
         if (i === 0) firstNewCard = card;
     }
     if (firstNewCard && e && e.detail === 0) {
@@ -3092,13 +2849,13 @@ function initPageDiscard() {
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
     if (isMobile) {
         const listContainer = document.getElementById('mobile-cards-list-discard');
-        if (listContainer && listContainer.querySelectorAll('.mobile-info-card').length === 0) {
+        if (listContainer && listContainer.querySelectorAll('.mobile-info-card[data-index]').length === 0) {
             listContainer.innerHTML = '';
             mobileAddEntry('discard');
         }
     } else {
         const listContainer = document.getElementById('desktop-cards-list-discard');
-        if (listContainer && listContainer.querySelectorAll('.desktop-info-card').length === 0) {
+        if (listContainer && listContainer.querySelectorAll('.desktop-info-card[data-index]').length === 0) {
             listContainer.innerHTML = '';
             desktopAddEntry('discard');
         }
@@ -3121,7 +2878,7 @@ function addMultipleDiscardRows(e) {
 
     let firstNewCard = null;
     for (let i = 0; i < FormRowStore.discardCount; i++) {
-        const card = desktopAddEntry('discard', null);
+        const card = desktopAddEntry('discard');
         if (i === 0) firstNewCard = card;
     }
     if (firstNewCard && e && e.detail === 0) {
@@ -3144,12 +2901,12 @@ function handleAddButtonKey(e, type) {
     }
 }
 
-function manageAddEntry(initialData = null, insertAfterRow = null, subMode = 'general') {
+function manageAddEntry(initialData = null) {
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
     if (isMobile) {
-        return mobileAddEntry('add', subMode, initialData);
+        return mobileAddEntry('add', initialData);
     } else {
-        return desktopAddEntry('add', subMode, initialData);
+        return desktopAddEntry('add', initialData);
     }
 }
 
@@ -3179,15 +2936,12 @@ function handleAutoLocInput(input) {
 
 function applyAutoLocationToTable(value) {
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
-    const subMode = UIStore.chipState.add || 'general';
-    const containerId = isMobile 
-        ? `mobile-cards-list-${subMode}` 
-        : `desktop-cards-list-${subMode}`;
+    const containerId = isMobile ? 'mobile-cards-list-general' : 'desktop-cards-list-general';
 
     const container = document.getElementById(containerId);
     if (!container) return;
     
-    const cardClass = isMobile ? '.mobile-info-card' : '.desktop-info-card';
+    const cardClass = isMobile ? '.mobile-info-card[data-index]' : '.desktop-info-card[data-index]';
     const cards = container.querySelectorAll(cardClass);
     cards.forEach(card => {
         const locInput = card.querySelector('[data-field="loc"]');
@@ -3289,7 +3043,7 @@ function updateDiscardIllusts(row, matches) {
     const validIllusts = uniqueIllusts.filter(illust => checkDiscardIllustAvailability(cardNo, illust, row));
     const options = validIllusts.map(i => ({ val: i, text: i }));
     illustWrap.dataset.options = JSON.stringify(options);
-    illustInp.removeAttribute('readonly'); illustWrap.classList.remove('no-option');
+    illustInp.readOnly = true; illustWrap.classList.remove('no-option');
     setupDropdownForField(illustInp, illustWrap);
     const currentVal = getIllustrationValue(illustInp); const isValid = options.some(o => o.val === currentVal);
     if (isValid) { handleDiscardIllustChange(illustInp); } else {
@@ -3563,7 +3317,7 @@ function getGlobalUsageMap(excludeRow) {
     const listContainerId = isMobile 
         ? (isMove ? 'mobile-cards-list-move' : 'mobile-cards-list-discard')
         : (isMove ? 'desktop-cards-list-move' : 'desktop-cards-list-discard');
-    const cardClass = isMobile ? '.mobile-info-card' : '.desktop-info-card';
+    const cardClass = isMobile ? '.mobile-info-card[data-index]' : '.desktop-info-card[data-index]';
 
     const listContainer = document.getElementById(listContainerId);
     if (!listContainer) return usage;
@@ -3639,8 +3393,7 @@ function handleCardNameInput(input) {
     const clearBtn = container.querySelector('.clear-name-btn') || input.parentNode.querySelector('.clear-name-btn');
     const nameVal = input.value.trim();
 
-    if (nameVal && clearBtn) clearBtn.style.display = 'block';
-    else if (clearBtn) clearBtn.style.display = 'none';
+    if (clearBtn && !clearBtn.closest('.desktop-info-card--editable')) clearBtn.hidden = !nameVal;
 
     const isMove = !!container.querySelector('.move-card-no') || !!container.querySelector('.desktop-card-to');
     const isDiscard = !!container.querySelector('.discard-card-no') || (UIStore.mode === 'discard' && !!container.closest('.desktop-info-card'));
@@ -3749,8 +3502,10 @@ function clearPageNameAndNo(btn_or_input) {
         nameInput.value = "";
         nameInput.removeAttribute('readonly');
         nameInput.classList.remove('hyperlink-style', 'error-placeholder');
-        nameInput.style.cursor = '';
-        nameInput.style.textDecoration = '';
+        if (!nameInput.closest('.desktop-info-card--editable')) {
+            nameInput.classList.remove('is-card-retry');
+
+        }
         nameInput.placeholder = "카드 이름";
         nameInput.onclick = null;
         nameInput.dataset.prevName = "";
@@ -3758,6 +3513,7 @@ function clearPageNameAndNo(btn_or_input) {
     }
 
     if (noInput) {
+        registrationNumberSelections.delete(noInput);
         noInput.dataset.programmatic = "true";
         noInput.value = "";
         noInput.removeAttribute('readonly');
@@ -3776,7 +3532,7 @@ function clearPageNameAndNo(btn_or_input) {
         noWrap.classList.add('no-arrow');
         noWrap.dataset.options = "[]";
         const arrow = noWrap.querySelector('.arrow-icon');
-        if (arrow) arrow.style.display = 'none';
+        if (arrow && !noWrap.closest('.desktop-info-card--editable')) arrow.hidden = true;
         noWrap.classList.add('no-option');
         noWrap.classList.remove('single-option');
     }
@@ -3788,14 +3544,12 @@ function clearPageNameAndNo(btn_or_input) {
     }
 
     const clearBtn = container.querySelector('.clear-name-btn') || (btn_or_input.classList && btn_or_input.classList.contains('clear-name-btn') ? btn_or_input : null);
-    if (clearBtn) {
-        clearBtn.style.display = 'none';
-    }
+    if (clearBtn && !clearBtn.closest('.desktop-info-card--editable')) clearBtn.hidden = true;
 
 
 }
 
-async function fetchCardByName(input, force = false, confirmedCid = null, unresolvedDeckName = false) {
+async function fetchCardByName(input, force = false, confirmedCid = null, unresolvedDeckName = false, matchedNumber = null) {
     if (!input) return;
     if (!force && input.hasAttribute('readonly')) return;
 
@@ -3869,14 +3623,14 @@ async function fetchCardByName(input, force = false, confirmedCid = null, unreso
             noWrap.classList.add('no-arrow', 'no-option');
             noWrap.dataset.options = "[]";
             const arrow = noWrap.querySelector('.arrow-icon');
-            if (arrow) arrow.style.display = 'none';
+            if (arrow && !noWrap.closest('.desktop-info-card--editable')) arrow.hidden = true;
         }
 
         let res = null;
 
         if (mode === 'add') {
             res = unresolvedDeckName ? { isError: true, isNotFoundError: true }
-                : await callApi('searchCardByName', { name: nameVal, ...(confirmedCid && globalThis.AppBackend ? { cid: confirmedCid } : {}) });
+                : await callApi('searchCardByName', { name: nameVal, ...(confirmedCid && globalThis.AppBackend ? { cid: confirmedCid, ...(matchedNumber ? { matchedNumber } : {}) } : {}) });
         } else {
             const ownedNames = cardCacheInstance.getOwnedNamesSet();
             if (!ownedNames.has(nameVal)) {
@@ -3923,8 +3677,10 @@ async function fetchCardByName(input, force = false, confirmedCid = null, unreso
 
             input.removeAttribute('readonly');
             input.classList.remove('hyperlink-style');
-            input.style.cursor = '';
-            input.style.textDecoration = '';
+            if (!input.closest('.desktop-info-card--editable')) {
+                input.classList.remove('is-card-retry');
+
+            }
 
             input.dataset.prevName = "";
             if (nameInput) nameInput.dataset.prevName = "";
@@ -4062,6 +3818,15 @@ function updateSubCellsFromCache(cardNo, row_or_container) {
     if (cardDataStr) {
         try {
             const data = JSON.parse(cardDataStr);
+            // 팩명·언어가 붙은 번호도 같은 발매 조합으로 판정한다.
+            // 표시용 캐시 키의 대소문자 차이 때문에 이전 선택지가 남지 않도록 한다.
+            const options = UIStore.mode === 'add'
+                ? globalThis.AppBackend?.getRegistrationOptions?.(data.linkData?.id, cardNo)
+                : null;
+            if (options) {
+                applyPageCardDataToRows({ ...data, ...options, cardNo, isFallback: false }, container);
+                return;
+            }
             const hasSpecificData = data.raritiesByNo && data.raritiesByNo[cardNo];
 
             if (hasSpecificData || data.cardNo === cardNo || (data.numbers && data.numbers.includes(cardNo))) {
@@ -4113,8 +3878,6 @@ function lockNameInputAndSetLink(nameInput, name, container, linkData = null) {
     if (finalLinkId && finalLinkId !== "MISSING_CID") {
         prepareCardIllustrations(container, finalLinkId);
         nameInput.classList.add('hyperlink-style');
-        nameInput.style.cursor = 'pointer';
-        nameInput.style.textDecoration = 'underline';
         nameInput.onclick = function(event) {
             event?.stopPropagation();
             void renderTargetByCid(String(finalLinkId));
@@ -4125,7 +3888,7 @@ function lockNameInputAndSetLink(nameInput, name, container, linkData = null) {
     delete nameInput.dataset.programmatic;
     
     const clearBtn = container.querySelector('.clear-name-btn');
-    if (clearBtn) clearBtn.style.display = 'block';
+    if (clearBtn && !clearBtn.closest('.desktop-info-card--editable')) clearBtn.hidden = false;
 }
 
 function setupNumberDropdownAndUnlock(noInput, numbers, container, onSelectCallback) {
@@ -4148,16 +3911,16 @@ function setupNumberDropdownAndUnlock(noInput, numbers, container, onSelectCallb
                 onSelectCallback(selectedInput);
             });
             const arrow = noWrap.querySelector('.arrow-icon');
-            if (arrow) {
-                arrow.style.display = '';
-                arrow.style.pointerEvents = '';
+            if (arrow && !noWrap.closest('.desktop-info-card--editable')) {
+                arrow.hidden = false;
+
             }
         } else {
             noWrap.classList.add('no-arrow');
             const arrow = noWrap.querySelector('.arrow-icon');
-            if (arrow) {
-                arrow.style.display = 'none';
-                arrow.style.pointerEvents = 'none';
+            if (arrow && !noWrap.closest('.desktop-info-card--editable')) {
+                arrow.hidden = true;
+
             }
         }
     }
@@ -4170,12 +3933,14 @@ function resetNameInputForSearchFunc(nameInput, container) {
     nameInput.placeholder = "카드 이름";
     nameInput.removeAttribute('readonly');
     nameInput.classList.remove('hyperlink-style', 'error-placeholder');
-    nameInput.style.cursor = '';
-    nameInput.style.textDecoration = '';
+    if (!nameInput.closest('.desktop-info-card--editable')) {
+        nameInput.classList.remove('is-card-retry');
+
+    }
     nameInput.onclick = null;
     delete nameInput.dataset.programmatic;
     const clearBtn = container.querySelector('.clear-name-btn');
-    if (clearBtn) clearBtn.style.display = 'none';
+    if (clearBtn && !clearBtn.closest('.desktop-info-card--editable')) clearBtn.hidden = true;
 }
 
 async function fetchCardByNumber(input, force = false) {
@@ -4367,7 +4132,7 @@ async function fetchCardByNumber(input, force = false) {
             linkData: cached.linkData
         }, container);
         const clearBtn = container.querySelector('.clear-name-btn');
-        if (clearBtn && nameInput && nameInput.value) clearBtn.style.display = 'block';
+        if (clearBtn && nameInput && nameInput.value && !clearBtn.closest('.desktop-info-card--editable')) clearBtn.hidden = false;
         return;
     }
 
@@ -4403,7 +4168,7 @@ async function fetchCardByNumber(input, force = false) {
                     }, 3000);
                 }
 
-                nameInput.style.cursor = "pointer";
+                if (!nameInput.closest('.desktop-info-card--editable')) nameInput.classList.add('is-card-retry');
                 nameInput.onclick = () => {
                     input.dataset.prevCardNo = '';
                     fetchCardByNumber(input);
@@ -4422,7 +4187,7 @@ async function fetchCardByNumber(input, force = false) {
                 nameInput.placeholder = errorMsg;
                 nameInput.classList.add('error-placeholder');
                 nameInput.setAttribute('readonly', true);
-                nameInput.style.cursor = "pointer";
+                if (!nameInput.closest('.desktop-info-card--editable')) nameInput.classList.add('is-card-retry');
                 nameInput.onclick = () => {
                     input.dataset.prevCardNo = '';
                     fetchCardByNumber(input);
@@ -4437,14 +4202,14 @@ async function fetchCardByNumber(input, force = false) {
             delete input.dataset.programmatic;
 
             input.dataset.errorRetry = "true";
-            input.style.cursor = "pointer";
+            if (!input.closest('.desktop-info-card--editable')) input.classList.add('is-card-retry');
             input.onclick = () => {
                 if (input.dataset.errorRetry) {
                     input.dataset.prevCardNo = "";
                     input.dataset.programmatic = "true";
                     input.placeholder = "카드 번호";
                     input.classList.remove('error-placeholder');
-                    input.style.cursor = "";
+                    if (!input.closest('.desktop-info-card--editable')) input.classList.remove('is-card-retry');
                     delete input.dataset.programmatic;
                     fetchCardByNumber(input);
                 }
@@ -4534,7 +4299,7 @@ async function fetchCardByNumber(input, force = false) {
                 linkData: res.linkData
             }, container);
             const clearBtn = container.querySelector('.clear-name-btn');
-            if (clearBtn && nameInput && nameInput.value) clearBtn.style.display = 'block';
+            if (clearBtn && nameInput && nameInput.value && !clearBtn.closest('.desktop-info-card--editable')) clearBtn.hidden = false;
         }
     } catch (e) {
         if (input.value.trim() !== cardNo) return;
@@ -4544,7 +4309,7 @@ async function fetchCardByNumber(input, force = false) {
             nameInput.placeholder = "접속 오류(클릭재시도)";
             nameInput.classList.add('error-placeholder');
             nameInput.setAttribute('readonly', true);
-            nameInput.style.cursor = "pointer";
+            if (!nameInput.closest('.desktop-info-card--editable')) nameInput.classList.add('is-card-retry');
             nameInput.onclick = () => {
                 input.dataset.prevCardNo = '';
                 fetchCardByNumber(input);
@@ -4557,6 +4322,12 @@ async function fetchCardByNumber(input, force = false) {
 function applyPageCardDataToRows(data, row_or_container) {
     const container = getActiveContainer(row_or_container) || row_or_container;
     if (!data || !container) return;
+
+    if (UIStore.mode === 'add' && globalThis.AppBackend?.getRegistrationOptions) {
+        const cardNo = container.querySelector('[data-field="no"]')?.value ?? data.cardNo ?? '';
+        const options = globalThis.AppBackend.getRegistrationOptions(data.linkData?.id, cardNo);
+        if (options) data = { ...data, ...options };
+    }
 
     container.dataset.cardData = JSON.stringify(data);
     prepareCardIllustrations(container, data.linkData?.id, data.illustrations || []);
@@ -4573,7 +4344,7 @@ function applyPageCardDataToRows(data, row_or_container) {
     const locInp = container.querySelector('[data-field="loc"]');
     const locWrap = locInp ? locInp.closest('.custom-select-wrapper') : null;
 
-    const illustrationIds = Array.isArray(data.illustrations) && data.illustrations.length
+    const illustrationIds = Array.isArray(data.illustrations)
         ? [...new Set(data.illustrations.map(Number).filter(id => Number.isInteger(id) && id > 0))].sort((a, b) => a - b)
         : Array.from({ length: data.illustrationCount || 1 }, (_, i) => i + 1);
     let illustOptions = [];
@@ -4582,6 +4353,9 @@ function applyPageCardDataToRows(data, row_or_container) {
 
     if (illustrationWrap) {
         if (illustrationIds.length > 1) {
+            if (anotherInp && !illustrationIds.some(id => String(id) === getIllustrationValue(anotherInp))) {
+                setIllustrationValue(anotherInp, '');
+            }
             illustrationIds.forEach(id => {
                 let suffix = "th"; if (id % 100 < 11 || id % 100 > 13) { if (id % 10 === 1) suffix = "st"; if (id % 10 === 2) suffix = "nd"; if (id % 10 === 3) suffix = "rd"; }
                 illustOptions.push({ val: String(id), text: id === 1 ? "기본" : `${id}${suffix}` });
@@ -4589,7 +4363,7 @@ function applyPageCardDataToRows(data, row_or_container) {
             illustrationWrap.dataset.options = JSON.stringify(illustOptions);
             illustrationWrap.classList.remove('single-option');
             illustrationWrap.classList.remove('no-option');
-        } else {
+        } else if (illustrationIds.length === 1) {
             if (anotherInp) {
                 setIllustrationValue(anotherInp, String(illustrationIds[0]));
                 anotherInp.dataset.raw = String(illustrationIds[0]);
@@ -4597,6 +4371,11 @@ function applyPageCardDataToRows(data, row_or_container) {
             illustrationWrap.classList.add('single-option');
             illustrationWrap.classList.remove('no-option');
             illustrationWrap.dataset.options = JSON.stringify([{ val: String(illustrationIds[0]), text: illustrationIds[0] === 1 ? "기본" : String(illustrationIds[0]) }]);
+        } else {
+            if (anotherInp) setIllustrationValue(anotherInp, '');
+            illustrationWrap.dataset.options = '[]';
+            illustrationWrap.classList.remove('single-option');
+            illustrationWrap.classList.add('no-option');
         }
         if (anotherInp) {
             setupDropdownForField(anotherInp, illustrationWrap);
@@ -4619,7 +4398,7 @@ function applyPageCardDataToRows(data, row_or_container) {
 
     if (rarityWrap) {
         rarityWrap.dataset.options = JSON.stringify(rareOptions);
-        rarityWrap.classList.remove('no-option');
+        rarityWrap.classList.toggle('no-option', rareOptions.length === 0);
 
         if (rareOptions.length === 1) {
             if (rarityInp) {
@@ -4642,6 +4421,10 @@ function applyPageCardDataToRows(data, row_or_container) {
         if (!isMobileDevice && rarityInp) {
             setupDropdownForField(rarityInp, rarityWrap);
         }
+    }
+
+    if (anotherInp && getIllustrationValue(anotherInp)) {
+        globalThis.AppBackend?.onSelectionChange?.(anotherInp);
     }
 
     if (locInp) {
@@ -4686,6 +4469,15 @@ function getUniqueLocationsFromInventory() {
     return [];
 }
 
+function syncCardIdentityFieldLocks(container) {
+    const locked = !container.querySelector('[data-field="name"]')?.value.trim()
+        && !container.querySelector('[data-field="no"]')?.value.trim();
+    for (const input of container.querySelectorAll('input:is([data-field="illust"], [data-field="rare"], [data-field="loc"])')) {
+        if (input.disabled !== locked) input.disabled = locked;
+    }
+    return locked;
+}
+
 function initCardWidgets(container) {
     if (!container) return;
 
@@ -4709,6 +4501,16 @@ function initCardWidgets(container) {
     const noWrap = noInput ? noInput.closest('.custom-select-wrapper') : null;
     if (noWrap) {
         setupCardNoAutocomplete(noWrap);
+    }
+
+    if (container.matches('.desktop-info-card--editable')) {
+        const sync = () => syncCardIdentityFieldLocks(container);
+        for (const input of [nameInput, noInput]) {
+            if (!input) continue;
+            onInputValueAssigned(input, sync);
+            input.addEventListener('input', sync);
+        }
+        sync();
     }
 
     // 3. 이동 위치(to) 입력창 바인딩
@@ -4826,7 +4628,7 @@ async function handleContinueDiscard() {
 
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
     const containerId = isMobile ? 'mobile-cards-list-discard' : 'desktop-cards-list-discard';
-    const cardClass = isMobile ? '.mobile-info-card' : '.desktop-info-card';
+    const cardClass = isMobile ? '.mobile-info-card[data-index]' : '.desktop-info-card[data-index]';
     const container = document.getElementById(containerId);
     
     let hasFailures = false;
@@ -4876,10 +4678,10 @@ async function submitPageEntries() {
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
 
     if (isMobile) {
-        const listContainerId = (UIStore.chipState.add === 'pack') ? 'mobile-cards-list-pack' : (UIStore.chipState.add === 'deck') ? 'mobile-cards-list-deck' : 'mobile-cards-list-general';
+        const listContainerId = 'mobile-cards-list-general';
         const listContainer = document.getElementById(listContainerId);
         if (listContainer) {
-            const cards = listContainer.querySelectorAll('.mobile-info-card');
+            const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
             cards.forEach((card, idx) => {
                 const data = getDesktopCardData(card);
                 const nameInp = card.querySelector('[data-field="name"]');
@@ -4899,10 +4701,10 @@ async function submitPageEntries() {
             });
         }
     } else {
-        const listContainerId = (UIStore.chipState.add === 'pack') ? 'desktop-cards-list-pack' : (UIStore.chipState.add === 'deck') ? 'desktop-cards-list-deck' : 'desktop-cards-list-general';
+        const listContainerId = 'desktop-cards-list-general';
         const listContainer = document.getElementById(listContainerId);
         if (listContainer) {
-            const cards = listContainer.querySelectorAll('.desktop-info-card');
+            const cards = listContainer.querySelectorAll('.desktop-info-card[data-index]');
             cards.forEach((card, idx) => {
                 const data = getDesktopCardData(card);
                 const nameInp = card.querySelector('[data-field="name"]');
@@ -5020,7 +4822,7 @@ async function submitDiscardEntries() {
     if (isMobile) {
         const listContainer = document.getElementById('mobile-cards-list-discard');
         if (listContainer) {
-            const cards = listContainer.querySelectorAll('.mobile-info-card');
+            const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
             cards.forEach((card, idx) => {
                 const data = getDesktopCardData(card);
                 entries.push({
@@ -5038,7 +4840,7 @@ async function submitDiscardEntries() {
     } else {
         const listContainer = document.getElementById('desktop-cards-list-discard');
         if (listContainer) {
-            const cards = listContainer.querySelectorAll('.desktop-info-card');
+            const cards = listContainer.querySelectorAll('.desktop-info-card[data-index]');
             cards.forEach((card, idx) => {
                 const data = getDesktopCardData(card);
                 entries.push({
@@ -5208,6 +5010,7 @@ function showRecentInDropdown() {
     }
     const recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
     const list = document.getElementById('custom-dropdown');
+    clearCatalogDropdownCandidates(list);
     UIStore.dropdownFocus = -1;
     Array.from(list.children).forEach(child => { if (!child.classList.contains('recent-header-item')) { child.remove(); } });
     let header = document.getElementById('recent-header');
@@ -5254,32 +5057,64 @@ function showRecentInDropdown() {
             list.appendChild(li);
         });
     }
-    list.style.display = 'block'; // 명시적 표시 보장
-    list.classList.add('active');
     toggleSearchWrapper(true);
 }
 
 function filterAndShowDropdown(val, isMobile = false) {
-    const prepared = arguments[2] === true;
-    if (globalThis.AppBackend && !prepared) return globalThis.AppBackend.prepareSuggestions(val, isMobile).then(current => {
-        if (current) return filterAndShowDropdown(val, isMobile, true);
-    });
-    const listId = isMobile ? 'mobile-custom-dropdown' : 'custom-dropdown';
-    if (!val) {
+    if (!val.trim()) {
         if (isMobile) showMobileRecentInDropdown(); else showRecentInDropdown();
         return;
     }
-    const list = document.getElementById(listId);
+    const list = document.getElementById(isMobile ? 'mobile-custom-dropdown' : 'custom-dropdown');
     if (!list) return;
-    const query = val.trim().replace(/\s+/g, '').toLowerCase();
-    if (!query) {
-        if (isMobile) showMobileRecentInDropdown(); else showRecentInDropdown();
-        return;
-    }
+    const render = () => {
+        const matches = collectCatalogMatches(val, { autocomplete: true }).slice(0, 5);
+        list._catalogCandidates = matches;
+        renderCatalogDropdown(list, val, isMobile, matches);
+    };
+    if (!globalThis.AppBackend) return render();
+    list._catalogSuggestionRequest?.abort();
+    const request = list._catalogSuggestionRequest = new AbortController();
+    return globalThis.AppBackend.prepareSuggestions(val, isMobile, request.signal).then(current => {
+        if (current && !request.signal.aborted) render();
+    });
+}
+
+function clearCatalogDropdownCandidates(list) {
+    if (!list) return;
+    list._catalogSuggestionRequest?.abort();
+    list._catalogCandidates = [];
+    list.style.height = '';
     UIStore.dropdownFocus = -1;
+}
 
-    const combinedMatches = collectCatalogMatches(val);
+function updatePendingCatalogDropdown(val, isMobile = false) {
+    const list = document.getElementById(isMobile ? 'mobile-custom-dropdown' : 'custom-dropdown');
+    if (!list) return;
+    list._catalogSuggestionRequest?.abort();
+    const query = normalizeStr(val.normalize('NFC'));
+    const consonantsOnly = /^[ㄱ-ㅎ]+$/.test(query);
+    const continuation = catalogueContinuationPattern(query);
+    const matches = query ? (list._catalogCandidates || []).filter(item => item.type === 'name'
+        ? matchesCatalogName(item, query, consonantsOnly, continuation)
+        : query.length >= 6 && item.normalized.includes(query)) : [];
+    renderCatalogDropdown(list, val, isMobile, matches, true);
+}
 
+function holdOpenSuggestionDropdown(list) {
+    if (!list.classList.contains('active')) return false;
+    if (list.style.height) return true;
+    if (!list.children.length) return false;
+    const height = getComputedStyle(list).height;
+    if (!(parseFloat(height) > 0)) return false;
+    list.style.height = height;
+    return true;
+}
+
+function renderCatalogDropdown(list, val, isMobile, combinedMatches, pending = false) {
+    UIStore.dropdownFocus = -1;
+    const keepFrame = pending && !combinedMatches.length && holdOpenSuggestionDropdown(list);
+    if (!keepFrame) list.style.height = '';
     if (isMobile) {
         // 최근 검색 버튼은 유지하고 자동완성 행만 갱신한다(가로 스크롤 위치도 유지).
         for (const child of Array.from(list.children)) {
@@ -5292,20 +5127,28 @@ function filterAndShowDropdown(val, isMobile = false) {
         list.innerHTML = '';
     }
 
+    if (pending && combinedMatches.length === 0) {
+        if (keepFrame) return;
+        if (isMobile) list.classList.toggle('active', list.children.length > 0);
+        else toggleSearchWrapper(false, { immediate: true });
+        return;
+    }
+
     if (combinedMatches.length === 0) {
         const noResult = document.createElement('li');
         noResult.className = 'no-result-item color-text-002';
         noResult.innerText = '일치하는 카드가 없습니다.';
         list.appendChild(noResult);
-        list.classList.add('active');
-        if (!isMobile) {
-            list.style.display = 'block';
-            toggleSearchWrapper(true);
-        }
+        if (isMobile) list.classList.add('active');
+        else toggleSearchWrapper(true);
         return;
     }
 
-    combinedMatches.slice(0, 5).forEach(m => {
+    const nameQuery = typeof Hangul !== 'undefined' && typeof Hangul.disassemble === 'function'
+        ? Hangul.disassemble(normalizeStr(val.normalize('NFC'))).join('')
+        : '';
+    const escapedQuery = escapeHTML(val);
+    combinedMatches.forEach(m => {
         const li = document.createElement('li');
         li.className = 'text-suggest color-type004';
         li.dataset.val = m.val;
@@ -5317,20 +5160,24 @@ function filterAndShowDropdown(val, isMobile = false) {
         const matchColorClass = m.isOwned ? 'color-text-000' : 'color-text-001';
         let html = "";
         const escapedVal = escapeHTML(m.val);
-        const escapedQuery = escapeHTML(val);
         if (m.type === 'name') {
-            let range = null;
-            if (typeof Hangul !== 'undefined' && typeof Hangul.rangeSearch === 'function') {
-                try { range = Hangul.rangeSearch(escapedVal, escapedQuery); } catch(e){}
-            }
-            if (range && range.length > 0) {
-                const start = range[0][0];
-                const end = range[0][1] + 1;
-                html = escapedVal.substring(0, start) +
-                    `<span class="text-match ${matchColorClass}">${escapedVal.substring(start, end)}</span>` +
-                    escapedVal.substring(end);
-            } else {
-                html = escapedVal;
+            html = escapedVal;
+            if (nameQuery) {
+                // 공백을 제외한 자모의 위치를 원래 카드 이름의 글자 위치에 대응시킨다.
+                const offsets = [];
+                const searchableName = Hangul.disassemble(m.val, true).map((group, index) => {
+                    const text = normalizeStr(group.join(''));
+                    for (let i = 0; i < text.length; i++) offsets.push(index);
+                    return text;
+                }).join('');
+                const match = searchableName.indexOf(nameQuery);
+                if (match !== -1) {
+                    const start = offsets[match];
+                    const end = offsets[match + nameQuery.length - 1] + 1;
+                    html = escapeHTML(m.val.slice(0, start)) +
+                        `<span class="text-match ${matchColorClass}">${escapeHTML(m.val.slice(start, end))}</span>` +
+                        escapeHTML(m.val.slice(end));
+                }
             }
             html = `<span class="ui-tag shape-rounded001 ${tagColorClass}">이름</span><span class="${textColorClass}">${html}</span>`;
         } else {
@@ -5354,11 +5201,8 @@ function filterAndShowDropdown(val, isMobile = false) {
         }
         list.appendChild(li);
     });
-    list.classList.add('active');
-    if (!isMobile) {
-        list.style.display = 'block';
-        toggleSearchWrapper(true);
-    }
+    if (isMobile) list.classList.add('active');
+    else toggleSearchWrapper(true);
 }
 
 function deleteRecentItem(name, type = 'auto') {
@@ -5370,20 +5214,11 @@ function deleteRecentItem(name, type = 'auto') {
     localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
     showRecentInDropdown();
 }
-function updateDisconnectBtn() { const btn = document.getElementById('disconnect-btn'); if (btn) { if (localStorage.getItem(STORAGE_KEY)) { btn.classList.remove('disabled'); } else { btn.classList.add('disabled'); } } }
-
 function handleHelpClick() {
-    if (typeof UIStore.mode !== 'undefined' && UIStore.mode === 'home') {
-        if (typeof OnboardingManager !== 'undefined') {
-            OnboardingManager.start('home', true);
-        }
-    } else {
-        switchToMode('settings');
-        toggleGuide(true);
+    if (UIStore.mode === 'home' && typeof OnboardingManager !== 'undefined') {
+        OnboardingManager.start('home', true);
     }
 }
-
-function toggleGuide(forceOpen = null) { const btn = document.getElementById('guide-accordion-btn'); const box = document.getElementById('guide-box'); const isOpen = (forceOpen !== null) ? forceOpen : box.style.display === 'none'; box.style.display = isOpen ? 'block' : 'none'; if (isOpen) btn.classList.add('active'); else btn.classList.remove('active'); }
 
 function getLocalTheme(key) {
     try {
@@ -6124,12 +5959,7 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
 
     // 선택 즉시 닫고 blur로 예약된 자동완성도 취소합니다.
     inputEl.blur();
-    const dropdown = document.getElementById('custom-dropdown');
-    if (dropdown) {
-        dropdown.classList.remove('active');
-        dropdown.style.display = 'none';
-    }
-    toggleSearchWrapper(false);
+    toggleSearchWrapper(false, { immediate: true });
     checkClearBtn();
 
     // 이미 목록에서 고른 대상은 공통 목록의 네트워크 갱신을 기다리지 않습니다.
@@ -6228,8 +6058,7 @@ async function startSearch(isInstant = false, searchType = 'auto', forcedIsTarge
         return;
     }
 
-    document.getElementById('custom-dropdown').style.display = 'none';
-    toggleSearchWrapper(false);
+    toggleSearchWrapper(false, { immediate: true });
     checkClearBtn();
     showLoading(false);
 }
@@ -6332,18 +6161,6 @@ function extractCidFromMeta(cardMeta) {
     }
 
     return null;
-}
-
-function getCardMetaType(cardName, cardNo = null) {
-    if (!cardName && !cardNo) return { kind: 0, kindStr: "몬스터" };
-    const cid = findCidByNameOrNo(cardName, cardNo);
-    if (cid && typeof cidMetaMemoryCache !== 'undefined' && cidMetaMemoryCache.has(String(cid))) {
-        return parseMetaKind(cidMetaMemoryCache.get(String(cid)));
-    }
-    if (typeof cardCacheInstance !== 'undefined' && cardCacheInstance._mergedMeta && cardCacheInstance._mergedMeta[cardName]) {
-        return parseMetaKind(cardCacheInstance._mergedMeta[cardName]);
-    }
-    return { kind: 0, kindStr: "몬스터" };
 }
 
 function findCidByNameOrNo(cardName, cardNo = null) {
@@ -6853,7 +6670,15 @@ function setInventorySyncStatus(status) {
             const node = document.getElementById(id); if (node) node.textContent = '—';
         }
         for (const id of ['inv-location-stats', 'inv-rarity-stats']) {
-            const node = document.getElementById(id); if (node) node.textContent = status === 'error' ? '동기화 실패' : '동기화 중';
+            const panel = document.getElementById(id);
+            if (!panel) continue;
+            const content = panel.querySelector('[data-stat-content]');
+            const failed = status === 'error';
+            panel.querySelector('.loading-spinner-small').hidden = failed;
+            content.hidden = !failed;
+            content.classList.toggle('ui-stat-empty', failed);
+            content.classList.toggle('color-text-002', failed);
+            content.textContent = failed ? '동기화 실패' : '';
         }
     }
 }
@@ -7277,73 +7102,21 @@ async function applyPublicData(res) {
         });
     }
 
-function rebuildPackDatabase() {
-    packDatabase = (CardDataStore.masterJSON && CardDataStore.masterJSON.pack) ? Object.keys(CardDataStore.masterJSON.pack).map(compositeId => {
-        const p = CardDataStore.masterJSON.pack[compositeId];
-        // [변경] 복합키 "PID_locale"에서 PID와 locale 파싱
-        const lastUnderscore = compositeId.lastIndexOf('_');
-        const purePid = lastUnderscore !== -1 ? compositeId.slice(0, lastUnderscore) : compositeId;
-        const locale = lastUnderscore !== -1 ? compositeId.slice(lastUnderscore + 1) : '';
-        return {
-            id: purePid,            // API 호출에 사용할 순수 PID
-            compositeId,            // 캐시 룩업용 복합키
-            name: p ? p.name : compositeId,
-            total: p ? p.totalCards : 0,
-            locales: locale ? [locale] : [],
-            cids: []
-        };
-    }) : [];
-}
-
-    // [Storage 전환] CardDataStore.masterJSON.pack에서 packDatabase 구성
-    rebuildPackDatabase();
-
-    // [On-Demand 전환] 팩별 카드 사전 캐시 구축 로직 제거
-    // 팩 카드 정보는 crawlPackCardsBatch API를 통해 On-Demand 조회
-
     refreshLocalLookups();
     updateRarityInputs();
 
     // 공통 로드 완료 후 렌더링
     isAppConfigured = true;
-
-    // Pack Search 페이지 자동 검색 플래그 확인
-    if (typeof checkAutoSearchAfterInitialLoad === 'function') {
-        checkAutoSearchAfterInitialLoad();
-    }
 }
 
 
 
-
-function startSearchWithOption(e, searchType) {
-    if (e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-    startSearch(false, searchType);
-}
-
-function executeMobileSearchWithOption(e, searchType) {
-    if (e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-    const mSearchInput = document.getElementById('mobile-card-search');
-    const query = mSearchInput ? mSearchInput.value.trim() : '';
-    if (query) {
-        executeMobileSearch(query, searchType);
-    }
-}
 
 async function handleContinueRegistration() {
 
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
-    const subMode = UIStore.chipState.add || addSubMode;
-    const containerId = isMobile 
-        ? ((subMode === 'pack') ? 'mobile-cards-list-pack' : (subMode === 'deck') ? 'mobile-cards-list-deck' : 'mobile-cards-list-general')
-        : ((subMode === 'pack') ? 'desktop-cards-list-pack' : (subMode === 'deck') ? 'desktop-cards-list-deck' : 'desktop-cards-list-general');
-    const cardClass = isMobile ? '.mobile-info-card' : '.desktop-info-card';
+    const containerId = isMobile ? 'mobile-cards-list-general' : 'desktop-cards-list-general';
+    const cardClass = isMobile ? '.mobile-info-card[data-index]' : '.desktop-info-card[data-index]';
     const container = document.getElementById(containerId);
 
     let hasFailures = false;
@@ -7365,8 +7138,8 @@ async function handleContinueRegistration() {
         const remainingCount = container.querySelectorAll(cardClass).length;
         if (!hasFailures || remainingCount === 0) {
             container.innerHTML = '';
-            if (isMobile) mobileAddEntry('add', subMode);
-            else desktopAddEntry('add', subMode);
+            if (isMobile) mobileAddEntry('add');
+            else desktopAddEntry('add');
         } else {
             if (!isMobile) reindexDesktopCards(container);
         }
@@ -7419,80 +7192,23 @@ function showLoading(show, html) {
     const overlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
     if (overlay && loadingText) {
-        if (show) {
-            overlay.style.display = 'flex';
-            loadingText.innerHTML = html;
-            document.body.classList.add('is-loading');
-
-            // 제작 중단 링크가 포함된 경우 이벤트 바인딩
-            const cancelLink = document.getElementById('cancel-gen-link');
-            if (cancelLink) {
-                cancelLink.onclick = (e) => {
-                    e.preventDefault();
-                    handleCancelGeneration();
-                };
-            }
-        } else {
-            overlay.style.display = 'none';
-            document.body.classList.remove('is-loading');
-        }
+        if (show) loadingText.innerHTML = html;
+        overlay.hidden = !show;
+        document.body.classList.toggle('is-loading', Boolean(show));
     }
 }
-
-/**
- * 팩 등록표 제작 중단 핸들러
- */
-function handleCancelGeneration() {
-    stopPackCrawlNew();       // 크롤링 중단
-    resetPackMode();          // 표 초기화 및 UI 복구
-    showLoading(false);       // 오버레이 제거
-}
-
-/**
- * 크롤링 수치를 1개 단위로 부드럽게 업데이트하는 애니메이션 함수
- */
-function updateSmoothCrawlCount(target, total) {
-    if (_crawlIntervalId) clearInterval(_crawlIntervalId);
-
-    _crawlIntervalId = setInterval(() => {
-        if (_currentDisplayCrawlCount < target) {
-            _currentDisplayCrawlCount++;
-
-            // 테이블이 아직 생성되지 않았거나, 이미 모든 행이 채워졌다면 로딩 표시 생략
-            const isMobile = document.documentElement.classList.contains('is-mobile-device');
-            const containerId = isMobile ? 'mobile-cards-list-pack' : 'desktop-cards-list-pack';
-            const container = document.getElementById(containerId);
-            const cardClass = isMobile ? '.mobile-info-card' : '.desktop-info-card';
-            const cards = container ? container.querySelectorAll(cardClass) : [];
-            const allFilled = cards.length > 0 && Array.from(cards).every(card => {
-                const nameInp = card.querySelector('[data-field="name"]');
-                const noInp = card.querySelector('[data-field="no"]');
-                return nameInp && nameInp.value && noInp && noInp.value;
-            });
-
-            if (PackDeckStore.isPackTableGenerated && !PackDeckStore.isPackCrawlDone && !allFilled) {
-                showLoading(true, `카드 검색 중<br>(${_currentDisplayCrawlCount}/${total})<br><a id="cancel-gen-link" class="link-style-btn">제작 중단</a>`);
-            }
-        } else {
-            clearInterval(_crawlIntervalId);
-            _crawlIntervalId = null;
-        }
-    }, 20); // 20ms 간격으로 1개씩 상승
-}
-
-
 
 function initPageMove() {
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
     if (isMobile) {
         const listContainer = document.getElementById('mobile-cards-list-move');
-        if (listContainer && listContainer.querySelectorAll('.mobile-info-card').length === 0) {
+        if (listContainer && listContainer.querySelectorAll('.mobile-info-card[data-index]').length === 0) {
             listContainer.innerHTML = '';
             mobileAddEntry('move');
         }
     } else {
         const listContainer = document.getElementById('desktop-cards-list-move');
-        if (listContainer && listContainer.querySelectorAll('.desktop-info-card').length === 0) {
+        if (listContainer && listContainer.querySelectorAll('.desktop-info-card[data-index]').length === 0) {
             listContainer.innerHTML = '';
             desktopAddEntry('move');
         }
@@ -7540,9 +7256,97 @@ function handleMoveNameInput(input) {
 }
 
 // 이름/번호는 편집 중 추천만 표시하고, 명시적인 확정 동작에서만 조회합니다.
-function setupCardSearchDropdown(wrapper, getSuggestions, lookup) {
+const registrationNumberSelections = new WeakMap();
+
+function usesRegistrationCatalog(field, input) {
+    if (!globalThis.AppBackend?.registrationSuggestions || UIStore.mode !== 'add') return false;
+    if (field === 'name') return true;
+    const container = getActiveContainer(input);
+    const row = getRowFromInput(input);
+    const mobile = input?.id === 'sheet-card-no';
+    const name = container?.querySelector('[data-field="name"]');
+    const resolvedMobileName = mobile && Boolean(row?.dataset.cardData && name?.value && name.classList.contains('hyperlink-style'));
+    return field === 'no' && Boolean(input) && (mobile || !input.readOnly) && !input.dataset.lockedForName
+        && !resolvedMobileName && ![container, row].some(element => element?.dataset.searchMode === 'name');
+}
+
+function registrationNameChoices(input) {
+    const numberInput = getActiveContainer(input)?.querySelector('[data-field="no"]');
+    const selection = registrationNumberSelections.get(numberInput);
+    if (UIStore.mode === 'add' && selection?.number === numberInput?.value) return selection?.choices;
+}
+
+function filterRegistrationCatalogSuggestions(candidates, field, value) {
+    const query = normalizeStr(value.normalize('NFC'));
+    if (!query || value.trim().length > 100) return [];
+    if (field === 'no') return candidates.filter(candidate => candidate.value.toLowerCase().includes(query));
+
+    const matching = globalThis.YgoCardNameAutocomplete;
+    const pattern = new RegExp(matching.pattern(query, matching.variants(query)), 'u');
+    return candidates.filter(candidate => pattern.test(normalizeStr(candidate.value.normalize('NFC'))));
+}
+
+async function confirmRegistrationNumber(input, value, candidate) {
+    const container = getActiveContainer(input);
+    const nameInput = container?.querySelector('[data-field="name"]');
+    const row = getRowFromInput(input);
+    const initialName = nameInput?.value;
+    const selection = { number: value };
+    registrationNumberSelections.set(input, selection);
+    const isCurrent = () => input.isConnected && getRowFromInput(input) === row && getActiveContainer(input) === container
+        && input.value === value && nameInput?.value === initialName && registrationNumberSelections.get(input) === selection
+        && usesRegistrationCatalog('no', input);
+    try {
+        if (!candidate?.complete) {
+            const matches = await globalThis.AppBackend.registrationSuggestions(value, 'no');
+            candidate = matches.find(match => match.value === value);
+        }
+        if (!isCurrent()) return;
+        const cards = candidate?.cards || [];
+        if (cards.length > 1 && nameInput) {
+            clearPageNameAndNo(input);
+            updateSubCellsFromCache('', container);
+            input.value = value;
+            selection.choices = cards.map(card => ({ ...card, number: value }));
+            registrationNumberSelections.set(input, selection);
+            nameInput.placeholder = '카드 이름 선택';
+            if (input.id === 'sheet-card-no') {
+                updateBottomSheetClearButtons();
+                updateSheetDropdownState();
+                if (!activeOverlayType) openSheetOverlay('name');
+                else if (activeOverlayType === 'name') showOverlaySuggestions(document.getElementById('overlay-search-input').value);
+            } else {
+                nameInput.focus();
+                nameInput._cardSearchController?.refresh();
+            }
+            return;
+        }
+        const cid = cards[0]?.cid;
+        if (!cid) {
+            await fetchCardByNumber(input, true);
+            return;
+        }
+        const match = await globalThis.AppBackend.registrationNumber(cid, value);
+        if (!isCurrent()) return;
+        if (match.multiple) {
+            if (!nameInput) return;
+            nameInput.value = match.name;
+            await fetchCardByName(nameInput, true, cid, false, value);
+        } else {
+            input.value = (match.number || value).toUpperCase();
+            await fetchCardByNumber(input, true);
+        }
+    } catch {
+        if (isCurrent()) await fetchCardByNumber(input, true);
+    }
+}
+
+function setupCardSearchDropdown(wrapper, getSuggestions, lookup, registrationField) {
     const input = wrapper.querySelector('input');
     if (input._cardSearchController) return;
+    const { field } = input.dataset;
+    const isDesktopCardSearch = ['name', 'no'].includes(field) && Boolean(wrapper.closest('.desktop-info-card--editable'));
+    const fitsSuggestions = isDesktopCardSearch && field === 'name';
     // 기존 인라인 조회/초기화와 키보드 처리를 이 제어기로 통합합니다.
     ['oninput', 'onblur', 'onkeydown'].forEach(attr => input.removeAttribute(attr));
     let dropdown = wrapper._dropdown;
@@ -7552,68 +7356,178 @@ function setupCardSearchDropdown(wrapper, getSuggestions, lookup) {
         document.body.appendChild(dropdown);
         wrapper._dropdown = dropdown;
     }
+    if (isDesktopCardSearch) dropdown.dataset.cardSearchField = field;
+    if (fitsSuggestions && !CSS.supports('field-sizing', 'content')) {
+        bindDesktopCardNameWidth(input, wrapper);
+    }
+    const resetSuggestionWidth = () => {
+        if (fitsSuggestions) desktopCardGeometryRules.get(wrapper)?.style.removeProperty('--card-suggestion-width');
+    };
     let currentFocusIdx = -1;
+    let renderedQuery;
+    let renderedCandidates = [];
+    let lastCatalogCandidates = [];
+    let lastNumberOptions;
+    let lastNumberCandidates = [];
+    let suggestionsPending = false;
     let committedValue = null;
     let dirty = true;
-    const close = () => {
-        scheduled.cancel();
+    let request;
+    const hide = () => {
         currentFocusIdx = -1;
+        renderedCandidates = [];
+        dropdown.style.height = '';
         wrapper.classList.remove('active');
         input.classList.remove('active');
         dropdown.classList.remove('active');
+        resetSuggestionWidth();
         if (UIStore.activeDropdownInput === input) UIStore.activeDropdownInput = null;
     };
-    const commit = value => {
+    const close = () => {
+        scheduled.cancel();
+        request?.abort();
+        lastCatalogCandidates = [];
+        lastNumberOptions = undefined;
+        lastNumberCandidates = [];
+        suggestionsPending = false;
+        hide();
+    };
+    const commit = (value, candidate) => {
         close();
         if (input.readOnly || input.disabled) return;
+        const choices = registrationField === 'name' && registrationNameChoices(input);
+        if (choices) {
+            const selected = choices.includes(candidate) ? candidate : choices.find(choice => choice.value === value);
+            if (!selected) return;
+            input.value = selected.value;
+            void lookup(input, true, selected.cid, false, selected.number);
+            return;
+        }
         input.value = value;
         if (!dirty && committedValue === value) return;
         committedValue = value;
         dirty = false;
-        lookup(input);
+        if (value && registrationField === 'no' && usesRegistrationCatalog('no', input)) void confirmRegistrationNumber(input, value, candidate);
+        else if (candidate?.cid) lookup(input, false, candidate.cid);
+        else lookup(input);
     };
-    const render = () => {
+    const renderValues = (values, emptyMessage) => {
         if (document.activeElement !== input || input.readOnly || input.disabled
             || input.closest('#mobile-entry-bottom-sheet')) { close(); return; }
         UIStore.activeDropdownInput = input;
+        renderedQuery = input.value;
+        renderedCandidates = values;
         currentFocusIdx = -1;
+        dropdown.style.height = '';
         dropdown.innerHTML = '';
-        const values = getSuggestions();
-        for (const value of values) {
+        for (const candidate of values) {
+            const { value } = candidate;
             const li = document.createElement('li');
             li.className = 'custom-option';
             li.innerText = value;
             li.onmousedown = event => event.preventDefault();
-            li.onclick = () => commit(value);
+            li.onclick = () => commit(value, candidate);
             dropdown.appendChild(li);
         }
         if (!values.length) {
             const li = document.createElement('li');
             li.className = 'custom-option item-no-match';
-            li.innerText = input.dataset.field === 'no' ? '번호 확인' : '카드 이름 확인';
+            li.innerText = emptyMessage ?? (input.dataset.field === 'no' ? '번호 확인' : '카드 이름 확인');
             dropdown.appendChild(li);
         }
         wrapper.classList.add('active');
         dropdown.classList.add('active');
-        positionDropdown(dropdown, wrapper);
+        if (!values.length) resetSuggestionWidth();
+        positionDropdown(dropdown, wrapper, false, fitsSuggestions && values.length > 0);
+    };
+    const renderPendingValues = values => {
+        if (values.length) {
+            renderValues(values);
+        } else if (holdOpenSuggestionDropdown(dropdown)) {
+            currentFocusIdx = -1;
+            renderedCandidates = [];
+            dropdown.replaceChildren();
+            positionDropdown(dropdown, wrapper);
+        } else {
+            hide();
+        }
+    };
+    const render = () => {
+        request?.abort();
+        if (document.activeElement !== input || input.readOnly || input.disabled
+            || input.closest('#mobile-entry-bottom-sheet')) { close(); return; }
+        const query = input.value;
+        const choices = registrationField === 'name' && registrationNameChoices(input);
+        if (choices) {
+            lastCatalogCandidates = [];
+            suggestionsPending = false;
+            renderValues(choices.filter(choice => normalizeStr(choice.value).includes(normalizeStr(query))));
+            return;
+        }
+        if (!usesRegistrationCatalog(registrationField, input)) {
+            lastCatalogCandidates = [];
+            suggestionsPending = false;
+            const matches = getSuggestions().map(value => ({ value }));
+            if (registrationField === 'no' && UIStore.mode === 'add') {
+                lastNumberOptions = wrapper.dataset.options;
+                lastNumberCandidates = matches;
+            }
+            renderValues(matches);
+            return;
+        }
+        if (!query.trim()) { close(); return; }
+        suggestionsPending = true;
+        const controller = request = new AbortController();
+        const isCurrent = () => !controller.signal.aborted && document.activeElement === input
+            && input.value === query && usesRegistrationCatalog(registrationField, input);
+        globalThis.AppBackend.registrationSuggestions(query.trim(), registrationField, controller.signal).then(remote => {
+            if (!isCurrent()) return;
+            lastCatalogCandidates = remote.slice(0, 8);
+            suggestionsPending = false;
+            renderValues(lastCatalogCandidates);
+        }, () => {
+            if (!isCurrent()) return;
+            lastCatalogCandidates = [];
+            suggestionsPending = false;
+            renderValues([], '카드 추천을 불러오지 못했습니다.');
+        });
     };
     const scheduled = debounce(render, 100);
     input._cardSearchController = { close, refresh: render };
     input.addEventListener('input', () => {
         dirty = true;
+        request?.abort();
         if (input.dataset.field === 'no') {
+            registrationNumberSelections.delete(input);
             const start = input.selectionStart;
             input.value = input.value.replace(/[ㄱ-ㅎㅏ-ㅣ가-힣]/g, '').toUpperCase();
             input.setSelectionRange(start, start);
+        }
+        const choices = registrationField === 'name' && registrationNameChoices(input);
+        if (choices) {
+            scheduled.cancel();
+            render();
+            return;
+        }
+        const query = input.value.trim();
+        if (query && usesRegistrationCatalog(registrationField, input)) {
+            suggestionsPending = true;
+            renderPendingValues(filterRegistrationCatalogSuggestions(lastCatalogCandidates, registrationField, input.value));
+        } else if (query && registrationField === 'no' && UIStore.mode === 'add' && wrapper.dataset.options
+            && wrapper.dataset.options === lastNumberOptions) {
+            suggestionsPending = true;
+            renderPendingValues(lastNumberCandidates.filter(candidate => candidate.value.toUpperCase().includes(query.toUpperCase())));
+        } else {
+            close();
         }
         // 조회 결과의 하위 필드는 이 시점에 초기화하거나 갱신하지 않습니다.
         scheduled();
     });
     input.addEventListener('focus', () => {
-        if (dirty || input.value !== committedValue) render();
+        if (!suggestionsPending && (dirty || input.value !== committedValue)) render();
     });
     input.addEventListener('click', () => {
-        if (!input.readOnly) render();
+        if (!input.readOnly && !suggestionsPending) render();
     });
     input.addEventListener('blur', close);
     input.addEventListener('keydown', event => {
@@ -7631,12 +7545,15 @@ function setupCardSearchDropdown(wrapper, getSuggestions, lookup) {
         }
         if (event.key === 'Enter') {
             event.preventDefault();
-            commit(input.value);
+            const selected = dropdown.classList.contains('active') && renderedQuery === input.value
+                ? renderedCandidates[currentFocusIdx] : undefined;
+            commit(selected?.value ?? input.value, selected);
         } else if (event.key === 'Tab') {
-            // 예약 렌더를 기다리지 않고 현재 문자열의 첫 추천을 확정합니다.
             if (dirty || input.value !== committedValue) {
-                const first = getSuggestions()[0];
-                if (first !== undefined) commit(first);
+                const first = renderedQuery === input.value && dropdown.classList.contains('active')
+                    ? renderedCandidates[suggestionsPending ? currentFocusIdx : 0] : usesRegistrationCatalog(registrationField, input)
+                        ? undefined : { value: getSuggestions()[0] };
+                if (first?.value !== undefined) commit(first.value, first);
             }
             close(); // 기본 Tab/Shift+Tab 포커스 이동은 그대로 둡니다.
         } else if (event.key === 'Escape') {
@@ -7644,10 +7561,11 @@ function setupCardSearchDropdown(wrapper, getSuggestions, lookup) {
             close();
         } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault();
-            if (!dropdown.classList.contains('active')) render();
+            if (!dropdown.classList.contains('active') && !suggestionsPending) render();
             const items = dropdown.querySelectorAll('li:not(.item-no-match)');
             if (!items.length) return;
-            currentFocusIdx = (currentFocusIdx + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+            currentFocusIdx = event.key === 'ArrowDown' ? (currentFocusIdx + 1) % items.length
+                : (currentFocusIdx > 0 ? currentFocusIdx - 1 : items.length - 1);
             updateHighlight(items, currentFocusIdx);
         }
     });
@@ -7749,7 +7667,7 @@ function setupGlobalCardNameAutocomplete(wrapper) {
         return sortCardNameSuggestions(matches, normalizedQuery, 8).map(item => item.original);
     };
 
-    setupCardSearchDropdown(wrapper, handleInput, fetchCardByName);
+    setupCardSearchDropdown(wrapper, handleInput, fetchCardByName, 'name');
 }
 
 function setupCardNoAutocomplete(wrapper) {
@@ -7788,6 +7706,8 @@ function setupCardNoAutocomplete(wrapper) {
                 } catch (e) { }
             }
         }
+        if (src.length === 0 && getActiveContainer(input)?.dataset.searchMode === 'name'
+            && UIStore.mode === 'add') return src;
         if (src.length === 0) {
             const nameVal = getNameVal();
             if (nameVal) {
@@ -7835,7 +7755,7 @@ function setupCardNoAutocomplete(wrapper) {
         return matches;
     };
 
-    setupCardSearchDropdown(wrapper, handleInput, fetchCardByNumber);
+    setupCardSearchDropdown(wrapper, handleInput, fetchCardByNumber, 'no');
 }
 
 /**
@@ -7843,32 +7763,108 @@ function setupCardNoAutocomplete(wrapper) {
  * setupCardNameAutocomplete, setupGlobalCardNameAutocomplete,
  * setupCardNoAutocomplete, setupCustomDropdown에서 공통 호출됩니다.
  */
-function positionDropdown(localDropdown, wrapper) {
-    const rect = wrapper.getBoundingClientRect();
-    const isDesktopCard = !!wrapper.closest('.desktop-info-card');
-    const offset = isDesktopCard ? 6 : 0;
-    const scrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
-    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft || 0;
-    localDropdown.style.top = (rect.bottom + scrollTop + offset) + 'px';
-    localDropdown.style.left = (rect.left + scrollLeft) + 'px';
-    if (isDesktopCard) {
-        localDropdown.classList.add('desktop-card-dropdown', 'border-basic');
-        localDropdown.style.width = 'max-content';
-        localDropdown.style.minWidth = rect.width + 'px';
-    } else {
-        localDropdown.classList.remove('desktop-card-dropdown', 'border-basic');
-        localDropdown.style.width = rect.width + 'px';
-        localDropdown.style.minWidth = '';
+// 카드 목록 포털과 자동 너비의 실측값을 요소의 style 속성 없이 적용한다.
+let desktopCardGeometrySheet;
+let desktopCardGeometryId = 0;
+const desktopCardGeometryRules = new WeakMap();
+
+function getDesktopCardGeometry(element) {
+    if (!desktopCardGeometrySheet) {
+        desktopCardGeometrySheet = new CSSStyleSheet();
+        document.adoptedStyleSheets = [...document.adoptedStyleSheets, desktopCardGeometrySheet];
+    }
+    if (!desktopCardGeometryRules.has(element)) {
+        const id = ++desktopCardGeometryId;
+        element.dataset.cardGeometry = id;
+        const selector = `[data-card-geometry="${id}"]`;
+        const fieldSelector = element.dataset.cardField ? `.desktop-info-card--editable ${selector}[data-card-field]` : selector;
+        const index = desktopCardGeometrySheet.insertRule(`${fieldSelector} {}`, desktopCardGeometrySheet.cssRules.length);
+        desktopCardGeometryRules.set(element, desktopCardGeometrySheet.cssRules[index]);
+    }
+    return desktopCardGeometryRules.get(element).style;
+}
+
+function releaseDesktopCardGeometry(element) {
+    const rule = desktopCardGeometryRules.get(element);
+    if (!rule) return;
+    const index = Array.from(desktopCardGeometrySheet.cssRules).indexOf(rule);
+    if (index !== -1) desktopCardGeometrySheet.deleteRule(index);
+    desktopCardGeometryRules.delete(element);
+    delete element.dataset.cardGeometry;
+}
+
+function releaseDesktopCardFields(card) {
+    for (const wrapper of card.querySelectorAll('.custom-select-wrapper')) {
+        if (wrapper._dropdown) {
+            releaseDesktopCardGeometry(wrapper._dropdown);
+            wrapper._dropdown.remove();
+        }
+        releaseDesktopCardGeometry(wrapper);
     }
 }
 
-const inputAutoWidthMinimums = { rare: 70, illust: 80, loc: 120, to: 120 };
-const pendingPackInputWidths = new Set();
-let packInputWidthFrame = 0;
+function positionDropdown(localDropdown, wrapper, useCardStyle = false, measureSuggestions = false) {
+    const isDesktopCard = useCardStyle || Boolean(wrapper.closest('.desktop-info-card--editable'));
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
+    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft || 0;
+    if (isDesktopCard) {
+        localDropdown.classList.add('desktop-card-dropdown', 'border-basic', 'color-surface-001', 'shape-rounded003', 'shadow-medium');
+        const geometry = getDesktopCardGeometry(localDropdown);
+        if (measureSuggestions) {
+            geometry.removeProperty('width');
+            const width = Math.ceil(localDropdown.getBoundingClientRect().width);
+            getDesktopCardGeometry(wrapper).setProperty('--card-suggestion-width', `${width}px`);
+        }
+        const rect = wrapper.getBoundingClientRect();
+        geometry.top = `${rect.bottom + scrollTop + 6}px`;
+        geometry.left = `${rect.left + scrollLeft}px`;
+        if (localDropdown.dataset.cardSearchField) geometry.width = `${rect.width}px`;
+        else geometry.minWidth = `${rect.width}px`;
+    } else {
+        const rect = wrapper.getBoundingClientRect();
+        if (localDropdown.classList.contains('desktop-card-dropdown')) {
+            localDropdown.classList.remove('desktop-card-dropdown', 'border-basic', 'color-surface-001', 'shape-rounded003', 'shadow-medium');
+            releaseDesktopCardGeometry(localDropdown);
+        }
+        localDropdown.style.top = `${rect.bottom + scrollTop}px`;
+        localDropdown.style.left = `${rect.left + scrollLeft}px`;
+        localDropdown.style.width = `${rect.width}px`;
+    }
+}
+
+const inputAutoWidthMinimums = { name: 0, rare: 70, loc: 120, to: 120 };
+
+function onInputValueAssigned(input, callback) {
+    // 값 복원이나 조회 결과 대입에서는 input 이벤트가 발생하지 않는다.
+    const descriptor = Object.getOwnPropertyDescriptor(input, 'value')
+        || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    Object.defineProperty(input, 'value', {
+        ...descriptor,
+        set(value) {
+            descriptor.set.call(this, value);
+            callback();
+        }
+    });
+}
+
+function bindDesktopCardNameWidth(input, wrapper) {
+    const resize = (reposition = false) => {
+        if (!input.isConnected) return;
+        updateInputAutoWidth(input);
+        const dropdown = wrapper._dropdown;
+        if (reposition && dropdown?.classList.contains('active')) positionDropdown(dropdown, wrapper);
+    };
+
+    onInputValueAssigned(input, () => resize(true));
+    input.addEventListener('input', () => resize());
+    new MutationObserver(() => resize(true)).observe(input, { attributeFilter: ['placeholder', 'value'] });
+    resize();
+    if (document.fonts?.status === 'loading') document.fonts.ready.then(() => resize(true));
+}
 
 function createInputWidthTester() {
     const span = document.createElement('span');
-    span.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;height:0;overflow:hidden';
+    span.className = 'desktop-card-width-tester';
     return span;
 }
 
@@ -7878,50 +7874,31 @@ function readInputWidth(input, wrapper) {
     const hasArrow = arrow && window.getComputedStyle(arrow).display !== 'none';
     const paddingLeft = parseFloat(styles.paddingLeft) || 0;
     const paddingRight = parseFloat(styles.paddingRight) || 0;
+    const extraSpace = input.dataset.field === 'name'
+        ? (parseFloat(styles.borderLeftWidth) || 0) + (parseFloat(styles.borderRightWidth) || 0) + 1
+        : (hasArrow ? 15 : 8);
     return {
         wrapper,
         text: input.value || input.placeholder || '',
         font: [styles.fontSize, styles.fontFamily, styles.fontWeight, styles.letterSpacing],
-        extraSpace: paddingLeft + paddingRight + (hasArrow ? 15 : 8),
+        extraSpace: paddingLeft + paddingRight + extraSpace,
         minWidth: inputAutoWidthMinimums[input.dataset.field]
     };
 }
 
 function setInputWidthTester(span, { text, font }) {
-    [span.style.fontSize, span.style.fontFamily, span.style.fontWeight, span.style.letterSpacing] = font;
+    const geometry = getDesktopCardGeometry(span);
+    [geometry.fontSize, geometry.fontFamily, geometry.fontWeight, geometry.letterSpacing] = font;
     span.textContent = text;
 }
 
 function applyInputWidth({ wrapper, extraSpace, minWidth }, textWidth) {
-    wrapper.style.width = Math.max(textWidth + extraSpace + 10, minWidth) + 'px';
-    wrapper.style.flex = 'none';
-}
-
-function flushPackInputWidths() {
-    const fragment = document.createDocumentFragment();
-    const testers = new Map();
-    const measurements = [];
-    // 스타일을 모두 읽고, 같은 글꼴과 텍스트는 프레임당 한 번만 측정한다.
-    for (const input of pendingPackInputWidths) {
-        const wrapper = input.closest('#desktop-cards-list-pack .custom-select-wrapper');
-        if (!input.isConnected || !wrapper) continue;
-        const data = readInputWidth(input, wrapper);
-        const key = JSON.stringify([data.text, ...data.font]);
-        if (!testers.has(key)) {
-            const span = createInputWidthTester();
-            setInputWidthTester(span, data);
-            fragment.append(span);
-            testers.set(key, span);
-        }
-        measurements.push({ data, key });
+    const geometry = getDesktopCardGeometry(wrapper);
+    if (wrapper.dataset.cardField === 'name') {
+        geometry.setProperty('--card-name-value-width', `${Math.ceil(textWidth + extraSpace)}px`);
+        return;
     }
-    pendingPackInputWidths.clear();
-    document.body.appendChild(fragment);
-    const widths = new Map();
-    for (const [key, span] of testers) widths.set(key, span.getBoundingClientRect().width);
-    for (const { data, key } of measurements) applyInputWidth(data, widths.get(key));
-    for (const span of testers.values()) span.remove();
-    packInputWidthFrame = 0;
+    geometry.width = `${Math.max(textWidth + extraSpace + 10, minWidth)}px`;
 }
 
 function updateInputAutoWidth(inputEl) {
@@ -7929,11 +7906,6 @@ function updateInputAutoWidth(inputEl) {
         !Object.hasOwn(inputAutoWidthMinimums, inputEl.dataset.field)) return;
     const wrapper = inputEl.closest('.custom-select-wrapper');
     if (!wrapper) return;
-    if (wrapper.closest('#desktop-cards-list-pack')) {
-        pendingPackInputWidths.add(inputEl);
-        if (!packInputWidthFrame) packInputWidthFrame = requestAnimationFrame(flushPackInputWidths);
-        return;
-    }
 
     let span = document.getElementById('input-width-tester');
     if (!span) {
@@ -8148,11 +8120,13 @@ function updateDropdownArrowState(wrapper) {
         }
     }
 
+    if (wrapper.closest('.desktop-info-card--editable')) return;
+
     if (wrapper.classList.contains('no-arrow')) {
         const arrow = wrapper.querySelector('.arrow-icon');
         if (arrow) {
-            arrow.style.display = 'none';
-            arrow.style.pointerEvents = 'none';
+            arrow.hidden = true;
+
         }
         return;
     }
@@ -8160,13 +8134,14 @@ function updateDropdownArrowState(wrapper) {
     const arrow = wrapper.querySelector('.arrow-icon');
     if (arrow) {
         if (isFree || count >= 2) {
-            arrow.style.display = '';
-            arrow.style.pointerEvents = '';
+            arrow.hidden = false;
+
         } else {
-            arrow.style.display = 'none';
-            arrow.style.pointerEvents = 'none';
+            arrow.hidden = true;
+
         }
     }
+    if (wrapper.closest('#sheet-fields-container .card-info-fields')) updateSheetDropdownState();
 }
 
 // Labels are presentation only; inventory comparisons keep their original values.
@@ -8179,7 +8154,6 @@ function setIllustrationValue(input, value) {
     if (!input) return;
     input.dataset.raw = String(value || '');
     input.value = IllustrationImages.label(value) || String(value || '');
-    updateInputAutoWidth(input);
 }
 
 function prepareCardIllustrations(container, cid, ids = []) {
@@ -8187,8 +8161,6 @@ function prepareCardIllustrations(container, cid, ids = []) {
     container.dataset.illustrationCid = String(cid);
     const row = getRowFromInput(container);
     if (row) row.dataset.illustrationCid = String(cid);
-    // 팩 등록표의 이미지는 일러스트 선택창에서 필요한 항목만 불러온다.
-    if ((row || container).closest('#desktop-cards-list-pack, #mobile-cards-list-pack')) return;
     void IllustrationImages.preloadCard(String(cid), ids);
 }
 
@@ -8223,6 +8195,7 @@ function openIllustrationPicker(input, wrapper) {
         anchor: input, cid, options, value: getIllustrationValue(input),
         mobile: document.documentElement.classList.contains('is-mobile-device'),
         onSelect: opt => {
+            if (input.disabled) return;
             setIllustrationValue(input, opt.val);
             if (wrapper._changeCallback) wrapper._changeCallback(input);
             else if (UIStore.mode === 'move') handleMoveIllustChange(input);
@@ -8236,6 +8209,10 @@ function setupIllustrationField(wrapper, changeCallback) {
     const input = wrapper.querySelector('input');
     wrapper._changeCallback = changeCallback;
     input.readOnly = true;
+    input.inputMode = 'none';
+    input.setAttribute('role', 'button');
+    input.setAttribute('aria-label', '일러스트 선택');
+    input.placeholder = '일러스트';
     input.setAttribute('aria-haspopup', 'dialog');
     if (!input.hasAttribute('aria-expanded')) input.setAttribute('aria-expanded', 'false');
     setIllustrationValue(input, getIllustrationValue(input));
@@ -8271,7 +8248,11 @@ function setupCustomDropdown(wrapper, changeCallback) {
         setupIllustrationField(wrapper, changeCallback);
         return;
     }
-    const input = wrapper.querySelector('.custom-input');
+    const isAutoLocation = wrapper.id === 'wrap-auto-loc';
+    const input = isAutoLocation
+        ? wrapper.querySelector('.auto-location__input')
+        : wrapper.querySelector('.custom-input') ?? wrapper.querySelector('.manage-footer__location-input');
+    const optionClass = isAutoLocation ? 'auto-location__option color-type000' : 'custom-option';
     const isFreeType = wrapper.dataset.type === 'free';
     let currentFocusIdx = -1;
 
@@ -8301,8 +8282,8 @@ function setupCustomDropdown(wrapper, changeCallback) {
     let localDropdown = wrapper._dropdown;
     if (!localDropdown) {
         localDropdown = document.createElement('ul');
-        localDropdown.className = 'global-dropdown custom-options';
-        const expansionBg = wrapper.querySelector('.search-expansion-bg');
+        localDropdown.className = isAutoLocation ? 'auto-location__options custom-options' : 'global-dropdown custom-options';
+        const expansionBg = wrapper.querySelector(isAutoLocation ? '.dropdown-capsule__surface' : '.search-expansion-bg');
         if (expansionBg) {
             expansionBg.appendChild(localDropdown);
         } else {
@@ -8319,8 +8300,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
             currentFocusIdx = -1;
             UIStore.activeDropdownInput = null;
         }
-        if (wrapper.id === 'wrap-auto-loc') {
-            wrapper.style.setProperty('--dropdown-height', '0px');
+        if (isAutoLocation) {
             const val = input.value.trim();
             // 드롭다운이 닫힐 때 값이 있고 확정 상태('true')가 아니면 에러 체크
             if (val.length > 0 && input.dataset.confirmed !== 'true') {
@@ -8334,19 +8314,19 @@ function setupCustomDropdown(wrapper, changeCallback) {
             handleAutoLocInput(input);
         }
     };
-    const clearBtn = wrapper.querySelector('.clear-btn');
+    const clearBtn = wrapper.querySelector(isAutoLocation ? '.auto-location__clear' : '.clear-btn');
     if (clearBtn) {
         // mousedown 시 e.preventDefault()로 blur 방지
         clearBtn.onmousedown = (e) => {
             e.preventDefault();
         };
         clearBtn.onclick = (e) => {
+            if (input.disabled) return;
             e.stopPropagation();
             input.value = "";
             input.dataset.confirmed = "false";
             delete input.dataset.raw;
             wrapper.classList.remove('has-value', 'active-highlight', 'error-highlight');
-            if (wrapper.id === 'wrap-auto-loc') wrapper.style.setProperty('--dropdown-height', '0px');
             updateInputAutoWidth(input);
             if (wrapper._changeCallback) wrapper._changeCallback(input);
             input.focus();
@@ -8366,14 +8346,6 @@ function setupCustomDropdown(wrapper, changeCallback) {
 
         if (UIStore.activeDropdownInput && UIStore.activeDropdownInput !== input) { UIStore.activeDropdownInput.blur(); }
         UIStore.activeDropdownInput = input;
-
-        // [격리 로직] 자동 입력란인 경우에만 전용 클래스 부여 및 강조 제거
-        const isAutoLoc = (wrapper.id === 'wrap-auto-loc');
-        if (isAutoLoc) {
-            localDropdown.classList.add('auto-loc-mode');
-        } else {
-            localDropdown.classList.remove('auto-loc-mode');
-        }
 
         wrapper.classList.add('active');
         wrapper.classList.remove('active-highlight');
@@ -8403,22 +8375,6 @@ function setupCustomDropdown(wrapper, changeCallback) {
 
         if (rawData.length === 1 && !isFreeType && input.hasAttribute('readonly')) { return; }
         renderGlobalDropdown(false);
-
-        // 보관 위치 자동 입력란용 확장 배경 높이 연동
-        if (wrapper.id === 'wrap-auto-loc') {
-            // 구조 변경으로 인해 렌더링 딜레이가 있을 수 있으므로 약간의 지연 유지 혹은 높이 강제 재계산
-            requestAnimationFrame(() => {
-                const itemsCount = localDropdown.querySelectorAll('li').length;
-                if (itemsCount > 0) {
-                    // 아이템 높이(약 33px) * 개수 + 패딩(상5+하15=20px). 최대 5개(약 185px)
-                    const itemHeight = 33;
-                    const padding = 20;
-                    // 5개 넘어가면 스크롤이 생기도록 함. 
-                    const calculatedHeight = Math.min(itemsCount * itemHeight + padding, 5.5 * itemHeight);
-                    wrapper.style.setProperty('--dropdown-height', calculatedHeight + 'px');
-                }
-            });
-        }
     };
 
     const renderGlobalDropdown = (useFilter = true) => {
@@ -8450,10 +8406,10 @@ function setupCustomDropdown(wrapper, changeCallback) {
         localDropdown.innerHTML = "";
         if (filtered.length === 0) {
             const li = document.createElement('li');
-            li.className = 'custom-option item-no-match';
+            li.className = isAutoLocation ? 'auto-location__option item-no-match color-text-002' : 'custom-option item-no-match';
 
             let noResultText = '존재하지 않는 데이터';
-            if (wrapper.id === 'wrap-auto-loc' ||
+            if (isAutoLocation ||
                 input.classList.contains('page-card-loc') ||
                 input.classList.contains('desktop-card-loc') ||
                 input.classList.contains('move-card-to') ||
@@ -8467,7 +8423,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
         } else {
             filtered.forEach((opt) => {
                 const li = document.createElement('li');
-                li.className = 'custom-option';
+                li.className = optionClass;
                 if (opt.text === input.value) li.classList.add('selected');
                 li.innerText = opt.text;
                 li.dataset.val = opt.val;
@@ -8480,29 +8436,18 @@ function setupCustomDropdown(wrapper, changeCallback) {
 
         // 위치 계산 및 Body Append (자동 입력란 격리 보정 포함)
         // 보관 위치 자동 입력란(Nesting)인 경우 JS에 의한 절대 위치/너비 설정을 건너뛰고 CSS에 맡김
-        if (wrapper.id !== 'wrap-auto-loc') {
+        if (!isAutoLocation) {
             positionDropdown(localDropdown, wrapper);
             if (!localDropdown.parentNode) document.body.appendChild(localDropdown);
         }
 
         localDropdown.classList.add('active');
-
-        // [2단계 지시] 드롭다운 내용이 바뀔 때마다 높이 실시간 재계산
-        if (wrapper.id === 'wrap-auto-loc') {
-            requestAnimationFrame(() => {
-                const itemsCount = localDropdown.querySelectorAll('li').length;
-                if (itemsCount > 0) {
-                    const itemHeight = 33;
-                    const padding = 20;
-                    const calculatedHeight = Math.min(itemsCount * itemHeight + padding, 5.5 * itemHeight);
-                    wrapper.style.setProperty('--dropdown-height', calculatedHeight + 'px');
-                } else {
-                    wrapper.style.setProperty('--dropdown-height', '0px');
-                }
-            });
-        }
     };
     const selectOption = (optData) => {
+        if (input.disabled) {
+            closeDropdown();
+            return;
+        }
         if (input.classList.contains('move-card-from') || input.classList.contains('discard-card-loc') || input.classList.contains('desktop-card-loc')) {
             input.value = optData.val;
         } else {
@@ -8511,7 +8456,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
 
         input.dataset.raw = optData.val;
         if (optData.max) { input.dataset.maxQty = optData.max; }
-        if (wrapper.id === 'wrap-auto-loc') {
+        if (isAutoLocation) {
             input.dataset.confirmed = "true";
             wrapper.classList.add('has-value');
             applyAutoLocationToTable(input.value);
@@ -8554,7 +8499,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
 
     input.addEventListener('focus', openDropdown); input.addEventListener('click', openDropdown);
     input.addEventListener('blur', () => {
-        if (input.closest('#mobile-entry-bottom-sheet')) { closeDropdown(); return; }
+        if (input.disabled || input.closest('#mobile-entry-bottom-sheet')) { closeDropdown(); return; }
         if (input.classList.contains('move-card-to') || input.classList.contains('desktop-card-to')) {
             const row = getRowFromInput(input);
             const fromInput = row ? row.querySelector('.move-card-from, .desktop-card-loc, [data-field="loc"]') : null;
@@ -8604,7 +8549,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
                 if (isRare) {
                     input.placeholder = "레어도 선택";
                 } else if (isIllust) {
-                    input.placeholder = "일러스트 선택";
+                    input.placeholder = "일러스트";
                 } else {
                     input.placeholder = "번호 재선택";
                 }
@@ -8617,6 +8562,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
         }
     });
     input.addEventListener('input', (e) => {
+        if (input.disabled) return;
         // [핵심] 타자 도중에 즉각 렌더링되는 현상 방지 (번호 입력란 전용)
         if (wrapper._changeCallback && !input.classList.contains('page-card-no')) {
             wrapper._changeCallback(input);
@@ -8626,7 +8572,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
         const rawData = JSON.parse(wrapper.dataset.options || "[]"); if (rawData.length === 1 && !isFreeType) { input.value = rawData[0].val; updateInputAutoWidth(input); return; } if (!wrapper.classList.contains('active')) wrapper.classList.add('active'); currentFocusIdx = -1; renderGlobalDropdown(true);
     });
     input.addEventListener('keydown', (e) => {
-        if (input.closest('#mobile-entry-bottom-sheet')) return;
+        if (input.disabled || input.closest('#mobile-entry-bottom-sheet')) return;
         if (!wrapper.classList.contains('active')) { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { openDropdown(); return; } }
         const items = localDropdown.querySelectorAll('li:not([style*="default"])');
         if (e.key === 'ArrowDown') { e.preventDefault(); currentFocusIdx++; if (currentFocusIdx >= items.length) currentFocusIdx = 0; updateHighlight(items, currentFocusIdx); }
@@ -8638,7 +8584,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
             if (currentFocusIdx > -1 && items[currentFocusIdx]) {
                 items[currentFocusIdx].click();
             } else {
-                if (wrapper.id === 'wrap-auto-loc' && input.value.trim().length > 0) {
+                if (isAutoLocation && input.value.trim().length > 0) {
                     input.dataset.confirmed = "true";
                     applyAutoLocationToTable(input.value.trim());
                     wrapper.classList.remove('error-highlight');
@@ -8650,11 +8596,10 @@ function setupCustomDropdown(wrapper, changeCallback) {
         else if (e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
-            if (wrapper.id === 'wrap-auto-loc') {
+            if (isAutoLocation) {
                 input.value = "";
                 input.dataset.confirmed = "false";
                 wrapper.classList.remove('has-value', 'active-highlight', 'error-highlight');
-                wrapper.style.setProperty('--dropdown-height', '0px');
                 if (wrapper._changeCallback) wrapper._changeCallback(input);
             }
             input.blur();
@@ -8690,7 +8635,7 @@ function setupCustomDropdown(wrapper, changeCallback) {
                     if (isRare) {
                         input.placeholder = "레어도 선택";
                     } else if (isIllust) {
-                        input.placeholder = "일러스트 선택";
+                        input.placeholder = "일러스트";
                     } else {
                         input.placeholder = "번호 재선택";
                     }
@@ -8738,7 +8683,7 @@ function updateMoveIllusts(row, matches) {
     const validIllusts = uniqueIllusts.filter(illust => checkMoveIllustAvailability(cardNo, illust, row));
     const options = validIllusts.map(i => ({ val: i, text: i }));
     illustWrap.dataset.options = JSON.stringify(options);
-    illustInp.removeAttribute('readonly'); illustWrap.classList.remove('no-option');
+    illustInp.readOnly = true; illustWrap.classList.remove('no-option');
     setupDropdownForField(illustInp, illustWrap);
     const currentVal = getIllustrationValue(illustInp); const isValid = options.some(o => o.val === currentVal);
     if (isValid) { handleMoveIllustChange(illustInp); } else { if (options.length === 0) { setIllustrationValue(illustInp, ""); illustWrap.classList.add('no-option'); } else if (options.length === 1) { illustWrap.classList.add('single-option'); setIllustrationValue(illustInp, options[0].val); handleMoveIllustChange(illustInp); } else { setIllustrationValue(illustInp, ""); illustWrap.classList.remove('single-option'); handleMoveIllustChange(illustInp); } }
@@ -8819,7 +8764,7 @@ function getAvailableQty(cardNo, illust, rare, loc, currentRow) {
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
     const modeSuffix = (UIStore.mode === 'discard') ? 'discard' : 'move';
     const containerId = isMobile ? `mobile-cards-list-${modeSuffix}` : `desktop-cards-list-${modeSuffix}`;
-    const cardClass = isMobile ? '.mobile-info-card' : '.desktop-info-card';
+    const cardClass = isMobile ? '.mobile-info-card[data-index]' : '.desktop-info-card[data-index]';
     
     const container = document.getElementById(containerId);
     if (container) {
@@ -8964,7 +8909,7 @@ async function finishMoveProcess() {
 
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
     const containerId = isMobile ? 'mobile-cards-list-move' : 'desktop-cards-list-move';
-    const cardClass = isMobile ? '.mobile-info-card' : '.desktop-info-card';
+    const cardClass = isMobile ? '.mobile-info-card[data-index]' : '.desktop-info-card[data-index]';
     const container = document.getElementById(containerId);
 
     if (container) {
@@ -9012,7 +8957,7 @@ async function submitMoveEntries() {
     if (isMobile) {
         const listContainer = document.getElementById('mobile-cards-list-move');
         if (listContainer) {
-            const cards = listContainer.querySelectorAll('.mobile-info-card');
+            const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
             cards.forEach(card => {
                 const data = getDesktopCardData(card);
                 const qtyInp = card.querySelector('[data-field="qty"]');
@@ -9033,7 +8978,7 @@ async function submitMoveEntries() {
     } else {
         const listContainer = document.getElementById('desktop-cards-list-move');
         if (listContainer) {
-            const cards = listContainer.querySelectorAll('.desktop-info-card');
+            const cards = listContainer.querySelectorAll('.desktop-info-card[data-index]');
             cards.forEach(card => {
                 const data = getDesktopCardData(card);
                 const qtyInp = card.querySelector('[data-field="qty"]');
@@ -9143,7 +9088,7 @@ async function submitBulkMoveEntries() {
 }
 
 function adjustStepQty(btn, delta) {
-    const container = btn.closest('.qty-stepper-container, .desktop-qty-wrapper');
+    const container = btn.closest('.desktop-qty-wrapper');
     const input = container ? container.querySelector('input[type="number"]') : null;
     if (!input || input.hasAttribute('readonly')) return;
 
@@ -9166,110 +9111,86 @@ function adjustStepQty(btn, delta) {
     input.dispatchEvent(event);
 }
 
-/**
- * URL 파라미터 기반 자동 검색 및 주입 기능을 수행합니다.
- */
-function handleAutomationParams(params) {
-    if (!params) return;
-    const { name, loc, code } = params;
+function renderDashboardStatList(panelId, entries, unit) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
 
-    // [보완] 이미 해당 파라미터로 검색이 완료되었거나 표가 제작된 상태라면 중복 실행 방지
-    if (UIStore.chipState.add === 'pack' && name) {
-        const packInput = document.getElementById('pack-search-input');
-        const isAlreadyProcessed = (PackDeckStore.isPackTableGenerated && PackDeckStore.currentPackInfo && PackDeckStore.currentPackInfo.packName === name);
-        // [버그 수정] 검색 결과만 있고 표는 없는 상태에서도 같은 팩이면 검색 재실행 방지
-        const isSearchAlreadyDone = (!PackDeckStore.isPackTableGenerated && PackDeckStore.currentPackInfo && PackDeckStore.currentPackInfo.packName === name && !loc);
-        if (packInput && !isAlreadyProcessed && !isSearchAlreadyDone) {
-            packInput.value = name;
-            // loc이 있을 때만 즉시 실행(표 제작까지), 없으면 검색만 수행
-            handlePackSearch(!!loc, name, loc);
-        }
-    } else if (UIStore.chipState.add === 'deck' && code) {
-        const deckInput = document.getElementById('deck-code-input');
-        const isSearchAlreadyDone = (PackDeckStore.currentDeckName === code && typeof PackDeckStore.isDeckTableGenerated !== 'undefined' && PackDeckStore.isDeckTableGenerated);
-        if (deckInput && !isSearchAlreadyDone) {
-            deckInput.value = code;
-            const clearBtn = document.getElementById('deck-clear-btn');
-            if (clearBtn) clearBtn.style.display = 'block';
-            // UI 렌더링 및 애니메이션 대기 후 검색 실행
-            setTimeout(() => {
-                handleDeckSearch();
-            }, 300);
-        }
+    const content = panel.querySelector('[data-stat-content]');
+    const empty = entries.length === 0;
+    panel.querySelector('.loading-spinner-small').hidden = true;
+    content.hidden = false;
+    content.classList.toggle('ui-stat-empty', empty);
+    content.classList.toggle('color-text-002', empty);
+    if (empty) {
+        content.textContent = '데이터가 없습니다.';
+        return;
     }
+
+    const rows = document.createDocumentFragment();
+    const extra = document.createElement('div');
+    extra.id = `${panelId}-extra`;
+    extra.hidden = true;
+    for (const [index, [label, count]] of entries.entries()) {
+        const row = document.createElement('div');
+        row.className = 'stat-item';
+        const name = document.createElement('span');
+        name.className = 'stat-name color-text-001';
+        name.textContent = label;
+        const badge = document.createElement('span');
+        badge.className = 'stat-cnt ui-chip color-tint-theme shape-capsule';
+        badge.textContent = count + unit;
+        row.append(name, badge);
+        (index < 3 ? rows : extra).append(row);
+    }
+
+    if (extra.childElementCount) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'stat-more-btn ui-button color-theme-001';
+        button.setAttribute('aria-controls', extra.id);
+        button.setAttribute('aria-expanded', 'false');
+
+        const label = document.createElement('span');
+        label.textContent = '더보기';
+        const icon = document.createElement('i');
+        icon.className = 'material-icons';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = 'expand_more';
+        button.append(label, icon);
+        button.addEventListener('click', () => {
+            const expanded = extra.hidden;
+            extra.hidden = !expanded;
+            button.setAttribute('aria-expanded', String(expanded));
+            label.textContent = expanded ? '접기' : '더보기';
+        });
+        rows.append(extra, button);
+    }
+    content.replaceChildren(rows);
 }
 
 /**
  * 보유 현황 대시보드 통계를 업데이트합니다.
  */
 function updateDashboardStats() {
-    if (UserStore.user && UserStore.inventorySyncStatus !== 'ready') { setInventorySyncStatus(UserStore.inventorySyncStatus); return; }
-
-    // 1. 기본 통계 (수량, 종류)
-    const totalCount = cardCacheInstance.getAmount();
-    const kindCount = cardCacheInstance.getOwnedNumbers().length;
+    if (UserStore.user && UserStore.inventorySyncStatus !== 'ready') {
+        setInventorySyncStatus(UserStore.inventorySyncStatus);
+        return;
+    }
 
     const invTotalElem = document.getElementById('inv-total-cards');
     const invKindElem = document.getElementById('inv-kind-cards');
-    if (invTotalElem) invTotalElem.innerText = totalCount;
-    if (invKindElem) invKindElem.innerText = kindCount;
+    if (invTotalElem) invTotalElem.textContent = cardCacheInstance.getAmount();
+    if (invKindElem) invKindElem.textContent = cardCacheInstance.getOwnedNumbers().length;
 
-    // 2. 상세 통계 (위치별, 레어도별)
-    const locations = cardCacheInstance.getLocationsMap();
-    const rarities = cardCacheInstance.getRaritiesMap();
+    const locations = Object.entries(cardCacheInstance.getLocationsMap())
+        .sort((a, b) => b[1].length - a[1].length)
+        .map(([label, numbers]) => [label, numbers.length]);
+    const rarities = Object.entries(cardCacheInstance.getRaritiesMap())
+        .sort((a, b) => compareRarity(b[0], a[0]))
+        .map(([key, quantity]) => [getLocalizedRarity(key), quantity]);
 
-    const locStats = document.getElementById('inv-location-stats');
-    const rareStats = document.getElementById('inv-rarity-stats');
-
-    if (locStats) {
-        let locHtml = "";
-        const locKeys = Object.keys(locations).sort((a, b) => locations[b].length - locations[a].length);
-        if (locKeys.length === 0) {
-            locHtml = '<div class="ui-stat-empty color-text-002">데이터가 없습니다.</div>';
-        } else {
-            locKeys.forEach((loc, idx) => {
-                const count = locations[loc].length;
-                const hiddenClass = idx >= 3 ? "is-hidden" : "";
-                locHtml += `<div class="stat-item ${hiddenClass}"><span class="stat-name color-text-001">${escapeHTML(loc)}</span><span class="stat-cnt ui-chip color-tint-theme shape-capsule">${count}종</span></div>`;
-            });
-            if (locKeys.length > 3) {
-                locHtml += `<button class="stat-more-btn ui-button color-theme-001" onclick="toggleStatSection(this)"><span>더보기</span><i class="material-icons">expand_more</i></button>`;
-            }
-        }
-        locStats.innerHTML = locHtml;
-    }
-
-    if (rareStats) {
-        let rareHtml = "";
-        const rareKeys = Object.keys(rarities).sort((a, b) => compareRarity(b, a));
-        if (rareKeys.length === 0) {
-            rareHtml = '<div class="ui-stat-empty color-text-002">데이터가 없습니다.</div>';
-        } else {
-            rareKeys.forEach((rare, idx) => {
-                const count = rarities[rare];
-                const hiddenClass = idx >= 3 ? "is-hidden" : "";
-                rareHtml += `<div class="stat-item ${hiddenClass}"><span class="stat-name color-text-001">${escapeHTML(getLocalizedRarity(rare))}</span><span class="stat-cnt ui-chip color-tint-theme shape-capsule">${count}장</span></div>`;
-            });
-            if (rareKeys.length > 3) {
-                rareHtml += `<button class="stat-more-btn ui-button color-theme-001" onclick="toggleStatSection(this)"><span>더보기</span><i class="material-icons">expand_more</i></button>`;
-            }
-        }
-        rareStats.innerHTML = rareHtml;
-    }
-
-    // [삭제] 수동 높이 제어 로직 (CSS Grid 애니메이션으로 대체)
-    /*
-    if (UIStore.mode === 'inventory' && UIStore.inventoryMode === 'dashboard') {
-        const wrapper = document.getElementById('inventory-mode-forms');
-        const targetEl = document.getElementById('form-inventory-dashboard');
-        if (wrapper && targetEl) {
-            requestAnimationFrame(() => {
-                const height = targetEl.scrollHeight + 5;
-                wrapper.style.height = height + 'px';
-            });
-        }
-    }
-    */
+    renderDashboardStatList('inv-location-stats', locations, '종');
+    renderDashboardStatList('inv-rarity-stats', rarities, '장');
 }
 
 /**
@@ -9333,95 +9254,71 @@ function updateInventoryUrl() {
 
 
 
-// Initialize Search Button Blur Listeners
-function initSearchButtonBlurListeners() {
-    // [추가] 검색 버튼 클릭 시 포커스 자동 해제 (정적 요소)
-    const buttonsToBlur = [
-        'pack-search-btn', 'deck-search-btn'
-    ];
-    buttonsToBlur.forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) {
-            btn.addEventListener('click', () => btn.blur());
-        }
-    });
-
-    // [이벤트 위임] 공통 하단 푸터 내 동적 생성 버튼들의 포커스 해제
-    const footer = document.getElementById('manage-common-footer');
-    if (footer) {
-        footer.addEventListener('click', (e) => {
-            if (e.target && e.target.tagName === 'BUTTON') {
-                e.target.blur();
-            }
-        });
-    }
-}
-
 // -----------------------------------------------------------------------------
 // 팩 검색 자동 완성 로직
 // -----------------------------------------------------------------------------
-function setupPackNameAutocomplete(wrapper) {
-    const input = wrapper.querySelector('input');
+function filterPackNameMatches(names, value) {
+    const query = value.normalize('NFC').replace(/\s+/g, '').toLowerCase();
+    return query ? names.filter(name => name && typeof name === 'string'
+        && Hangul.search(name.normalize('NFC').replace(/\s+/g, '').toLowerCase(), query) !== -1) : names;
+}
+
+function getLocalPackNameMatches(value) {
+    return filterPackNameMatches(getAllPackNames(), value);
+}
+
+function setupPackNameAutocomplete(input, suggestions, onSelect) {
     let currentFocusIdx = -1;
-    let pendingBlurFn = null;
-    let activeDropdownInput = null;
     let suggestionRequest;
+    let lastSuggestions = [];
+    let suggestionsPending = false;
 
-    let localDropdown = wrapper._dropdown;
-    if (!localDropdown) {
-        localDropdown = document.createElement('ul');
-        localDropdown.className = 'global-dropdown custom-options';
-        document.body.appendChild(localDropdown);
-        wrapper._dropdown = localDropdown;
-    }
-
-    const closeDropdown = () => {
-        fetchSuggestions.cancel();
-        suggestionRequest?.abort();
-        wrapper.classList.remove('active');
-        input.classList.remove('active');
-        localDropdown.classList.remove('active');
-        if (activeDropdownInput === input) {
-            currentFocusIdx = -1;
-            activeDropdownInput = null;
-        }
+    const hideSuggestions = () => {
+        suggestions.hidden = true;
+        currentFocusIdx = -1;
     };
 
-    const renderDropdown = (filtered, emptyMessage = '팩 이름 확인') => {
+    const closeSuggestions = () => {
+        fetchSuggestions.cancel();
+        suggestionRequest?.abort();
+        lastSuggestions = [];
+        suggestionsPending = false;
+        hideSuggestions();
+    };
+
+    const selectPack = name => {
+        input.value = name;
+        onSelect();
+    };
+
+    const renderSuggestions = (filtered, emptyMessage = '팩 이름 확인') => {
         currentFocusIdx = -1;
-        wrapper.classList.add('active');
-        input.classList.add('active');
-        localDropdown.classList.add('active');
-        localDropdown.innerHTML = "";
+        suggestions.replaceChildren();
 
         if (filtered.length === 0) {
             const li = document.createElement('li');
-            li.className = 'custom-option item-no-match';
-            li.innerText = emptyMessage;
-            localDropdown.appendChild(li);
+            li.className = 'color-text-002';
+            li.textContent = emptyMessage;
+            suggestions.append(li);
         } else {
             filtered.slice(0, 5).forEach(name => {
                 const li = document.createElement('li');
-                li.className = 'custom-option';
-                li.innerText = name;
-                li.onmousedown = (e) => e.preventDefault();
-                li.onclick = () => {
-                    input.value = name;
-                    closeDropdown();
-                    const clearBtn = document.getElementById('pack-clear-btn');
-                    if (clearBtn) clearBtn.style.display = 'block';
-                    handlePackSearch(false);
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.tabIndex = -1;
+                chip.className = 'ui-chip ui-chip--compact ui-chip--interactive color-type005 shape-capsule';
+                chip.textContent = name;
+                chip.onmousedown = event => event.preventDefault();
+                chip.onclick = () => {
+                    selectPack(name);
                 };
-                localDropdown.appendChild(li);
+                li.append(chip);
+                suggestions.append(li);
             });
         }
 
-        const rect = input.getBoundingClientRect();
-        localDropdown.style.top = (rect.bottom + window.scrollY) + 'px';
-        localDropdown.style.left = (rect.left + window.scrollX) + 'px';
-        localDropdown.style.width = rect.width + 'px';
-
-        localDropdown.classList.add('active');
+        suggestions.hidden = false;
+        suggestions.scrollLeft = 0;
     };
 
     const fetchSuggestions = debounce(async value => {
@@ -9430,65 +9327,67 @@ function setupPackNameAutocomplete(wrapper) {
         const isCurrent = () => !request.signal.aborted && document.activeElement === input && input.value === value;
         try {
             const names = await AppBackend.packSuggestions(value, request.signal);
-            if (isCurrent()) renderDropdown(names);
+            if (!isCurrent()) return;
+            lastSuggestions = names.slice(0, 5);
+            suggestionsPending = false;
+            renderSuggestions(lastSuggestions);
         } catch (_) {
-            if (isCurrent()) renderDropdown([], '팩 추천을 불러오지 못했습니다.');
+            if (!isCurrent()) return;
+            lastSuggestions = [];
+            suggestionsPending = false;
+            renderSuggestions([], '팩 추천을 불러오지 못했습니다.');
         }
-    }, 150);
+    }, 100);
 
     input.addEventListener('input', () => {
-        activeDropdownInput = input;
         if (globalThis.AppBackend?.packSuggestions) {
-            closeDropdown();
-            if (input.value.trim()) fetchSuggestions(input.value);
+            if (!input.value.trim()) {
+                closeSuggestions();
+                return;
+            }
+            suggestionRequest?.abort();
+            suggestionsPending = true;
+            const matches = filterPackNameMatches(lastSuggestions, input.value);
+            if (matches.length) renderSuggestions(matches);
+            else hideSuggestions();
+            fetchSuggestions(input.value);
             return;
         }
         const query = input.value.replace(/\s+/g, '').toLowerCase();
         if (!query) {
-            closeDropdown();
+            closeSuggestions();
             return;
         }
 
-        const allPackNames = getAllPackNames();
-        const matches = allPackNames.filter(name => {
-            if (!name || typeof name !== 'string') return false;
-            return Hangul.search(name.replace(/\s+/g, '').toLowerCase(), query) !== -1;
-        });
-
-        renderDropdown(matches);
+        renderSuggestions(getLocalPackNameMatches(query));
     });
 
     input.addEventListener('focus', () => {
-        activeDropdownInput = input;
+        if (!input.value.trim()) return;
         if (globalThis.AppBackend?.packSuggestions) {
             fetchSuggestions(input.value);
             return;
         }
-        if (pendingBlurFn && activeDropdownInput === input) { clearTimeout(pendingBlurFn); pendingBlurFn = null; }
-        const allPackNames = getAllPackNames();
-
-        const query = input.value.replace(/\s+/g, '').toLowerCase();
-        let matches = [];
-        if (query) {
-            matches = allPackNames.filter(name => {
-                if (!name || typeof name !== 'string') return false;
-                return Hangul.search(name.replace(/\s+/g, '').toLowerCase(), query) !== -1;
-            });
-        } else {
-            matches = allPackNames;
-        }
-        renderDropdown(matches);
+        renderSuggestions(getLocalPackNameMatches(input.value));
     });
 
-    input.addEventListener('blur', () => { closeDropdown(); });
+    input.addEventListener('blur', event => {
+        if (!suggestions.contains(event.relatedTarget)) closeSuggestions();
+    });
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            closeDropdown();
+            const wasOpen = !suggestions.hidden;
+            closeSuggestions();
+            if (wasOpen) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
             return;
         }
-        if (!localDropdown.classList.contains('active')) return;
+        if (suggestions.hidden) return;
 
-        const items = localDropdown.querySelectorAll('li');
+        const items = suggestions.querySelectorAll('button');
+        if (!items.length) return;
         if (e.key === 'ArrowDown') {
             e.preventDefault();
             currentFocusIdx++;
@@ -9501,1175 +9400,37 @@ function setupPackNameAutocomplete(wrapper) {
             updateHighlight(items, currentFocusIdx);
         } else if (e.key === 'Enter') {
             if (e.isComposing) return;
+            if (suggestionsPending && currentFocusIdx === -1) {
+                closeSuggestions();
+                return;
+            }
             e.preventDefault();
             if (currentFocusIdx >= 0 && currentFocusIdx < items.length) {
                 items[currentFocusIdx].click();
-            } else if (items.length > 0 && !items[0].classList.contains('item-no-match')) {
-                items[0].click();
             } else {
-                input.blur();
+                items[0].click();
             }
         } else if (e.key === 'Tab') {
             if (e.isComposing) return;
             let selectedVal = null;
             if (currentFocusIdx > -1 && items[currentFocusIdx]) {
                 selectedVal = items[currentFocusIdx].innerText;
-            } else if (items.length > 0 && !items[0].classList.contains('item-no-match')) {
+            } else if (!suggestionsPending && items.length > 0) {
                 selectedVal = items[0].innerText;
             }
-            if (selectedVal) {
-                input.value = selectedVal;
-                const clearBtn = document.getElementById('pack-clear-btn');
-                if (clearBtn) clearBtn.style.display = 'block';
-                handlePackSearch(false);
-            }
-            closeDropdown();
+            if (selectedVal) selectPack(selectedVal);
+            closeSuggestions();
         }
     });
 
     function updateHighlight(items, index) {
-        items.forEach(item => item.classList.remove('highlighted'));
+        items.forEach(item => item.classList.remove('selected'));
         if (index >= 0 && index < items.length) {
-            items[index].classList.add('highlighted');
+            items[index].classList.add('selected');
+            items[index].scrollIntoView({ block: 'nearest', inline: 'nearest' });
         }
     }
-}
-
-// -----------------------------------------------------------------------------
-// 팩 검색 및 등록 로직
-// -----------------------------------------------------------------------------
-function initPackSearch() {
-    const input = document.getElementById('pack-search-input');
-    const btn = document.getElementById('pack-search-btn');
-    const clearBtn = document.getElementById('pack-clear-btn');
-
-    const deckInput = document.getElementById('deck-code-input');
-    const deckBtn = document.getElementById('deck-search-btn');
-    const deckClearBtn = document.getElementById('deck-clear-btn');
-
-    if (input && btn && !input._isInputBound) {
-        input._isInputBound = true;
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.isComposing) {
-                const dropdown = input.closest('#pack-search-content')?._dropdown;
-                if (!dropdown?.matches('.active') || !dropdown.querySelector('.custom-option:not(.item-no-match)')) {
-                    handlePackSearch(false);
-                }
-            }
-            if (e.key === 'Escape') resetPackMode(true);
-        });
-        input.addEventListener('input', () => {
-            if (clearBtn) clearBtn.style.display = input.value ? 'block' : 'none';
-        });
-        btn.addEventListener('click', () => handlePackSearch(false));
-        if (clearBtn) {
-            clearBtn.addEventListener('click', () => resetPackMode(true));
-        }
-    }
-
-    if (deckInput && deckBtn && !deckInput._isInputBound) {
-        deckInput._isInputBound = true;
-        deckInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') handleDeckSearch();
-            if (e.key === 'Escape') resetDeckMode(true);
-        });
-        deckInput.addEventListener('input', () => {
-            if (deckClearBtn) deckClearBtn.style.display = deckInput.value ? 'block' : 'none';
-        });
-        deckBtn.addEventListener('click', () => handleDeckSearch());
-        if (deckClearBtn) {
-            deckClearBtn.addEventListener('click', () => resetDeckMode(true));
-        }
-    }
-
-
-
-    const packWrapper = document.getElementById('pack-search-content');
-    if (packWrapper) {
-        setupPackNameAutocomplete(packWrapper);
-    }
-
-    // 초기 상태 설정
-    if (UIStore.chipState.add === 'general') {
-        resetPackMode();
-        resetDeckMode();
-    }
-}
-
-
-
-function togglePackTable() {
-    const genBtn = document.getElementById('manage-gen-btn');
-    if (genBtn) genBtn.blur();
-
-    if (PackDeckStore.isPackTableGenerated) {
-        resetPackMode();
-    } else {
-        if (PackDeckStore.currentPackInfo) {
-            // 복수 검색기 결과를 선택한 경우
-            if (PackDeckStore.currentPackInfo.isPendingSelection) {
-                const selectedRadio = document.querySelector('input[name="packLangSelect"]:checked');
-                if (selectedRadio) {
-                    PackDeckStore.currentPackInfo.packId = selectedRadio.dataset.url;
-                    PackDeckStore.currentPackInfo.validLocale = selectedRadio.value;
-
-                    const totalFromRadio = parseInt(selectedRadio.dataset.total) || 100;
-                    PackDeckStore.currentPackInfo.totalCards = totalFromRadio; // 선택한 언어 버전의 총 카드 수량 즉시 동기화
-                    generatePackRowsNew(totalFromRadio, PackDeckStore.currentPackInfo.packName, PackDeckStore.currentPackInfo.packId);
-
-                    // 필요 시 백그라운드 크롤링 병행 (데이터 보강용)
-                    const count = PackDeckStore.packCardResults.filter(c => c).length;
-                    showLoading(true, `카드 검색 중<br>(${count}/${totalFromRadio})<br><a id="cancel-gen-link" class="link-style-btn">제작 중단</a>`);
-                    startPackCrawlNew(PackDeckStore.currentPackInfo.packId, PackDeckStore.currentPackInfo.validLocale, 0);
-                }
-            } else {
-                generatePackRowsNew(PackDeckStore.currentPackInfo.totalCards, PackDeckStore.currentPackInfo.packName, PackDeckStore.currentPackInfo.packId);
-                if (!PackDeckStore.isPackCrawlDone && !_packCrawlNewRunning) {
-                    startPackCrawlNew(PackDeckStore.currentPackInfo.packId, PackDeckStore.currentPackInfo.validLocale);
-                }
-            }
-        } else {
-            handlePackSearch();
-        }
-    }
-}
-
-function resetDeckMode(clearInput = false) {
-    deckSearchRevision++;
-    const wasTableVisible = PackDeckStore.isDeckTableGenerated;
-    PackDeckStore.isDeckTableGenerated = false;
-
-    // 하단 컨테이너 축소 애니메이션 트리거
-    const tableContainer = document.getElementById('manage-table-container');
-    if (tableContainer) {
-        setModePanelActive(tableContainer, false);
-    }
-
-    if (clearInput) {
-        const input = document.getElementById('deck-code-input');
-        if (input) input.value = '';
-        const clearBtn = document.getElementById('deck-clear-btn');
-        if (clearBtn) clearBtn.style.display = 'none';
-
-        PackDeckStore.currentDeckName = "";
-        PackDeckStore.currentDeckDetailUrl = null;
-        deckCardsPromise = null;
-    }
-
-    // 검색 박스 복구
-    const searchBox = document.getElementById('deck-search-box');
-    const searchContent = document.getElementById('deck-search-content');
-
-    if (searchBox) {
-        if (wasTableVisible) {
-            // [애니메이션 모드] 표가 제거되면서 검색창이 나타날 때
-            if (searchContent) {
-                searchContent.style.transition = 'none';
-                searchContent.style.display = '';
-                searchContent.style.opacity = '1';
-                searchContent.style.maxHeight = 'none';
-                void searchContent.offsetHeight;
-            }
-
-            searchBox.style.display = 'flex';
-            searchBox.style.opacity = '0';
-            searchBox.style.margin = '0';
-            searchBox.style.padding = '0';
-            searchBox.style.borderWidth = '0';
-            searchBox.style.maxHeight = '0';
-            searchBox.style.overflow = 'hidden';
-
-            void searchBox.offsetHeight;
-
-            searchBox.style.opacity = '1';
-            searchBox.style.margin = '0 0 12px 0';
-            searchBox.style.padding = '20px';
-            searchBox.style.borderWidth = '1px';
-            searchBox.style.maxHeight = '300px';
-
-            setTimeout(() => {
-                if (!PackDeckStore.isDeckTableGenerated) {
-                    searchBox.style.maxHeight = '';
-                    searchBox.style.overflow = '';
-                    if (searchContent) searchContent.style.transition = '';
-                }
-            }, 300);
-        } else {
-            // [즉시 모드] 단순히 입력값만 초기화할 때 (검색창이 이미 보이고 있음)
-            searchBox.style.display = 'flex';
-            searchBox.style.opacity = '1';
-            searchBox.style.margin = '0 0 12px 0';
-            searchBox.style.padding = '20px';
-            searchBox.style.borderWidth = '1px';
-            searchBox.style.maxHeight = '';
-            searchBox.style.overflow = '';
-            if (searchContent) {
-                searchContent.style.display = '';
-                searchContent.style.opacity = '1';
-                searchContent.style.maxHeight = '';
-            }
-        }
-    }
-
-    // 버튼 및 텍스트 초기화
-    // 공통 푸터 버튼 상태 동기화 (덱 모드인 경우에만 적용)
-    if (typeof updateManageFooter === 'function' && addSubMode === 'deck') {
-        updateManageFooter('add', 'deck');
-    }
-
-    if (clearInput) {
-        const statusMsg = document.getElementById('deck-status-msg');
-        if (statusMsg) {
-            statusMsg.classList.remove('status-error', 'status-success');
-            statusMsg.innerHTML = `<span style="font-size: 0.85rem; font-weight: 500; color: var(--text-001); line-height: 1.4; text-align: center;">덱 코드를 입력하여 뉴런에 등록된 덱 리스트를 가져옵니다.<br><a href="#" class="fna-link" style="color: var(--theme-000); text-decoration: underline;">덱 코드는 어떻게 확인하나요?</a></span>`;
-        }
-    }
-
-    // 애니메이션 완료 시점에 맞춰 데이터 및 테이블 영역 비우기 (CSS Grid 애니메이션 0.4초 대기)
-    setTimeout(() => {
-        if (PackDeckStore.isDeckTableGenerated) return;
-        const tableArea = document.getElementById('deck-table-area');
-        if (tableArea) tableArea.style.display = 'none';
-    }, 400);
-}
-
-function handleDeckSearch() {
-    const input = document.getElementById('deck-code-input');
-    const code = input ? input.value.trim() : "";
-    const genBtn = document.getElementById('manage-gen-btn');
-    const statusMsg = document.getElementById('deck-status-msg');
-    const revision = ++deckSearchRevision;
-    const current = () => revision === deckSearchRevision && input?.value.trim() === code;
-    deckCardsPromise = null;
-    PackDeckStore.currentDeckDetailUrl = null;
-    PackDeckStore.currentDeckName = '';
-
-    if (!code) {
-        if (statusMsg) {
-            statusMsg.style.display = 'flex';
-            statusMsg.style.flexDirection = 'row';
-            statusMsg.style.alignItems = 'center';
-            statusMsg.style.justifyContent = 'center';
-            statusMsg.style.marginTop = '4px';
-            statusMsg.innerHTML = `<span style="font-size: 0.85rem; font-weight: 500; color: var(--error-red);">덱 코드를 입력하세요.</span>`;
-        }
-        if (genBtn) genBtn.classList.add('disabled');
-        return;
-    }
-
-    // 로딩 상태
-    if (statusMsg) {
-        statusMsg.style.display = 'flex';
-        statusMsg.style.flexDirection = 'row';
-        statusMsg.style.alignItems = 'center';
-        statusMsg.style.justifyContent = 'center';
-        statusMsg.style.marginTop = '4px';
-        statusMsg.innerHTML = `<span style="font-size: 0.85rem; font-weight: 500; color: var(--text-001);">확인 중...</span>`;
-    }
-    if (genBtn) genBtn.classList.add('disabled');
-
-
-    callApi('searchDeck', { deckCode: code, locale: UIStore.currentRegion }).then(res => {
-        if (!current()) return;
-        if (statusMsg) statusMsg.classList.remove('status-error', 'status-success');
-
-        if (!res || res.isError) {
-            const msg = (res && res.message) ? res.message : "서버 통신 오류";
-            if (statusMsg) {
-                statusMsg.classList.add('status-error');
-                statusMsg.innerHTML = `<span style="font-size: 0.85rem; font-weight: 500; text-align: center;">${escapeHTML(msg)}</span>`;
-            }
-            if (genBtn) genBtn.classList.add('disabled');
-        } else {
-            if (statusMsg) {
-                statusMsg.classList.add('status-success');
-                statusMsg.innerHTML = `<span style="font-size: 0.85rem; font-weight: 500; line-height: 1.6; text-align: center;">${escapeHTML(res.deckName)}<br>${escapeHTML(res.updatedAt)}</span>`;
-            }
-            if (genBtn) genBtn.classList.remove('disabled');
-
-            // 전역 변수에 저장
-            PackDeckStore.currentDeckDetailUrl = res.detailUrl;
-            PackDeckStore.currentDeckName = res.deckName;
-            updateDeckUrl();
-
-            // 미리 상세 데이터 크롤링을 백그라운드로 실행
-            deckCardsPromise = callApi('getDeckCards', { url: res.detailUrl });
-            deckCardsPromise.catch(() => {});
-
-            // 보관위치 자동입력
-            if (PackDeckStore.currentDeckName) {
-                const autoLocInput = document.getElementById('auto-location-input');
-                if (autoLocInput) {
-                    autoLocInput.focus();
-                    autoLocInput.value = PackDeckStore.currentDeckName;
-                    if (typeof M !== 'undefined' && M.updateTextFields) M.updateTextFields();
-                    autoLocInput.dispatchEvent(new Event('input', { bubbles: true }));
-
-                    setTimeout(() => {
-                        const enterEvent = new KeyboardEvent('keydown', {
-                            key: 'Enter',
-                            code: 'Enter',
-                            keyCode: 13,
-                            which: 13,
-                            bubbles: true,
-                            cancelable: true
-                        });
-                        autoLocInput.dispatchEvent(enterEvent);
-                        autoLocInput.blur();
-                    }, 50);
-                }
-            }
-        }
-
-    }).catch(() => {
-        if (!current()) return;
-        if (statusMsg) {
-            statusMsg.classList.remove('status-error', 'status-success');
-            statusMsg.classList.add('status-error');
-            statusMsg.innerHTML = `<span style="font-size: 0.85rem; font-weight: 500; text-align: center;">서버 통신 오류</span>`;
-        }
-        if (genBtn) genBtn.classList.add('disabled');
-
-    });
-}
-
-function toggleDeckTable() {
-    const genBtn = document.getElementById('manage-gen-btn');
-    if (genBtn) genBtn.blur();
-
-    if (PackDeckStore.isDeckTableGenerated) {
-        resetDeckMode();
-    } else {
-        generateDeckRowsNew();
-    }
-}
-
-async function generateDeckRowsNew() {
-    const code = document.getElementById('deck-code-input').value.trim();
-    if (!code) return;
-    const revision = deckSearchRevision;
-
-    showLoading(true, "덱 목록을 생성하는 중...");
-
-    // UI 준비
-    const searchBox = document.getElementById('deck-search-box');
-    const tableArea = document.getElementById('deck-table-area');
-    const isMobile = document.documentElement.classList.contains('is-mobile-device');
-    const containerId = isMobile ? 'mobile-cards-list-deck' : 'desktop-cards-list-deck';
-    const container = document.getElementById(containerId);
-    const genBtn = document.getElementById('manage-gen-btn');
-
-    if (searchBox) {
-        searchBox.style.maxHeight = searchBox.scrollHeight + 'px';
-        void searchBox.offsetHeight;
-        searchBox.style.maxHeight = '0';
-        searchBox.style.opacity = '0';
-        searchBox.style.margin = '0';
-        searchBox.style.padding = '0';
-        searchBox.style.borderWidth = '0';
-        searchBox.style.overflow = 'hidden';
-
-        setTimeout(() => {
-            if (PackDeckStore.isDeckTableGenerated) {
-                searchBox.style.display = 'none';
-            }
-        }, 300);
-    }
-
-    if (tableArea) tableArea.style.display = '';
-
-    // 하단 컨테이너 확장 애니메이션 트리거
-    const tableContainer = document.getElementById('manage-table-container');
-    if (tableContainer) {
-        setModePanelActive(tableContainer, true);
-    }
-
-    if (container) {
-        container.innerHTML = '';
-        if (genBtn) genBtn.classList.add('disabled');
-
-        // 상세 데이터 불러오기
-        try {
-            const res = deckCardsPromise ? await deckCardsPromise : await callApi('getDeckCards', { url: PackDeckStore.currentDeckDetailUrl });
-            if (revision !== deckSearchRevision) return;
-            if (res && res.success && res.cards) {
-                const cards = res.cards;
-                const resolvedCids = await globalThis.AppBackend?.resolveDeckCardIds?.(cards.map(card => card.name))
-                    .catch(() => undefined);
-                if (revision !== deckSearchRevision) return;
-                const promises = [];
-                cards.forEach(card => {
-                    const row = manageAddEntry(null, null, 'deck');
-                    const nameInput = row.querySelector('[data-field="name"], .page-card-name, .desktop-card-name');
-                    if (nameInput) {
-                        nameInput.value = card.name;
-                        if (typeof fetchCardByName === 'function') {
-                            const cid = resolvedCids?.get(nameInput.value.normalize('NFC').trim());
-                            promises.push(fetchCardByName(nameInput, true, cid, Boolean(resolvedCids && !cid)));
-                        }
-                    }
-                    const qtyInput = row.querySelector('[data-field="qty"], .page-card-qty, .desktop-card-qty');
-                    if (qtyInput) {
-                        qtyInput.value = 1;
-                    }
-                });
-
-                if (promises.length > 0) {
-                    await Promise.all(promises);
-                }
-                if (revision !== deckSearchRevision) return;
-            } else {
-                addMultipleRows(null); // 실패 시 1개 빈 카드 슬롯
-                showToast("덱 상세 정보를 불러오지 못했습니다.", "rounded red");
-            }
-        } catch (e) {
-            if (revision !== deckSearchRevision) return;
-            addMultipleRows(null); // 실패 시 1개 빈 카드 슬롯
-            showToast("덱 상세 정보를 불러오지 못했습니다.", "rounded red");
-        } finally {
-            if (revision === deckSearchRevision) {
-                if (genBtn) genBtn.classList.remove('disabled');
-                showLoading(false);
-            }
-        }
-    }
-
-    PackDeckStore.isDeckTableGenerated = true;
-
-    // 공통 푸터 버튼 상태 동기화 (덱 코드도 내부에서 처리됨)
-    if (typeof updateManageFooter === 'function') {
-        updateManageFooter('add', 'deck');
-    }
-    if (isMobile) {
-        renderMobileCards();
-    }
-}
-
-function resetPackMode(clearInput = false) {
-    const wasTableVisible = PackDeckStore.isPackTableGenerated;
-    PackDeckStore.isPackTableGenerated = false;
-    stopPackCrawlNew();       // 진행 중인 크롤링 중단
-    PackDeckStore.packCardResults = [];     // 누적 결과 초기화
-    PackDeckStore.isPackCrawlDone = false;  // 완료 플래그 초기화
-    _currentDisplayCrawlCount = 0; // 애니메이션 수치 초기화
-    if (_crawlIntervalId) {
-        clearInterval(_crawlIntervalId);
-        _crawlIntervalId = null;
-    }
-
-    // 하단 컨테이너 축소 애니메이션 트리거
-    const tableContainer = document.getElementById('manage-table-container');
-    if (tableContainer) {
-        setModePanelActive(tableContainer, false);
-    }
-
-    if (clearInput) {
-        const input = document.getElementById('pack-search-input');
-        if (input) input.value = '';
-        const clearBtn = document.getElementById('pack-clear-btn');
-        if (clearBtn) clearBtn.style.display = 'none';
-
-        PackDeckStore.currentPackInfo = null;
-
-        const statusMsg = document.getElementById('pack-status-msg');
-        if (statusMsg) {
-            statusMsg.classList.remove('status-error', 'status-success');
-            statusMsg.innerHTML = '';
-        }
-    }
-
-    // 검색 박스 및 내용물 복구
-    const searchBox = document.getElementById('pack-search-box');
-    const searchContent = document.getElementById('pack-search-content');
-
-    if (searchBox) {
-        if (wasTableVisible) {
-            // [애니메이션 모드] 표가 제거되면서 검색창이 나타날 때
-            if (searchContent) {
-                searchContent.style.transition = 'none';
-                searchContent.style.display = '';
-                searchContent.style.opacity = '1';
-                searchContent.style.maxHeight = 'none';
-                searchContent.style.margin = '';
-                void searchContent.offsetHeight;
-            }
-
-            searchBox.style.display = 'flex';
-            searchBox.style.opacity = '0';
-            searchBox.style.margin = '0';
-            searchBox.style.padding = '0';
-            searchBox.style.borderWidth = '0';
-            searchBox.style.maxHeight = '0';
-            searchBox.style.overflow = 'hidden';
-
-            void searchBox.offsetHeight;
-
-            searchBox.style.opacity = '1';
-            searchBox.style.margin = '0 0 12px 0';
-            searchBox.style.padding = '20px';
-            searchBox.style.borderWidth = '1px';
-            searchBox.style.maxHeight = '300px';
-
-            setTimeout(() => {
-                if (!PackDeckStore.isPackTableGenerated) {
-                    searchBox.style.maxHeight = '';
-                    searchBox.style.overflow = '';
-                    if (searchContent) searchContent.style.transition = '';
-                }
-            }, 300);
-        } else {
-            // [즉시 모드] 단순히 입력값만 초기화할 때
-            searchBox.style.display = 'flex';
-            searchBox.style.opacity = '1';
-            searchBox.style.margin = '0 0 12px 0';
-            searchBox.style.padding = '20px';
-            searchBox.style.borderWidth = '1px';
-            searchBox.style.maxHeight = '';
-            searchBox.style.overflow = '';
-            if (searchContent) {
-                searchContent.style.display = '';
-                searchContent.style.opacity = '1';
-                searchContent.style.maxHeight = '';
-                searchContent.style.margin = '';
-            }
-        }
-    }
-
-    // 공통 푸터 버튼 상태 동기화 (팩 모드인 경우에만 적용)
-    if (typeof updateManageFooter === 'function' && addSubMode === 'pack') {
-        updateManageFooter('add', 'pack');
-    }
-
-    // 표 제거 상태에 맞춰 URL 동기화 (검색 기록이 남아있다면 되돌아감)
-    updatePackUrl();
-
-    setTimeout(() => {
-        if (PackDeckStore.isPackTableGenerated) return;
-        const isMobile = document.documentElement.classList.contains('is-mobile-device');
-        const containerId = isMobile ? 'mobile-cards-list-pack' : 'desktop-cards-list-pack';
-        const container = document.getElementById(containerId);
-        if (container) container.innerHTML = '';
-        const tableArea = document.getElementById('pack-table-area');
-        if (tableArea) tableArea.style.display = 'none';
-    }, 400);
-}
-
-/**
- * 팩 정보 검색 및 표 제작 준비를 수행합니다.
- * @param {boolean} isInstant - 즉시 실행 여부
- * @param {string|null} targetName - 검색할 팩 이름 (URL에서 전달된 경우)
- * @param {string|null} targetLocale - 타겟 국가 코드 (URL에서 전달된 경우)
- */
-async function handlePackSearch(isInstant = false, targetName = null, targetLocale = null) {
-    if (PackDeckStore.isSearching) return; // 중복 클릭 방지
-
-    const input = document.getElementById('pack-search-input');
-    const query = (targetName || input.value).trim();
-    if (targetName) {
-        input.value = targetName;
-        const clearBtn = document.getElementById('pack-clear-btn');
-        if (clearBtn) clearBtn.style.display = 'block';
-    }
-
-    if (!query) {
-        PackDeckStore.currentPackInfo = null;
-        updatePackUrl();
-        displayPackSearchStatus("팩 이름을 입력하세요.", "error");
-        return;
-    }
-
-    displayPackSearchStatus("팩 정보 확인 중...", "normal");
-
-    const genBtn = document.getElementById('manage-gen-btn');
-    if (genBtn) {
-        genBtn.classList.add('disabled');
-        genBtn.blur();
-    }
-
-    // 이전 크롤링 중단 및 상태 초기화
-    stopPackCrawlNew();
-    PackDeckStore.packCardResults = [];
-    PackDeckStore.isPackCrawlDone = false;
-    PackDeckStore.isSearching = true;
-
-    const normalize_ = s => (s || "").replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, " ").trim().normalize('NFC');
-    const normQuery = normalize_(query);
-    const packsObj = (CardDataStore.masterJSON && CardDataStore.masterJSON.pack) ? CardDataStore.masterJSON.pack : {};
-    // [변경] 복합키 "PID_locale" 형식의 키를 파싱하여 cachedPacks 구성
-    let cachedPacks = Object.keys(packsObj).map(compositeId => {
-        const p = packsObj[compositeId];
-        const lastUnderscore = compositeId.lastIndexOf('_');
-        const pid = lastUnderscore !== -1 ? compositeId.slice(0, lastUnderscore) : compositeId;
-        const locale = lastUnderscore !== -1 ? compositeId.slice(lastUnderscore + 1) : '';
-        return {
-            id: compositeId,    // 복합키 전체
-            pid,                // 순수 PID (API 호출용)
-            name: p.name,
-            total: p.totalCards,
-            locale,             // 키에서 파싱된 locale
-            locales: locale ? [locale] : []
-        };
-    }).filter(p => normalize_(p.name) === normQuery);
-
-    // targetLocale이 명시된 경우 해당 국가 버전으로 즉시 필터링 (동일 이름 팩 처리용)
-    if (targetLocale && cachedPacks.length > 1) {
-        const matched = cachedPacks.find(p => p.locale === targetLocale);
-        if (matched) cachedPacks = [matched];
-    }
-
-    let res;
-    try {
-        if (!globalThis.AppBackend && cachedPacks.length > 0) {
-            if (cachedPacks.length === 1) {
-                res = {
-                    success: true,
-                    packId: cachedPacks[0].pid,  // [변경] 순수 PID 사용
-                    packName: cachedPacks[0].name || query,
-                    totalCards: cachedPacks[0].total,
-                    validLocale: cachedPacks[0].locale || 'ko',
-                    message: "수록된 카드 " + cachedPacks[0].total + "장 발견",
-                    isMultiple: false,
-                    isCached: true
-                };
-            } else {
-                res = {
-                    success: true,
-                    isMultiple: true,
-                    foundLocales: cachedPacks.map(p => {
-                        // [변경] targetUrl에 순수 PID 사용, locale은 파싱된 값
-                        return { locale: p.locale, targetUrl: p.pid, totalCards: p.total };
-                    }),
-                    packName: query,
-                    totalCards: Math.max(...cachedPacks.map(p => p.total || 0)),
-                    message: "발매 국가 선택",
-                    isCached: true
-                };
-            }
-        } else {
-            res = await callApi('searchPack', { packName: query, ...(globalThis.AppBackend && targetLocale ? { locale: targetLocale } : {}) });
-        }
-
-        PackDeckStore.isSearching = false; // 검색 완료
-
-        if (res.isError) {
-            PackDeckStore.currentPackInfo = null;
-            updatePackUrl();
-            displayPackSearchStatus(res.message, "error");
-            if (genBtn) genBtn.classList.remove('disabled');
-            return;
-        }
-
-        // [Storage 전환] 검색 성공 시 CardDataStore.masterJSON.pack 및 MasterDB에 동기화
-        // [변경] 키를 PID_locale 복합키 형식으로 저장
-        const packBatch = {};
-        if (!res.isMultiple) {
-            packBatch[`${res.packId}_${res.validLocale || 'ko'}`] = {
-                name: res.packName,
-                totalCards: res.totalCards,
-            };
-        } else if (Array.isArray(res.foundLocales)) {
-            res.foundLocales.forEach(locInfo => {
-                packBatch[`${locInfo.targetUrl}_${locInfo.locale || 'ko'}`] = {
-                    name: res.packName,
-                    totalCards: locInfo.totalCards || res.totalCards,
-                };
-            });
-        }
-        if (Object.keys(packBatch).length > 0) {
-            await ClientCache.setMasterData({ pack: packBatch });
-        }
-
-        // 복수 대상이 발견된 경우 (라디오 버튼 렌더링)
-        if (res.isMultiple) {
-            displayPackSearchStatus(res.message, "success");
-
-            let optionsHtml = `
-            <style>
-                .small-radio + span {
-                    padding-left: 15px !important;
-                    height: 20px !important;
-                    line-height: 20px !important;
-                    display: inline-block !important;
-                }
-                .small-radio + span::before, 
-                .small-radio + span::after {
-                    width: 12px !important;
-                    height: 12px !important;
-                    margin: 0 !important; 
-                    top: 3px !important;
-                    left: 0 !important;
-                }
-                .small-radio.with-gap:checked + span::after {
-                    transform: scale(0.5) !important;
-                }
-            </style>
-            <div id="pack-lang-options" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: 8px; margin-top: 0px;">`;
-
-            // 등록을 진행할 언어 선택 라디오 버튼 동적 생성
-            const searchOrder = ['ko', 'ja', 'ae', 'cn', 'en', 'de', 'fr', 'it', 'es', 'pt'];
-            const regionMapOptions = { 'ko': '한국', 'ja': '일본', 'ae': '아시아', 'cn': '중국', 'en': '영미', 'de': '독일', 'fr': '프랑스', 'it': '이탈리아', 'es': '스페인', 'pt': '포르투갈' };
-
-            const targetReg = (typeof UIStore.currentRegion !== 'undefined') ? UIStore.currentRegion : 'ko';
-            let sortedLocales = (res.foundLocales || []).sort((a, b) => {
-                if (a.locale === targetReg) return -1;
-                if (b.locale === targetReg) return 1;
-                return searchOrder.indexOf(a.locale) - searchOrder.indexOf(b.locale);
-            });
-
-            sortedLocales.forEach((locInfo, idx) => {
-                const isChecked = idx === 0 ? 'checked' : '';
-                const locName = regionMapOptions[locInfo.locale] || locInfo.locale;
-                optionsHtml += `
-                    <label style="cursor: pointer; display: inline-flex; align-items: center; margin: 0; padding: 0; height: 20px;">
-                        <input class="with-gap small-radio" name="packLangSelect" type="radio" value="${locInfo.locale}" data-url="${locInfo.targetUrl}" data-total="${locInfo.totalCards || 0}" ${isChecked} />
-                        <span style="font-size: 0.85rem; color: var(--text-000); white-space: nowrap;">${locName}</span>
-                    </label>
-                `;
-            });
-            optionsHtml += '</div>';
-
-            const statusEl = document.getElementById('pack-status-msg');
-            if (statusEl) {
-                statusEl.style.display = 'flex';
-                statusEl.style.flexDirection = 'row';
-                statusEl.style.alignItems = 'center';
-                statusEl.style.justifyContent = 'center';
-                statusEl.style.flexWrap = 'wrap';
-                statusEl.innerHTML += optionsHtml;
-            }
-
-            PackDeckStore.currentPackInfo = {
-                packName: res.packName,
-                totalCards: res.totalCards || 0,
-                isPendingSelection: true
-            };
-
-            if (genBtn) genBtn.classList.remove('disabled');
-            updatePackUrl();
-        } else {
-            // [기존] 단일 검색 성공 시 (바로 크롤링)
-            displayPackSearchStatus(res.message, "success");
-
-            PackDeckStore.currentPackInfo = {
-                totalCards: res.totalCards,
-                packName: res.packName,
-                packId: res.packId,
-                validLocale: res.validLocale
-            };
-
-            if (genBtn) genBtn.classList.remove('disabled');
-            updatePackUrl();
-
-            if (isInstant === true) {
-                togglePackTable();
-            } else {
-                startPackCrawlNew(res.packId, PackDeckStore.currentPackInfo.validLocale, 0);
-            }
-        }
-
-    } catch (e) {
-        PackDeckStore.isSearching = false;
-        console.error("[handlePackSearch Exception]:", e);
-        displayPackSearchStatus("서버 통신 오류", "error");
-        if (genBtn) genBtn.classList.remove('disabled');
-    }
-}
-
-
-
-function displayPackSearchStatus(msg, type) {
-    const el = document.getElementById('pack-status-msg');
-    if (!el) return;
-
-    // 텍스트를 span으로 감싸 가로 정렬이 용이하게 함 (여백/높이 지정)
-    el.innerHTML = `<span class="status-msg-text" style="font-size: 0.85rem; font-weight: 500; display: inline-flex; align-items: center; height: 20px; margin: 0; padding: 0;">${escapeHTML(msg)}</span>`;
-
-    // 외곽 컨테이너의 flex 레이아웃 강제 구성
-    el.style.display = 'flex';
-    el.style.flexDirection = 'row';
-    el.style.alignItems = 'center';
-    el.style.justifyContent = 'center'; // 중앙 정렬
-    el.style.flexWrap = 'wrap';
-    el.style.marginTop = '4px'; // 살짝 위로 이동하는 효과 및 안정된 여백
-
-    // 기본 클래스 색상 초기화
-    el.classList.remove('status-error', 'status-success');
-
-    if (type === 'error') {
-        el.classList.add('status-error');
-        el.style.color = "var(--error-red)";
-    } else if (type === 'success') {
-        el.classList.add('status-success');
-        el.style.color = "var(--success-green)";
-    } else {
-        el.style.color = "var(--text-001)";
-    }
-
-    // [추가] 상태 메시지 변화에 따른 높이 재동기화
-
-}
-
-
-
-
-
-
-
-
-
-
-// =============================================================================
-// 카드이름 기반 팩 등록 메커니즘 - 프론트엔드 함수
-// =============================================================================
-
-/**
- * 팩 등록 테이블 생성
- * - PackDeckStore.packCardResults에 이미 있는 카드는 즉시 채워넣고
- * - 아직 크롤링 중인 카드가 있으면 로딩 화면 표시
- */
-async function generatePackRowsNew(totalCards, packName, packId) {
-    if (!totalCards || totalCards <= 0) {
-        displayPackSearchStatus("카드 수 정보가 없습니다.", "error");
-        return;
-    }
-
-    // UI 준비
-    const searchArea = document.getElementById('pack-search-content');
-    const tableArea = document.getElementById('pack-table-area');
-    const isMobile = document.documentElement.classList.contains('is-mobile-device');
-    const containerId = isMobile ? 'mobile-cards-list-pack' : 'desktop-cards-list-pack';
-    const container = document.getElementById(containerId);
-
-    const searchBox = document.getElementById('pack-search-box');
-    if (searchBox) {
-        // 현재 높이를 명시적으로 지정한 후 0으로 줄여 애니메이션 유도
-        searchBox.style.maxHeight = searchBox.scrollHeight + 'px';
-        void searchBox.offsetHeight; // 리플로우 강제
-        searchBox.style.maxHeight = '0';
-        searchBox.style.opacity = '0';
-        searchBox.style.margin = '0';
-        searchBox.style.padding = '0';
-        searchBox.style.borderWidth = '0';
-        searchBox.style.overflow = 'hidden';
-
-        // 애니메이션 완료 후 완전히 제거하여 공간 차지 방지
-        setTimeout(() => {
-            if (PackDeckStore.isPackTableGenerated) {
-                searchBox.style.display = 'none';
-            }
-        }, 300);
-    }
-
-    tableArea.style.display = '';
-
-    // 하단 컨테이너 확장 애니메이션 트리거
-    const tableContainer = document.getElementById('manage-table-container');
-    if (tableContainer) {
-        setModePanelActive(tableContainer, true);
-    }
-
-    if (container) {
-        container.innerHTML = '';
-    }
-
-    PackDeckStore.isPackTableGenerated = true;
-
-    // 공통 푸터 버튼 상태 동기화 (팩 이름도 내부에서 처리됨)
-    if (typeof updateManageFooter === 'function') {
-        updateManageFooter('add', 'pack');
-    }
-
-    // 등록표 제작 완료 시점에 URL 동기화 (loc 파라미터 반영)
-    updatePackUrl();
-
-    // 표 생성 직후 크롤링 진행 중이라면 로딩 표시
-    if (!PackDeckStore.isPackCrawlDone) {
-        const count = PackDeckStore.packCardResults.filter(c => c).length;
-        showLoading(true, `카드 검색 중<br>(${count}/${totalCards})<br><a id="cancel-gen-link" class="link-style-btn">제작 중단</a>`);
-    }
-
-    // 카드 데이터는 crawlPackCardsBatch API 응답으로 채워짐
-    for (let i = 0; i < totalCards; i++) {
-        const card = manageAddEntry(null, null, 'pack');
-        if (card) {
-            card.dataset.searchMode = 'pack'; // 팩 모드 잠금 설정
-        }
-    }
-
-    if (isMobile) {
-        renderMobileCards();
-    }
-
-    // 이미 수신되어 캐시된 프리 크롤링 데이터가 있을 경우 즉시 표에 적용 (0ms 히트)
-    const alreadyCrawled = PackDeckStore.packCardResults.filter(c => c);
-    if (alreadyCrawled.length > 0) {
-        await applyPackCardResults(alreadyCrawled);
-    }
-
-    setTimeout(() => {
-        if (PackDeckStore.isPackTableGenerated && searchArea) {
-            searchArea.style.display = 'none';
-        }
-    }, 300);
-}
-
-let _silentCrawls = {}; // 조용한 백그라운드 프리크롤링 추적 객체
-
-/**
- * 배경에서 조용히 크롤링만 수행하여 DB(Code/Name/Rarity) 시트를 채우는 프리크롤링 함수
- */
-
-
-/**
- * Pack2 link 기반 배경 크롤링 시작 (2단계)
- * 다국어 파라미터(locale)를 함께 전달합니다.
- */
-async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam = null) {
-    packPageController?.abort();
-    packPageController = null;
-    const revision = ++packCrawlRevision;
-    const key = packId + "_" + locale;
-    if (_silentCrawls[key]) _silentCrawls[key] = false;
-
-    let total = (PackDeckStore.currentPackInfo && PackDeckStore.currentPackInfo.totalCards) ? PackDeckStore.currentPackInfo.totalCards : 0;
-    const packName = packNameParam || (PackDeckStore.currentPackInfo ? PackDeckStore.currentPackInfo.packName : null);
-
-    // 로컬 캐시 확인: 이미 이 팩의 크롤링이 완료된 경우 서버 호출 생략
-    if (CardDataStore.crawledPacksCache[key] && CardDataStore.crawledPacksCache[key].isDone) {
-        PackDeckStore.isPackCrawlDone = true;
-        PackDeckStore.packCardResults = [...CardDataStore.crawledPacksCache[key].cards];
-        if (PackDeckStore.isPackTableGenerated) {
-            await applyPackCardResults(PackDeckStore.packCardResults.filter(c => c));
-            showLoading(false);
-        }
-        return;
-    }
-
-    _packCrawlNewRunning = true;
-    PackDeckStore.isPackCrawlDone = false;
-
-    const pageSize = 20;
-    const fetchPage = globalThis.AppBackend?.fetchPackPage;
-    const controller = fetchPage ? new AbortController() : null;
-    packPageController = controller;
-    const pendingPages = new Map();
-    const queuePage = pageOffset => {
-        if (pageOffset >= total || pendingPages.has(pageOffset)) return;
-        pendingPages.set(pageOffset, fetchPage(packId, locale || 'ko', pageOffset, controller.signal)
-            .then(page => ({ page }), error => ({ error })));
-    };
-
-    // 팩 목록은 운영 API에서 읽고, 실제 카드 수집/저장은 로컬 함수가 담당합니다.
-    // 운영 Storage에만 존재하는 팩 ID를 로컬 함수가 다시 해석하지 않도록 CID를 명시적으로 전달합니다.
-    let packCids;
-    try {
-        const cidRequest = callApi('getPackCids', { packId, locale });
-        // 첫 상세는 미리 받되, 수록 요약을 확인한 뒤에만 적용한다.
-        if (controller) queuePage(startOffset);
-        const cidResult = await cidRequest;
-        if (revision !== packCrawlRevision) return;
-        if (cidResult?.isError || !Array.isArray(cidResult?.cids)) {
-            throw new Error(cidResult?.message || '팩 CID 목록을 가져오지 못했습니다.');
-        }
-        packCids = cidResult.cids;
-        total = packCids.length;
-        if (PackDeckStore.currentPackInfo) PackDeckStore.currentPackInfo.totalCards = total;
-    } catch (error) {
-        if (revision !== packCrawlRevision) return;
-        controller?.abort();
-        packPageController = null;
-        _packCrawlNewRunning = false;
-        PackDeckStore.isPackCrawlDone = false;
-        showLoading(false);
-        displayPackSearchStatus(error.message || '팩 CID 목록을 가져오지 못했습니다.', 'error');
-        console.error('[Pack Crawl New] CID 조회 오류:', error);
-        return;
-    }
-
-    let offset = startOffset;
-    if (!CardDataStore.crawledPacksCache[key]) CardDataStore.crawledPacksCache[key] = { cards: [], isDone: false };
-
-    let retryCount = 0;
-    while (_packCrawlNewRunning && revision === packCrawlRevision) {
-        if (total > 0 && offset >= total) {
-            PackDeckStore.isPackCrawlDone = true;
-            if (CardDataStore.crawledPacksCache[key]) CardDataStore.crawledPacksCache[key].isDone = true;
-            showLoading(false);
-            break;
-        }
-
-        try {
-            const cids = packCids.slice(offset, offset + pageSize);
-            let packPage;
-            if (controller) {
-                queuePage(offset);
-                queuePage(offset + pageSize);
-                const received = await pendingPages.get(offset);
-                if (!_packCrawlNewRunning || revision !== packCrawlRevision) break;
-                if (received.error) throw received.error;
-                packPage = received.page;
-                if (packPage.total !== total || packPage.cards.length !== cids.length
-                    || packPage.cards.some((card, index) => String(card.cid) !== String(cids[index]))) {
-                    throw new Error('팩 수록 목록이 변경되었습니다.');
-                }
-            }
-            const res = await callApi('crawlPackCardsBatch', { packId, locale, offset, packName },
-                controller ? { cids, packPage, signal: controller.signal } : { cids });
-            if (!_packCrawlNewRunning || revision !== packCrawlRevision) break;
-
-            if (res.isQuotaError) {
-                console.warn(`[Pack Crawl] 구글 서버 할당량 초과. 7초 후 재시도합니다... (offset: ${offset})`);
-                if (PackDeckStore.isPackTableGenerated) {
-                    showLoading(true, `할당량 초과로 잠시 대기 중 (7초)<br><a id="cancel-gen-link" class="link-style-btn">제작 중단</a>`);
-                }
-                await new Promise(r => setTimeout(r, 7000));
-                continue;
-            }
-
-            if (res.isError) {
-                console.warn('[Pack Crawl New] 오류:', res.message);
-
-                // 최대 3회 재시도 로직
-                if (retryCount < 3) {
-                    retryCount++;
-                    await new Promise(r => setTimeout(r, 1000)); // 1초 대기 후 재시도
-                    continue;
-                } else {
-                    // 3회 재시도 실패 시 종료 및 초기화
-                    showLoading(false);
-                    resetPackMode();
-                    break;
-                }
-            }
-
-            // 성공 시 재시도 횟수 초기화
-            retryCount = 0;
-
-            if (controller) {
-                // 재시도에는 받은 페이지를 재사용하고, 성공하면 화면 적용 전에 빈 요청 자리를 채운다.
-                pendingPages.delete(offset);
-                queuePage(offset + 2 * pageSize);
-            }
-
-            if (res.cards && res.cards.length > 0) {
-                res.cards.forEach(c => {
-                    PackDeckStore.packCardResults[c.index] = c;
-                    CardDataStore.crawledPacksCache[key].cards[c.index] = c; // 캐시 갱신
-                });
-
-                // 카드 처리 직후 실시간 진행률 업데이트 (수치 애니메이션 호출)
-                if (PackDeckStore.isPackTableGenerated) {
-                    const targetCount = PackDeckStore.packCardResults.filter(c => c).length;
-                    updateSmoothCrawlCount(targetCount, total);
-                    await applyPackCardResults(res.cards);
-                    if (revision !== packCrawlRevision) break;
-                }
-            }
-
-            if (res.isDone) {
-                PackDeckStore.isPackCrawlDone = true;
-                CardDataStore.crawledPacksCache[key].isDone = true; // 완료 마킹
-                showLoading(false);
-                break;
-            }
-
-            offset = res.nextOffset;
-            if (globalThis.AppBackend?.id !== 'supabase') {
-                await new Promise(r => setTimeout(r, 50));
-            }
-        } catch (err) {
-            if (revision !== packCrawlRevision) break;
-            console.warn('[Pack Crawl New] 통신 오류:', err);
-            showLoading(false);
-            resetPackMode();
-            break;
-        }
-    }
-    controller?.abort();
-    if (packPageController === controller) packPageController = null;
-    if (revision === packCrawlRevision) _packCrawlNewRunning = false;
-}
-
-/**
- * 배경 크롤링 중단
- */
-function stopPackCrawlNew() {
-    packCrawlRevision++;
-    packPageController?.abort();
-    packPageController = null;
-    _packCrawlNewRunning = false;
-}
-
-/**
- * 크롤링 결과를 테이블 행에 반영
- * - 이름을 먼저 기입한 뒤 카드 번호 기입 (기존 등록 테이블 로직에 맞춤)
- * - 모든 행의 이름·번호가 채워지면 로딩 해제
- */
-async function applyPackCardResults(cards) {
-    const isMobile = document.documentElement.classList.contains('is-mobile-device');
-    const containerId = isMobile ? 'mobile-cards-list-pack' : 'desktop-cards-list-pack';
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    const cardClass = isMobile ? '.mobile-info-card' : '.desktop-info-card';
-    const rows = container.querySelectorAll(cardClass);
-
-    const promises = [];
-
-    cards.forEach((item) => {
-        const { index, name, cardNo, info } = item;
-        const row = rows[index];
-        if (!row) return;
-        const noInput = row.querySelector('[data-field="no"], .page-card-no, .desktop-card-no');
-        const nameInput = row.querySelector('[data-field="name"], .page-card-name, .desktop-card-name');
-
-        // 백엔드에서 전달받은 카드 이름이 있고 이름 칸이 비어있으면 즉시 대입
-        let cardNameVal = name;
-        if (!cardNameVal && info) {
-            for (let k in info) {
-                if (Array.isArray(info[k]) && info[k][0]) {
-                    cardNameVal = info[k][0];
-                    break;
-                }
-            }
-        }
-        if (nameInput && cardNameVal && !nameInput.value) {
-            nameInput.dataset.programmatic = "true";
-            nameInput.value = cardNameVal;
-            delete nameInput.dataset.programmatic;
-        }
-
-        if (noInput && cardNo && noInput.value !== cardNo) {
-            noInput.dataset.programmatic = "true";
-            noInput.value = cardNo;
-            promises.push(fetchCardByNumber(noInput, true));
-            noInput.dataset.prevCardNo = cardNo;
-            noInput.dataset.fromNameSearch = "true";
-            delete noInput.dataset.programmatic;
-        }
-
-        // 지우기 아이콘 표시
-        const clearBtn = row.querySelector('.clear-name-btn');
-        if (clearBtn && (name || cardNameVal)) clearBtn.style.display = 'block';
-    });
-
-    if (promises.length > 0) {
-        await Promise.all(promises);
-    }
-
-    // 크롤링이 완료되었거나, 테이블의 모든 행이 채워졌다면 로딩 해제 (OR 조건)
-    const allFilled = Array.from(rows).every(r => {
-        const nameInp = r.querySelector('[data-field="name"], .page-card-name, .desktop-card-name');
-        const noInp = r.querySelector('[data-field="no"], .page-card-no, .desktop-card-no');
-        return nameInp && nameInp.value && noInp && noInp.value;
-    });
-
-    if (PackDeckStore.isPackCrawlDone || allFilled) {
-        showLoading(false);
-    }
-
-    if (isMobile) {
-        renderMobileCards();
-    }
+    return closeSuggestions;
 }
 
 // ==========================================
@@ -10946,26 +9707,6 @@ function initFirebaseAuth() {
     firebase.auth().onAuthStateChanged(function (user) {
         handleFirebaseAuthState(user);
     });
-
-    // 사이드바 확장 상태일 때 인증 툴팁 제거 (데스크톱 뷰)
-    window.handleTooltipDisplay = () => {
-        const authBtn = document.getElementById('auth-nav-btn');
-        if (!authBtn) return;
-
-        const instance = M.Tooltip.getInstance(authBtn);
-        if (window.innerWidth >= 993) {
-            if (instance) {
-                instance.destroy();
-            }
-        } else {
-            // 모바일/태블릿(사이드바 축소) 상태에서만 툴팁 활성화
-            if (!instance && authBtn.dataset.tooltip) {
-                M.Tooltip.init(authBtn);
-            }
-        }
-    };
-    window.addEventListener('resize', handleTooltipDisplay);
-    handleTooltipDisplay();
 }
 
 function applyServiceAuthState(user, initialData, initialAccount) {
@@ -10989,21 +9730,12 @@ function applyServiceAuthState(user, initialData, initialAccount) {
         UserStore.settings.hideMembershipVerify = false;
         document.querySelectorAll('.target-inventory-section').forEach(section => renderOwnedCardsToContainer([], section));
     }
-    const authNavBtn = document.getElementById('auth-nav-btn');
-    const authIcon = document.getElementById('auth-icon');
-    const authText = document.getElementById('auth-text');
-
     const homeUnauthContent = document.getElementById('home-unauth-content');
     const homeAuthContent = document.getElementById('home-auth-content');
 
     if (user) {
         // 비활동 자동 로그아웃 감지 시작 (30분)
-            if (AutoLogoutManager.start() === false) return;
-
-        // 로그인 상태 UI (이미 구현됨)
-        if (authIcon) authIcon.textContent = 'link';
-        if (authText) authText.textContent = '로그인';
-        if (authNavBtn) authNavBtn.dataset.tooltip = '로그인 완료';
+        if (AutoLogoutManager.start() === false) return;
 
         if (homeUnauthContent) homeUnauthContent.hidden = true;
         if (homeAuthContent) homeAuthContent.hidden = false;
@@ -11023,11 +9755,6 @@ function applyServiceAuthState(user, initialData, initialAccount) {
     } else {
         // 비활동 자동 로그아웃 감지 중단
         AutoLogoutManager.stop();
-
-        // 비로그인 상태 UI
-        if (authIcon) authIcon.textContent = 'link_off';
-        if (authText) authText.textContent = '로그인';
-        if (authNavBtn) authNavBtn.dataset.tooltip = '로그인 필요';
 
         if (homeUnauthContent) homeUnauthContent.hidden = false;
         if (homeAuthContent) homeAuthContent.hidden = true;
@@ -11049,11 +9776,6 @@ function applyServiceAuthState(user, initialData, initialAccount) {
 
     // 헤더 및 연동 정보 렌더링 호출 (user가 null이어도 호출하여 UI 초기화)
     renderLinkedAccounts(user);
-
-    // 인증 상태 변경 시 툴팁 표시 여부 재계산
-    if (typeof handleTooltipDisplay === 'function') {
-        handleTooltipDisplay();
-    }
 
     // 인증 초기화 완료 후 통합 로딩 종료 체크
     checkAndHideInitialLoading();
@@ -11637,7 +10359,7 @@ function updateProviderUI(providerKey, isLinked, totalLinked) {
         containerElem.classList.remove('is-unlinked');
         containerElem.classList.add('is-linked');
         btnElem.textContent = '연결 끊기';
-        btnElem.className = 'btn red darken-1 waves-effect';
+        btnElem.classList.add('red', 'darken-1');
         // 1개만 연결되어 있으면 끊기 비활성화
         if (totalLinked <= 1) {
             btnElem.classList.add('disabled');
@@ -11648,7 +10370,7 @@ function updateProviderUI(providerKey, isLinked, totalLinked) {
         containerElem.classList.remove('is-linked');
         containerElem.classList.add('is-unlinked');
         btnElem.textContent = '연결';
-        btnElem.className = 'btn cyan-theme waves-effect';
+        btnElem.classList.remove('red', 'darken-1');
         btnElem.classList.remove('disabled');
     }
 }
@@ -12410,12 +11132,19 @@ function markNoticeAsRead(id) {
 function closeNotiPopup() {
     const popup = document.getElementById('noti-popup');
     if (!popup || (!popup.classList.contains('active') && !isManagedSheetOpen(popup))) return;
+    const trigger = document.getElementById('noti-btn');
     popup.classList.remove('active');
-    document.getElementById('noti-btn')?.setAttribute('aria-expanded', 'false');
+    trigger?.setAttribute('aria-expanded', 'false');
     if (popup.classList.contains('ui-overlay--sheet')) {
         closeManagedSheet(popup, { backdrop: document.getElementById('noti-popup-backdrop') });
     } else {
-        globalThis.AppOverlays.closePopup(popup);
+        const restoreFocus = popup.contains(document.activeElement);
+        globalThis.AppOverlays.closePopup(popup, () => {
+            const active = document.activeElement;
+            if (restoreFocus && (popup.contains(active) || active === document.body || active === document.documentElement)) {
+                focusModalReturnTarget(trigger);
+            }
+        });
     }
 }
 
@@ -12916,33 +11645,6 @@ function checkAuthBeforeAction() {
 
 // 모든 선언과 DOM 파싱이 끝난 defer 실행에서 인증 조회를 시작한다. 화면 적용은 준비 장벽을 따른다.
 
-/**
- * 대시보드 통계 섹션 더보기/접기 토글
- */
-function toggleStatSection(btn) {
-    const parent = btn.parentElement;
-    const hiddenItems = parent.querySelectorAll('.stat-item.is-hidden, .stat-item.expanded-show');
-    const isExpanding = !btn.classList.contains('active');
-
-    hiddenItems.forEach(item => {
-        if (isExpanding) {
-            item.classList.remove('is-hidden');
-            item.classList.add('expanded-show');
-        } else {
-            item.classList.add('is-hidden');
-            item.classList.remove('expanded-show');
-        }
-    });
-
-    if (isExpanding) {
-        btn.classList.add('active');
-        btn.querySelector('span').innerText = '접기';
-    } else {
-        btn.classList.remove('active');
-        btn.querySelector('span').innerText = '더보기';
-    }
-}
-
 // VisualViewport API를 활용한 키보드 감지 및 하단 바 숨김 기능 (모바일)
 (function initNavVisibilityControl() {
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
@@ -13145,20 +11847,14 @@ function switchManageTab(tab) {
     switchToMode(tab);
 }
 
-let addSubMode = 'general'; // 등록 탭 내부 서브 모드 상태 (general, pack, deck)
 let isRenameMode = false; // 보관 위치 이름 변경 모드 상태
 let isDeleteLocationMode = false; // 보관 위치 삭제 모드 상태
 let isDeleteLocationConfirmPending = false; // 보관 위치 삭제 복구 불가 확인 대기 상태
-
-function switchAddSubMode(subMode) {
-    if (addSubMode === subMode) return;
-    addSubMode = subMode;
-    switchToMode('add', true, subMode);
-}
+let deleteLocationSubmitting = false;
 
 function openPhotoRegistration() {
     if (!window.PhotoCardSearch) return;
-    PhotoCardSearch.openRegistrationSheet(addSubMode || 'general');
+    PhotoCardSearch.openRegistrationSheet();
 }
 
 function handleManageUI(mode, preserveInputNodes = false) {
@@ -13167,54 +11863,18 @@ function handleManageUI(mode, preserveInputNodes = false) {
 
     const forms = [
         document.getElementById('general-mode-wrapper'),
-        document.getElementById('form-pack-add'),
-        document.getElementById('form-deck-add'),
         document.getElementById('manage-move-wrapper'),
         document.getElementById('manage-discard-wrapper')
     ];
 
-    let targetId = '';
+    const targetId = { add: 'general-mode-wrapper', move: 'manage-move-wrapper', discard: 'manage-discard-wrapper' }[mode];
     const autoLocInfo = document.getElementById('manage-auto-loc-container');
-
-    if (mode === 'add') {
-        if (addSubMode === 'general') targetId = 'general-mode-wrapper';
-        else if (addSubMode === 'pack') targetId = 'form-pack-add';
-        else if (addSubMode === 'deck') targetId = 'form-deck-add';
-    } else if (mode === 'move') {
-        targetId = 'manage-move-wrapper';
-    } else if (mode === 'discard') {
-        targetId = 'manage-discard-wrapper';
-    }
     setModePanelActive(autoLocInfo, mode === 'add');
 
     // 크로스페이드 처리 (CSS transition: height에 맡김)
     forms.forEach(f => {
         setModePanelActive(f, f?.id === targetId);
     });
-
-    // 탭 전환 시 표 상태 보존 및 하단 컨테이너 연동
-    const tableContainer = document.getElementById('manage-table-container');
-    const packArea = document.getElementById('pack-table-area');
-    const deckArea = document.getElementById('deck-table-area');
-
-    if (tableContainer) {
-        if (packArea) packArea.style.display = 'none';
-        if (deckArea) deckArea.style.display = 'none';
-
-        if (mode === 'add') {
-            if (addSubMode === 'pack' && typeof PackDeckStore.isPackTableGenerated !== 'undefined' && PackDeckStore.isPackTableGenerated) {
-                if (packArea) packArea.style.display = '';
-                setModePanelActive(tableContainer, true);
-            } else if (addSubMode === 'deck' && typeof PackDeckStore.isDeckTableGenerated !== 'undefined' && PackDeckStore.isDeckTableGenerated) {
-                if (deckArea) deckArea.style.display = '';
-                setModePanelActive(tableContainer, true);
-            } else {
-                setModePanelActive(tableContainer, false);
-            }
-        } else {
-            setModePanelActive(tableContainer, false);
-        }
-    }
 
     // [통합] 공통 하단 푸터 업데이트
     updateManageFooter(mode);
@@ -13234,7 +11894,20 @@ function handleManageUI(mode, preserveInputNodes = false) {
 
 
 
-function updateManageFooter(mode, subModeOverride) {
+function measureManageActionWidth(button, label) {
+    const measure = document.createElement('span');
+    const buttonStyle = getComputedStyle(button);
+    measure.className = 'manage-footer-text-measure';
+    measure.style.fontSize = buttonStyle.fontSize;
+    measure.style.fontWeight = buttonStyle.fontWeight;
+    measure.innerText = label;
+    document.body.appendChild(measure);
+    const textWidth = measure.offsetWidth;
+    measure.remove();
+    return textWidth + 28;
+}
+
+function updateManageFooter(mode) {
     const footer = document.getElementById('manage-common-footer');
     const leftEl = document.getElementById('manage-footer-left');
     const rightEl = document.getElementById('manage-footer-right');
@@ -13248,28 +11921,10 @@ function updateManageFooter(mode, subModeOverride) {
         isDeleteLocationConfirmPending = false;
     }
 
-    const currentSubMode = subModeOverride || addSubMode;
 
     // 1. 좌측 버튼 설정 정의 (버튼 2개 기준)
     let leftButtons = [];
-    if (mode === 'add') {
-        if (currentSubMode === 'general') {
-            leftButtons = [
-                { text: '팩 추가', onclick: "switchAddSubMode('pack')" },
-                { text: '덱 불러오기', onclick: "switchAddSubMode('deck')" }
-            ];
-        } else if (currentSubMode === 'pack') {
-            leftButtons = [
-                { text: '일반', onclick: "switchAddSubMode('general')" },
-                { text: '덱 불러오기', onclick: "switchAddSubMode('deck')" }
-            ];
-        } else if (currentSubMode === 'deck') {
-            leftButtons = [
-                { text: '일반', onclick: "switchAddSubMode('general')" },
-                { text: '팩 추가', onclick: "switchAddSubMode('pack')" }
-            ];
-        }
-    } else if (mode === 'move') {
+    if (mode === 'move') {
         if (isRenameMode) {
             leftButtons = [
                 { text: '일괄 이동', onclick: "submitBulkMoveEntries()", type: 'primary' },
@@ -13305,10 +11960,6 @@ function updateManageFooter(mode, subModeOverride) {
         if (!btnWrapper) {
             btnWrapper = document.createElement('div');
             btnWrapper.className = 'manage-footer-btn-group';
-            btnWrapper.style.display = 'flex';
-            btnWrapper.style.gap = '8px';
-            btnWrapper.style.width = 'auto';
-            btnWrapper.style.flexShrink = '0';
             // leftEl의 맨 앞에 삽입
             leftEl.insertBefore(btnWrapper, leftEl.firstChild);
         }
@@ -13353,21 +12004,7 @@ function updateManageFooter(mode, subModeOverride) {
                         if (s !== oldTextSpan) s.remove();
                     });
 
-                    // 버튼 너비 유연 전환을 위한 사전 계산
-                    const measureSpan = document.createElement('span');
-                    measureSpan.style.visibility = 'hidden';
-                    measureSpan.style.position = 'absolute';
-                    measureSpan.style.whiteSpace = 'nowrap';
-                    measureSpan.style.fontSize = getComputedStyle(btn).fontSize;
-                    measureSpan.style.fontWeight = getComputedStyle(btn).fontWeight;
-                    measureSpan.innerText = newText;
-                    document.body.appendChild(measureSpan);
-
-                    const newWidth = measureSpan.offsetWidth;
-                    document.body.removeChild(measureSpan);
-
-                    // 패딩(28px = 14*2)을 고려한 최종 너비 설정
-                    btn.style.width = (newWidth + 28) + 'px';
+                    btn.style.width = `${measureManageActionWidth(btn, newText)}px`;
 
                     oldTextSpan.classList.remove('active');
                     oldTextSpan.classList.add('outgoing');
@@ -13389,47 +12026,18 @@ function updateManageFooter(mode, subModeOverride) {
                 } else if (allSpans.length === 0) {
                     // 초기 상태 처리
                     btn.innerHTML = `<span class="btn-text-content active">${newText}</span>`;
-                    const measureSpan = document.createElement('span');
-                    measureSpan.innerText = newText;
-                    measureSpan.style.visibility = 'hidden';
-                    measureSpan.style.position = 'absolute';
-                    measureSpan.style.whiteSpace = 'nowrap';
-                    measureSpan.style.fontSize = getComputedStyle(btn).fontSize;
-                    measureSpan.style.fontWeight = getComputedStyle(btn).fontWeight;
-                    document.body.appendChild(measureSpan);
-                    const initialWidth = measureSpan.offsetWidth;
-                    document.body.removeChild(measureSpan);
-                    btn.style.width = (initialWidth + 28) + 'px';
+                    btn.style.width = `${measureManageActionWidth(btn, newText)}px`;
                 }
 
                 btn.setAttribute('onclick', btnInfo.onclick);
 
-                // 특정 타입에 따른 스타일 클래스 보정 (classList 사용하여 Transition 유지)
-                if (btnInfo.type === 'primary') {
-                    btn.classList.add('btn', 'cyan-theme', 'waves-light');
-                    btn.classList.remove('btn-flat', 'red-theme');
-                    btn.style.color = 'white';
-                    btn.style.border = '';
-                    btn.style.background = '';
-                } else if (btnInfo.type === 'danger') {
-                    btn.classList.add('btn', 'red-theme', 'waves-light');
-                    btn.classList.remove('cyan-theme', 'btn-flat');
-                    btn.style.color = 'white';
-                    btn.style.border = '';
-                    btn.style.background = '';
-                } else if (btnInfo.type === 'flat') {
-                    btn.classList.add('btn-flat');
-                    btn.classList.remove('btn', 'cyan-theme', 'red-theme', 'waves-light');
-                    btn.style.color = 'var(--text-000)';
-                    btn.style.border = 'none';
-                    btn.style.background = 'transparent';
-                } else {
-                    // 기본 스타일 복구 (모드 전환 시 클래스 꼬임 방지)
-                    btn.classList.remove('btn', 'cyan-theme', 'red-theme', 'waves-light', 'btn-flat');
-                    btn.style.color = '';
-                    btn.style.border = '';
-                    btn.style.background = '';
-                }
+                const isPrimary = btnInfo.type === 'primary';
+                const isDanger = btnInfo.type === 'danger';
+                btn.classList.toggle('is-action-primary', isPrimary);
+                btn.classList.toggle('is-action-danger', isDanger);
+                btn.classList.toggle('btn', isPrimary || isDanger);
+                btn.classList.toggle('waves-light', isPrimary || isDanger);
+                btn.classList.toggle('btn-flat', btnInfo.type === 'flat');
             }
         });
 
@@ -13440,24 +12048,17 @@ function updateManageFooter(mode, subModeOverride) {
             if (!inputContainer) {
                 inputContainer = document.createElement('div');
                 inputContainer.id = inputContainerId;
-                inputContainer.className = 'capsule-input-container anim-active';
-                inputContainer.style.display = 'flex';
-                inputContainer.style.gap = '8px';
-                inputContainer.style.width = 'auto'; // 내용에 맞춰 조절
-                inputContainer.style.padding = '0';
+                inputContainer.className = 'manage-footer__location-fields';
                 leftEl.appendChild(inputContainer);
             }
-            inputContainer.style.marginLeft = ''; // 인라인 마진 완전 제거 (flex gap 8px 의존)
 
             if (mode === 'move') {
                 inputContainer.innerHTML = `
-                    <div class="custom-select-wrapper no-arrow rename-capsule-wrap" id="wrap-rename-from" data-type="strict" style="width: 130px; height: 36px;">
-                        <input type="text" id="rename-from-input" class="custom-input capsule-input" placeholder="대상 위치" autocomplete="off" style="height: 36px !important; font-size: 0.8rem !important; padding: 0 12px !important;">
-                        <i class="material-icons arrow-icon" style="line-height: 36px;">arrow_drop_down</i>
+                    <div class="custom-select-wrapper no-arrow rename-capsule-wrap" id="wrap-rename-from" data-type="strict">
+                        <input type="text" id="rename-from-input" class="manage-footer__location-input browser-default" placeholder="대상 위치" autocomplete="off">
                     </div>
-                    <div class="custom-select-wrapper no-arrow rename-capsule-wrap" id="wrap-rename-to" data-type="free" style="width: 130px; height: 36px;">
-                        <input type="text" id="rename-to-input" class="custom-input capsule-input" placeholder="이동할 위치" autocomplete="off" disabled style="height: 36px !important; font-size: 0.8rem !important; padding: 0 12px !important;">
-                        <i class="material-icons arrow-icon" style="line-height: 36px;">arrow_drop_down</i>
+                    <div class="custom-select-wrapper no-arrow rename-capsule-wrap" id="wrap-rename-to" data-type="free">
+                        <input type="text" id="rename-to-input" class="manage-footer__location-input browser-default" placeholder="이동할 위치" autocomplete="off" disabled>
                     </div>
                 `;
 
@@ -13476,9 +12077,8 @@ function updateManageFooter(mode, subModeOverride) {
                 let deleteWrap = document.getElementById('wrap-delete-location');
                 if (!deleteWrap) {
                     inputContainer.innerHTML = `
-                        <div class="custom-select-wrapper no-arrow rename-capsule-wrap" id="wrap-delete-location" data-type="strict" style="width: 130px; height: 36px;">
-                            <input type="text" id="delete-location-input" class="custom-input capsule-input" placeholder="삭제할 위치" autocomplete="off" style="height: 36px !important; font-size: 0.8rem !important; padding: 0 12px !important;">
-                            <i class="material-icons arrow-icon" style="line-height: 36px;">arrow_drop_down</i>
+                        <div class="custom-select-wrapper no-arrow rename-capsule-wrap" id="wrap-delete-location" data-type="strict">
+                            <input type="text" id="delete-location-input" class="manage-footer__location-input browser-default" placeholder="삭제할 위치" autocomplete="off">
                         </div>
                     `;
 
@@ -13498,7 +12098,7 @@ function updateManageFooter(mode, subModeOverride) {
                 }
 
                 if (deleteWrap && typeof cardCacheInstance !== 'undefined') {
-                    const locations = cardCacheInstance.getAllLocations().map(l => ({ val: l, text: l }));
+                    const locations = getDeletableLocations().map(l => ({ val: l, text: l }));
                     deleteWrap.dataset.options = JSON.stringify(locations);
                 }
             }
@@ -13510,43 +12110,12 @@ function updateManageFooter(mode, subModeOverride) {
         // [우측 영역 처리] 
         rightEl.innerHTML = '';
         if (mode === 'add') {
-            if (currentSubMode === 'general') {
-                rightEl.innerHTML = `<button id="manage-primary-btn" class="btn cyan-theme waves-effect waves-light" onclick="submitPageEntries()" tabindex="0">등록</button>`;
-            } else if (currentSubMode === 'pack') {
-                const isReady = (typeof PackDeckStore.currentPackInfo !== 'undefined' && PackDeckStore.currentPackInfo !== null);
-                const genDisabled = PackDeckStore.isPackTableGenerated ? '' : (isReady ? '' : 'disabled');
-                const genText = PackDeckStore.isPackTableGenerated ? '목록 제거' : '목록 생성';
-                const genTheme = PackDeckStore.isPackTableGenerated ? 'red-theme' : 'cyan-theme';
-                rightEl.innerHTML = `
-                    <span id="manage-working-name" class="working-info-text"></span>
-                    <button id="manage-gen-btn" class="btn ${genTheme} waves-effect waves-light ${genDisabled}" onclick="togglePackTable()">${genText}</button>
-                `;
-                if (PackDeckStore.isPackTableGenerated && typeof PackDeckStore.currentPackInfo !== 'undefined' && PackDeckStore.currentPackInfo) {
-                    const wn = document.getElementById('manage-working-name');
-                    if (wn) wn.innerText = PackDeckStore.currentPackInfo.packName || '';
-                }
-            } else if (currentSubMode === 'deck') {
-                const isReady = (typeof PackDeckStore.currentDeckName !== 'undefined' && PackDeckStore.currentDeckName !== null && PackDeckStore.currentDeckName !== '');
-                const genDisabled = PackDeckStore.isDeckTableGenerated ? '' : (isReady ? '' : 'disabled');
-                const genText = PackDeckStore.isDeckTableGenerated ? '목록 제거' : '목록 생성';
-                const genTheme = PackDeckStore.isDeckTableGenerated ? 'red-theme' : 'cyan-theme';
-                rightEl.innerHTML = `
-                    <span id="manage-working-name" class="working-info-text"></span>
-                    <button id="manage-gen-btn" class="btn ${genTheme} waves-effect waves-light ${genDisabled}" onclick="toggleDeckTable()">${genText}</button>
-                `;
-                if (PackDeckStore.isDeckTableGenerated) {
-                    const code = document.getElementById('deck-code-input');
-                    const wn = document.getElementById('manage-working-name');
-                    if (wn && code) wn.innerText = '덱 코드: ' + code.value;
-                }
-            }
+            rightEl.innerHTML = `<button type="button" id="manage-primary-btn" class="ui-button color-theme manage-footer__primary" onclick="submitPageEntries()" tabindex="0">등록</button>`;
         } else if (mode === 'move') {
-            rightEl.innerHTML = `<button id="manage-primary-btn" class="btn cyan-theme waves-effect waves-light" onclick="submitMoveEntries()" tabindex="0">이동</button>`;
+            rightEl.innerHTML = `<button type="button" id="manage-primary-btn" class="ui-button color-theme manage-footer__primary" onclick="submitMoveEntries()" tabindex="0">이동</button>`;
         } else if (mode === 'discard') {
-            rightEl.innerHTML = `<button id="manage-primary-btn" class="btn cyan-theme waves-effect waves-light" onclick="submitDiscardEntries()" tabindex="0">제거</button>`;
+            rightEl.innerHTML = `<button type="button" id="manage-primary-btn" class="ui-button color-theme manage-footer__primary" onclick="submitDiscardEntries()" tabindex="0">제거</button>`;
         }
-
-
 
         requestAnimationFrame(() => {
             footer.classList.remove('is-updating');
@@ -13616,97 +12185,100 @@ function getMobileCardHtml(idx, nextNum, data) {
     const qty = (data.qty && parseInt(data.qty) > 0) ? parseInt(data.qty) : null;
 
     const actionsHtml = isDiscard ? `
-        <button class="btn-card-action delete" onclick="triggerMobileDelete(${idx})" title="제거"><i class="material-icons">delete</i></button>
+        <button type="button" class="btn-card-action delete ui-button ui-button--text color-text-table ui-control--disabled" onclick="triggerMobileDelete(${idx})" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
     ` : `
-        <button class="btn-card-action copy" onclick="triggerMobileCopy(${idx})" title="복제"><i class="material-icons">library_add</i></button>
-        <button class="btn-card-action delete" onclick="triggerMobileDelete(${idx})" title="제거"><i class="material-icons">delete</i></button>
+        <button type="button" class="btn-card-action copy ui-button ui-button--text color-text-table" onclick="triggerMobileCopy(${idx})" title="복제" aria-label="복제"><i class="material-icons" aria-hidden="true">library_add</i></button>
+        <button type="button" class="btn-card-action delete ui-button ui-button--text color-text-table ui-control--disabled" onclick="triggerMobileDelete(${idx})" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
     `;
 
     const bottomBadges = isMove ? `
-        <span class="card-info-badge illust">${escapeHTML(illust || '미선택')}</span>
-        <span class="card-info-badge rarity">${escapeHTML(rarity || '미선택')}</span>
-        <span class="card-info-badge location">${escapeHTML(loc || '보관 위치')}</span>
-        <i class="material-icons loc-arrow" style="font-size:0.8rem; color:var(--text-muted); align-self:center; margin:0 -2px;">arrow_forward</i>
-        <span class="card-info-badge location to-loc">${escapeHTML(to || '이동 위치')}</span>
-        <span class="card-info-badge qty">${qty !== null ? qty + '장' : '수량'}</span>
+        <span class="card-info-badge color-text-table illust">${escapeHTML(illust || '일러스트')}</span>
+        <span class="card-info-badge color-text-table rarity">${escapeHTML(rarity || '레어도')}</span>
+        <span class="card-info-badge color-text-table location">${escapeHTML(loc || '보관 위치')}</span>
+        <i class="material-icons loc-arrow color-text-table">arrow_forward</i>
+        <span class="card-info-badge color-text-table location to-loc">${escapeHTML(to || '이동 위치')}</span>
+        <span class="card-info-badge color-text-table qty">${qty !== null ? qty + '장' : '수량'}</span>
     ` : `
-        <span class="card-info-badge illust">${escapeHTML(illust || '미선택')}</span>
-        <span class="card-info-badge rarity">${escapeHTML(rarity || '미선택')}</span>
-        <span class="card-info-badge location">${escapeHTML(loc || '보관 위치')}</span>
-        <span class="card-info-badge qty">${qty !== null ? qty + '장' : '수량'}</span>
+        <span class="card-info-badge color-text-table illust">${escapeHTML(illust || '일러스트')}</span>
+        <span class="card-info-badge color-text-table rarity">${escapeHTML(rarity || '레어도')}</span>
+        <span class="card-info-badge color-text-table location">${escapeHTML(loc || '보관 위치')}</span>
+        <span class="card-info-badge color-text-table qty">${qty !== null ? qty + '장' : '수량'}</span>
     `;
 
     return `
-        <div class="mobile-info-card ui-stack-card shape-rounded003 ${idx % 2 === 0 ? 'color-card-odd' : 'color-card-even'}" data-index="${idx}">
+        <div class="mobile-info-card ui-stack-card shape-rounded003 ${idx % 2 === 0 ? 'color-card-odd' : 'color-card-even'}" data-index="${idx}" onclick="handleMobileCardClick(event)">
             <div class="card-row-top">
                 <span class="card-num-badge">${nextNum}</span>
                 <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
-                <span class="card-title-text" onclick="openEditBottomSheet(${idx})">${escapeHTML(displayName)}</span>
-                <span class="card-code-text" onclick="openEditBottomSheet(${idx})">${escapeHTML(cardNo || '미입력')}</span>
+                <button type="button" class="card-title-text ui-button ui-button--text color-text-table" aria-haspopup="dialog" aria-controls="mobile-entry-bottom-sheet">${escapeHTML(displayName)}</button>
+                <span class="card-code-text color-text-table">${escapeHTML(cardNo || '-')}</span>
                 <div class="card-actions">
-                    <button class="btn-card-action edit" onclick="openEditBottomSheet(${idx})" title="수정"><i class="material-icons">edit</i></button>
                     ${actionsHtml}
                 </div>
             </div>
-            <div class="card-row-bottom" onclick="openEditBottomSheet(${idx})">
+            <div class="card-row-bottom">
                 ${bottomBadges}
             </div>
 
-            <div class="mobile-card-fields" style="display: none;">
+            <div class="mobile-card-fields card-info-fields" hidden>
                 <!-- 카드 이름 -->
                 <div class="sheet-form-field">
-                    <label>카드 이름</label>
-                    <div class="custom-select-wrapper sheet-input-box no-arrow" style="position:relative;" onclick="openSheetOverlay('name', event)">
-                        <input type="text" class="custom-input ${nameClass}" data-field="name" value="${escapeHTML(data.name || '')}" placeholder="카드 이름 입력" oninput="handleCardNameInput(this)" onblur="fetchCardByName(this)" onkeydown="if(event.isComposing && (event.key==='Enter' || event.key==='Tab')) { event.preventDefault(); return; } if(this.hasAttribute('readonly') && (event.key==='Escape' || event.key==='Backspace' || event.key==='Delete')) { clearPageNameAndNo(this); event.preventDefault(); return; } if(event.key==='Enter') { this.blur(); }" autocomplete="off" readonly>
-                        <i class="material-icons clear-name-btn clear-btn" onclick="clearBottomSheetField('name', event)" style="display:none; position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.25rem; color:var(--text-muted);">cancel</i>
+                    <label class="color-text-001">카드 이름</label>
+                    <div class="custom-select-wrapper sheet-input-box border-basic shape-rounded002 color-text-000 no-arrow" onclick="openSheetOverlay('name', event)">
+                        <input type="text" class="custom-input browser-default ${nameClass}" data-field="name" value="${escapeHTML(data.name || '')}" placeholder="카드 이름 입력" oninput="handleCardNameInput(this)" onblur="fetchCardByName(this)" onkeydown="if(event.isComposing && (event.key==='Enter' || event.key==='Tab')) { event.preventDefault(); return; } if(this.hasAttribute('readonly') && (event.key==='Escape' || event.key==='Backspace' || event.key==='Delete')) { clearPageNameAndNo(this); event.preventDefault(); return; } if(event.key==='Enter') { this.blur(); }" autocomplete="off" readonly>
+                        <button type="button" class="ui-button ui-button--text clear-name-btn clear-btn" aria-label="카드 이름 지우기" onclick="clearBottomSheetField('name', event)" hidden><i class="material-icons" aria-hidden="true">cancel</i></button>
                     </div>
                 </div>
                 <!-- 카드 번호 -->
                 <div class="sheet-form-field">
-                    <label>카드 번호</label>
-                    <div class="custom-select-wrapper sheet-input-box no-arrow" style="position:relative;" onclick="openSheetOverlay('no')">
-                        <input type="text" class="custom-input ${noClass}" data-field="no" value="${escapeHTML(cardNo)}" placeholder="카드 번호 입력" oninput="handleCardNoInput(this)" onblur="fetchCardByNumber(this)" onkeydown="if(event.key==='Enter' && !this.closest('.custom-select-wrapper').classList.contains('active')) fetchCardByNumber(this)" autocomplete="off" readonly>
-                        <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px; display:none;">arrow_drop_down</i>
-                        <i class="material-icons clear-btn" onclick="clearBottomSheetField('no', event)" style="display:none; position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.25rem; color:var(--text-muted);">cancel</i>
+                    <label class="color-text-001">카드 번호</label>
+                    <div class="custom-select-wrapper sheet-input-box border-basic shape-rounded002 color-text-000 no-arrow" onclick="openSheetOverlay('no')">
+                        <input type="text" class="custom-input browser-default ${noClass}" data-field="no" value="${escapeHTML(cardNo)}" placeholder="카드 번호 입력" oninput="handleCardNoInput(this)" onblur="fetchCardByNumber(this)" onkeydown="if(event.key==='Enter' && !this.closest('.custom-select-wrapper').classList.contains('active')) fetchCardByNumber(this)" autocomplete="off" readonly>
+                        <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                        <button type="button" class="ui-button ui-button--text clear-btn" aria-label="카드 번호 지우기" onclick="clearBottomSheetField('no', event)" hidden><i class="material-icons" aria-hidden="true">cancel</i></button>
                     </div>
                 </div>
                 <!-- 일러스트 & 레어도 -->
                 <div class="sheet-form-row">
-                    <div class="sheet-form-field half">
-                        <label>일러스트</label>
-                        <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="illust" data-type="strict" style="position:relative;" onclick="openSheetDropdownOverlay('illust')">
-                            <input type="text" class="custom-input ${illustClass}" data-field="illust" data-raw="${escapeHTML(data.illustration || '')}" value="${escapeHTML(illust)}" placeholder="일러스트" readonly>
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
+                    <div class="sheet-form-field">
+                        <label class="color-text-001">일러스트</label>
+                        <div class="custom-select-wrapper sheet-input-box border-basic shape-rounded002 color-text-000 no-option" data-field-wrap="illust" data-type="strict" onclick="openSheetDropdownOverlay('illust')">
+                            <input type="text" class="custom-input browser-default ${illustClass}" data-field="illust" inputmode="none" role="button" aria-label="일러스트 선택" aria-haspopup="dialog" aria-expanded="false" data-raw="${escapeHTML(data.illustration || '')}" value="${escapeHTML(illust)}" placeholder="일러스트" readonly>
+                            <span class="card-info-field-value" aria-hidden="true"></span>
+                            <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
                         </div>
                     </div>
-                    <div class="sheet-form-field half">
-                        <label>레어도</label>
-                        <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="rare" data-type="strict" style="position:relative;" onclick="openSheetDropdownOverlay('rare')">
-                            <input type="text" class="custom-input ${rareClass}" data-field="rare" value="${escapeHTML(data.rarity || '')}" placeholder="레어도" readonly>
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
+                    <div class="sheet-form-field">
+                        <label class="color-text-001">레어도</label>
+                        <div class="custom-select-wrapper sheet-input-box border-basic shape-rounded002 color-text-000 no-option" data-field-wrap="rare" data-type="strict" onclick="openSheetDropdownOverlay('rare')">
+                            <input type="text" class="custom-input browser-default ${rareClass}" data-field="rare" value="${escapeHTML(data.rarity || '')}" placeholder="레어도" readonly>
+                            <span class="card-info-field-value" aria-hidden="true"></span>
+                            <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
                         </div>
                     </div>
                 </div>
                 <!-- 보관 위치 & 이동 위치 & 수량 -->
                 <div class="sheet-form-row">
-                    <div class="sheet-form-field" style="flex: 1;">
-                        <label>보관 위치</label>
-                        <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="loc" data-type="${isMove || isDiscard ? 'strict' : 'free'}" style="position:relative;" onclick="openSheetOverlay('loc')">
-                            <input type="text" class="custom-input ${locClass}" data-field="loc" value="${escapeHTML(loc)}" placeholder="보관 위치" readonly>
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
+                    <div class="sheet-form-field">
+                        <label class="color-text-001">보관 위치</label>
+                        <div class="custom-select-wrapper sheet-input-box border-basic shape-rounded002 color-text-000 no-option" data-field-wrap="loc" data-type="${isMove || isDiscard ? 'strict' : 'free'}" onclick="openSheetOverlay('loc')">
+                            <input type="text" class="custom-input browser-default ${locClass}" data-field="loc" value="${escapeHTML(loc)}" placeholder="보관 위치" readonly>
+                            <span class="card-info-field-value" aria-hidden="true"></span>
+                            <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
                         </div>
                     </div>
-                    <div class="sheet-form-field" style="flex: 1; display: ${isMove ? 'block' : 'none'};">
-                        <label>이동 위치</label>
-                        <div class="custom-select-wrapper sheet-input-box" data-field-wrap="to" data-type="free" style="position:relative;" onclick="openSheetOverlay('to')">
-                            <input type="text" class="custom-input move-card-to" data-field="to" value="${escapeHTML(to)}" placeholder="이동 위치" readonly>
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
+                    <div class="sheet-form-field"${isMove ? '' : ' hidden'}>
+                        <label class="color-text-001">이동 위치</label>
+                        <div class="custom-select-wrapper sheet-input-box border-basic shape-rounded002 color-text-000" data-field-wrap="to" data-type="free" onclick="openSheetOverlay('to')">
+                            <input type="text" class="custom-input browser-default move-card-to" data-field="to" value="${escapeHTML(to)}" placeholder="이동 위치" readonly>
+                            <span class="card-info-field-value" aria-hidden="true"></span>
+                            <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
                         </div>
                     </div>
-                    <div class="sheet-form-field" style="flex: 1;">
-                        <label>수량</label>
-                        <div class="custom-select-wrapper sheet-input-box no-arrow" data-field-wrap="qty" style="position:relative;" onclick="openSheetOverlay('qty')">
-                            <input type="number" class="custom-input ${qtyClass} qty-input" data-field="qty" value="${qty !== null ? qty : ''}" placeholder="수량" min="1" readonly style="flex:1; border:none !important; background:transparent !important; outline:none !important; font-size:0.9rem; text-align:left;" oninput="handleCardQtyInput(this)">
+                    <div class="sheet-form-field">
+                        <label class="color-text-001">수량</label>
+                        <div class="custom-select-wrapper sheet-input-box border-basic shape-rounded002 color-text-000 no-arrow" data-field-wrap="qty" onclick="openSheetOverlay('qty')">
+                            <input type="number" class="custom-input browser-default ${qtyClass} qty-input" data-field="qty" value="${qty !== null ? qty : ''}" placeholder="수량" min="1" readonly oninput="handleCardQtyInput(this)">
                         </div>
                     </div>
                 </div>
@@ -13742,13 +12314,13 @@ function updateMobileCardDisplay(cardEl) {
     if (titleEl) titleEl.innerText = displayName;
 
     const codeEl = cardEl.querySelector('.card-code-text');
-    if (codeEl) codeEl.innerText = cardNo || '미입력';
+    if (codeEl) codeEl.innerText = cardNo || '-';
 
     const badgeIllust = cardEl.querySelector('.card-info-badge.illust');
-    if (badgeIllust) badgeIllust.innerText = illust || '미선택';
+    if (badgeIllust) badgeIllust.innerText = illust || '일러스트';
 
     const badgeRarity = cardEl.querySelector('.card-info-badge.rarity');
-    if (badgeRarity) badgeRarity.innerText = rarity || '미선택';
+    if (badgeRarity) badgeRarity.innerText = rarity || '레어도';
 
     const badgeLocs = cardEl.querySelectorAll('.card-info-badge.location');
     if (badgeLocs.length > 0) {
@@ -13766,12 +12338,9 @@ function updateMobileCardDisplay(cardEl) {
     if (badgeQty) badgeQty.innerText = qty !== null ? `${qty}장` : '수량';
 }
 
-function renderMobileCardsFromData(dataArray) {
+function renderMobileCardsFromData(dataArray, previousRows) {
     let listContainerId = 'mobile-cards-list-general';
-    if (UIStore.mode === 'add') {
-        if (addSubMode === 'pack') listContainerId = 'mobile-cards-list-pack';
-        else if (addSubMode === 'deck') listContainerId = 'mobile-cards-list-deck';
-    } else if (UIStore.mode === 'move') {
+    if (UIStore.mode === 'move') {
         listContainerId = 'mobile-cards-list-move';
     } else if (UIStore.mode === 'discard') {
         listContainerId = 'mobile-cards-list-discard';
@@ -13781,17 +12350,12 @@ function renderMobileCardsFromData(dataArray) {
     if (!listContainer) return;
     if (currentEditingRowIndex !== -1) return;
 
+    const previousChildren = previousRows && [...listContainer.children];
     listContainer.innerHTML = '';
-    const wrapper = listContainer.closest('.mobile-cards-wrapper');
 
     if (dataArray.length === 0) {
-        if (wrapper) wrapper.style.display = 'none';
+        globalThis.AppOverlays?.restoreRowExits?.(listContainer, previousChildren);
         return;
-    }
-
-    if (wrapper) {
-        listContainer.style.display = 'block';
-        wrapper.style.display = 'block';
     }
 
     dataArray.forEach((data, idx) => {
@@ -13828,20 +12392,20 @@ function renderMobileCardsFromData(dataArray) {
             initCardWidgets(cardEl);
             restoreDesktopDropdownOptions(cardEl, data);
             updateMobileCardDisplay(cardEl);
+            if (previousRows?.[idx]) globalThis.AppOverlays?.animateRowEntrance?.(cardEl, previousRows[idx]);
         }
     });
-    updateManagementCardStack(listContainer.querySelectorAll('.mobile-info-card'));
+    globalThis.AppOverlays?.restoreRowExits?.(listContainer, previousChildren);
+    reindexMobileCards(listContainer);
 }
 
 function renderMobileCards() {
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
     if (!isMobile) return;
-    
+    if (currentEditingRow) updateSheetDropdownState();
+
     let listContainerId = 'mobile-cards-list-general';
-    if (UIStore.mode === 'add') {
-        if (addSubMode === 'pack') listContainerId = 'mobile-cards-list-pack';
-        else if (addSubMode === 'deck') listContainerId = 'mobile-cards-list-deck';
-    } else if (UIStore.mode === 'move') {
+    if (UIStore.mode === 'move') {
         listContainerId = 'mobile-cards-list-move';
     } else if (UIStore.mode === 'discard') {
         listContainerId = 'mobile-cards-list-discard';
@@ -13849,21 +12413,18 @@ function renderMobileCards() {
     const listContainer = document.getElementById(listContainerId);
     if (!listContainer) return;
     
-    const cards = listContainer.querySelectorAll('.mobile-info-card');
+    const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
     const collectedData = [];
     cards.forEach(c => {
         collectedData.push(getDesktopCardData(c));
     });
     
-    renderMobileCardsFromData(collectedData);
+    renderMobileCardsFromData(collectedData, cards);
 }
 
-function mobileAddEntry(mode, subMode, initialData = null) {
+function mobileAddEntry(mode, initialData = null) {
     let listContainerId = 'mobile-cards-list-general';
-    if (mode === 'add') {
-        if (subMode === 'pack') listContainerId = 'mobile-cards-list-pack';
-        else if (subMode === 'deck') listContainerId = 'mobile-cards-list-deck';
-    } else if (mode === 'move') {
+    if (mode === 'move') {
         listContainerId = 'mobile-cards-list-move';
     } else if (mode === 'discard') {
         listContainerId = 'mobile-cards-list-discard';
@@ -13872,7 +12433,7 @@ function mobileAddEntry(mode, subMode, initialData = null) {
     const listContainer = document.getElementById(listContainerId);
     if (!listContainer) return null;
 
-    const currentCount = listContainer.querySelectorAll('.mobile-info-card').length;
+    const currentCount = listContainer.querySelectorAll('.mobile-info-card[data-index]').length;
     const nextNum = currentCount + 1;
     const idx = currentCount;
 
@@ -13918,53 +12479,42 @@ function mobileAddEntry(mode, subMode, initialData = null) {
 
         updateMobileCardDisplay(cardEl);
     }
-    updateManagementCardStack(listContainer.querySelectorAll('.mobile-info-card'));
+    reindexMobileCards(listContainer);
+    globalThis.AppOverlays?.animateRowEntrance?.(cardEl);
     return cardEl;
 }
 
 function reindexMobileCards(listContainer) {
     if (!listContainer) return;
-    const cards = listContainer.querySelectorAll('.mobile-info-card');
+    const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
     cards.forEach((card, idx) => {
         card.dataset.index = idx;
         const badge = card.querySelector('.card-num-badge');
         if (badge) badge.innerText = idx + 1;
-        
-        const editBtn = card.querySelector('.btn-card-action.edit');
-        if (editBtn) editBtn.setAttribute('onclick', `openEditBottomSheet(${idx})`);
         
         const copyBtn = card.querySelector('.btn-card-action.copy');
         if (copyBtn) copyBtn.setAttribute('onclick', `triggerMobileCopy(${idx})`);
 
         const deleteBtn = card.querySelector('.btn-card-action.delete');
         if (deleteBtn) {
+            if (cards.length === 1) deleteBtn.setAttribute('disabled', 'true');
+            else deleteBtn.removeAttribute('disabled');
             if (UIStore.mode === 'move') deleteBtn.setAttribute('onclick', `triggerMobileMoveDelete(${idx})`);
             else if (UIStore.mode === 'discard') deleteBtn.setAttribute('onclick', `triggerMobileDiscardDelete(${idx})`);
             else deleteBtn.setAttribute('onclick', `triggerMobileDelete(${idx})`);
         }
-        
-        const titleText = card.querySelector('.card-title-text');
-        if (titleText) titleText.setAttribute('onclick', `openEditBottomSheet(${idx})`);
-
-        const codeText = card.querySelector('.card-code-text');
-        if (codeText) codeText.setAttribute('onclick', `openEditBottomSheet(${idx})`);
-
-        const rowBot = card.querySelector('.card-row-bottom');
-        if (rowBot) rowBot.setAttribute('onclick', `openEditBottomSheet(${idx})`);
     });
     updateManagementCardStack(cards);
 }
 
 function handleMobileAddCardClick() {
     let listContainerId = 'mobile-cards-list-general';
-    if (addSubMode === 'pack') listContainerId = 'mobile-cards-list-pack';
-    else if (addSubMode === 'deck') listContainerId = 'mobile-cards-list-deck';
     const listContainer = document.getElementById(listContainerId);
 
-    mobileAddEntry(UIStore.mode, addSubMode);
+    mobileAddEntry(UIStore.mode);
     if (listContainer) {
         reindexMobileCards(listContainer);
-        const cards = listContainer.querySelectorAll('.mobile-info-card');
+        const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
         if (cards.length > 0) {
             openEditBottomSheet(cards.length - 1);
         }
@@ -13973,10 +12523,10 @@ function handleMobileAddCardClick() {
 
 function handleMobileAddMoveCardClick() {
     const listContainer = document.getElementById('mobile-cards-list-move');
-    mobileAddEntry('move', null);
+    mobileAddEntry('move');
     if (listContainer) {
         reindexMobileCards(listContainer);
-        const cards = listContainer.querySelectorAll('.mobile-info-card');
+        const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
         if (cards.length > 0) {
             openEditBottomSheet(cards.length - 1);
         }
@@ -13985,10 +12535,10 @@ function handleMobileAddMoveCardClick() {
 
 function handleMobileAddDiscardCardClick() {
     const listContainer = document.getElementById('mobile-cards-list-discard');
-    mobileAddEntry('discard', null);
+    mobileAddEntry('discard');
     if (listContainer) {
         reindexMobileCards(listContainer);
-        const cards = listContainer.querySelectorAll('.mobile-info-card');
+        const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
         if (cards.length > 0) {
             openEditBottomSheet(cards.length - 1);
         }
@@ -13997,10 +12547,7 @@ function handleMobileAddDiscardCardClick() {
 
 function triggerMobileCopy(idx) {
     let listContainerId = 'mobile-cards-list-general';
-    if (UIStore.mode === 'add') {
-        if (addSubMode === 'pack') listContainerId = 'mobile-cards-list-pack';
-        else if (addSubMode === 'deck') listContainerId = 'mobile-cards-list-deck';
-    } else if (UIStore.mode === 'move') {
+    if (UIStore.mode === 'move') {
         listContainerId = 'mobile-cards-list-move';
     } else if (UIStore.mode === 'discard') {
         listContainerId = 'mobile-cards-list-discard';
@@ -14008,26 +12555,22 @@ function triggerMobileCopy(idx) {
 
     const listContainer = document.getElementById(listContainerId);
     if (!listContainer) return;
-    const cards = listContainer.querySelectorAll('.mobile-info-card');
+    const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
     const card = cards[idx];
     if (!card) return;
 
     const data = getDesktopCardData(card);
-    mobileAddEntry(UIStore.mode, addSubMode, data);
+    mobileAddEntry(UIStore.mode, data);
     reindexMobileCards(listContainer);
 }
 
 function triggerMobileDelete(idx) {
     let listContainerId = 'mobile-cards-list-general';
-    if (UIStore.mode === 'add') {
-        if (addSubMode === 'pack') listContainerId = 'mobile-cards-list-pack';
-        else if (addSubMode === 'deck') listContainerId = 'mobile-cards-list-deck';
-    }
     const listContainer = document.getElementById(listContainerId);
     if (!listContainer) return;
-    const cards = listContainer.querySelectorAll('.mobile-info-card');
-    if (cards[idx]) {
-        cards[idx].remove();
+    const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
+    if (cards.length > 1 && cards[idx]) {
+        if (!globalThis.AppOverlays?.animateRowExit?.(cards[idx])) cards[idx].remove();
         reindexMobileCards(listContainer);
     }
 }
@@ -14035,9 +12578,9 @@ function triggerMobileDelete(idx) {
 function triggerMobileMoveDelete(idx) {
     const listContainer = document.getElementById('mobile-cards-list-move');
     if (!listContainer) return;
-    const cards = listContainer.querySelectorAll('.mobile-info-card');
-    if (cards[idx]) {
-        cards[idx].remove();
+    const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
+    if (cards.length > 1 && cards[idx]) {
+        if (!globalThis.AppOverlays?.animateRowExit?.(cards[idx])) cards[idx].remove();
         reindexMobileCards(listContainer);
     }
 }
@@ -14045,9 +12588,9 @@ function triggerMobileMoveDelete(idx) {
 function triggerMobileDiscardDelete(idx) {
     const listContainer = document.getElementById('mobile-cards-list-discard');
     if (!listContainer) return;
-    const cards = listContainer.querySelectorAll('.mobile-info-card');
-    if (cards[idx]) {
-        cards[idx].remove();
+    const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
+    if (cards.length > 1 && cards[idx]) {
+        if (!globalThis.AppOverlays?.animateRowExit?.(cards[idx])) cards[idx].remove();
         reindexMobileCards(listContainer);
     }
 }
@@ -14077,8 +12620,12 @@ function handleDeleteLocationChange(input) {
     }
 }
 
+function getDeletableLocations() {
+    return globalThis.AppBackend?.getInventoryLocationNames?.() ?? cardCacheInstance.getAllLocations();
+}
+
 async function submitDeleteLocation() {
-    if (!requireInventoryReady()) return;
+    if (deleteLocationSubmitting || !requireInventoryReady()) return;
     const deleteInput = document.getElementById('delete-location-input');
     if (!deleteInput) return;
 
@@ -14094,7 +12641,7 @@ async function submitDeleteLocation() {
         return;
     }
 
-    const locations = cardCacheInstance.getAllLocations();
+    const locations = getDeletableLocations();
     if (!locations.includes(deleteLoc)) {
         showToast('유효하지 않은 보관 위치입니다.', 'toast-warn');
         return;
@@ -14107,9 +12654,43 @@ async function submitDeleteLocation() {
     }
 
     // 1단계: 복구 불가 확인 상태 전환
-    if (!isDeleteLocationConfirmPending) {
-        isDeleteLocationConfirmPending = true;
+    const owner = UserStore.user;
+    const backend = globalThis.AppBackend;
+    const confirmation = isDeleteLocationConfirmPending;
+    if (!confirmation || confirmation.name !== deleteLoc || confirmation.owner !== owner) {
+        const { revision, generation } = backend?.inventoryState || {};
+        isDeleteLocationConfirmPending = { name: deleteLoc, owner, revision, generation };
         updateManageFooter('discard');
+        return;
+    }
+
+    if (backend) {
+        deleteLocationSubmitting = true;
+        showLoading(true, '위치 삭제 중...');
+        try {
+            const { revision, generation } = confirmation;
+            const inventory = await backend.request('deleteLocation', {}, { name: deleteLoc, version: { revision, generation } });
+            if (UserStore.user !== owner) return;
+            applyUserData(inventory, { includeSettings: false });
+            syncCounter++;
+            if (isDeleteLocationMode) toggleDeleteLocationMode();
+            showToast('보관 위치와 해당 카드가 삭제되었습니다.', '');
+        } catch (error) {
+            if (UserStore.user !== owner) return;
+            if (error.inventory) applyUserData(error.inventory, { includeSettings: false });
+            isDeleteLocationConfirmPending = false;
+            if (isDeleteLocationMode) updateManageFooter('discard');
+            const messages = {
+                INVENTORY_REVISION_CHANGED: '보유 정보가 변경되었습니다. 위치를 다시 확인해 주세요.',
+                INVENTORY_GENERATION_CHANGED: '보유 카드가 초기화되었습니다. 위치를 다시 확인해 주세요.',
+                LOCATION_NOT_FOUND: '보관 위치를 찾을 수 없습니다. 목록을 다시 확인해 주세요.',
+                NOT_FOUND: '현재 연결된 서버는 위치 삭제를 지원하지 않습니다.',
+            };
+            showToast(messages[error.code] || '위치 삭제 결과를 확인하지 못했습니다. 다시 시도해 주세요.', 'toast-error');
+        } finally {
+            deleteLocationSubmitting = false;
+            showLoading(false);
+        }
         return;
     }
 
@@ -14188,7 +12769,7 @@ function openMobileSearch() {
         history.pushState({ mobileSearchOpen: true }, '');
     }
 
-    overlay.style.display = 'flex';
+    overlay.hidden = false;
     // display:none에서 복귀한 닫힘 상태를 먼저 계산하여 상단 이동·배경 페이드를 시작한다.
     void overlay.offsetHeight;
     mobileSearchOpenFrame = requestAnimationFrame(() => {
@@ -14226,6 +12807,7 @@ function closeMobileSearch(fromPopState = false) {
     clearTimeout(mobileSearchCloseTimer);
 
     overlay.classList.remove('active');
+    if (globalThis.AppBackend) clearCatalogDropdownCandidates(document.getElementById('mobile-custom-dropdown'));
     
     // 하단 탭바 원래 모드에 맞게 복원
     if (typeof updateActiveNav === 'function' && typeof UIStore.mode !== 'undefined') {
@@ -14233,7 +12815,7 @@ function closeMobileSearch(fromPopState = false) {
     }
     
     mobileSearchCloseTimer = setTimeout(() => {
-        overlay.style.display = 'none';
+        overlay.hidden = true;
         if (input) input.value = '';
         const dropdown = document.getElementById('mobile-custom-dropdown');
         if (dropdown) dropdown.classList.remove('active');
@@ -14299,6 +12881,7 @@ function showMobileRecentInDropdown() {
     const list = document.getElementById('mobile-custom-dropdown');
     if (!list) return;
 
+    clearCatalogDropdownCandidates(list);
     list.innerHTML = '';
     
     appendMobileRecentHistory(list, recent);
@@ -14377,13 +12960,15 @@ function initMobileSearchListeners() {
         const debouncedMobileFilter = debounce((val) => {
             // 지우기 직전에 예약된 검색이 최근 검색 목록을 덮어쓰지 않도록 한다.
             if (mSearchInput.value.trim() !== val) return;
+            if (globalThis.AppBackend && !document.getElementById('mobile-search-overlay')?.classList.contains('active')) return;
             mobileFilterAndShowDropdown(val);
-        }, 150);
+        }, 100);
 
         mSearchInput.addEventListener('input', (e) => {
             const val = e.target.value.trim();
             if (val) {
                 if (mClearBtn) mClearBtn.hidden = false;
+                if (globalThis.AppBackend) updatePendingCatalogDropdown(val, true);
                 debouncedMobileFilter(val);
             } else {
                 debouncedMobileFilter.cancel && debouncedMobileFilter.cancel();
@@ -14448,17 +13033,17 @@ function initMobileSearchListeners() {
 
 let currentEditingRow = null;    // 원본 입력 노드를 돌려줄 소유 행
 let currentEditingRowIndex = -1; // 현재 바텀 시트에서 편집 중인 테이블 행 인덱스 (0-based)
-let activeOverlayType = '';       // 현재 활성화된 오버레이 종류 ('name', 'no', 'loc', 'qty')
+let activeOverlayType = '';
+let packOverlaySelect = null;
+let packOverlaySuggestionRequest = null;
+let packOverlayLastSuggestions = [];
 let qtyPickerSelectedVal = 1;     // 수량 조절 오버레이 내 선택된 임시 값
 
 
 
 function getActiveMobileListContainer() {
     let listContainerId = 'mobile-cards-list-general';
-    if (UIStore.mode === 'add') {
-        if (addSubMode === 'pack') listContainerId = 'mobile-cards-list-pack';
-        else if (addSubMode === 'deck') listContainerId = 'mobile-cards-list-deck';
-    } else if (UIStore.mode === 'move') {
+    if (UIStore.mode === 'move') {
         listContainerId = 'mobile-cards-list-move';
     } else if (UIStore.mode === 'discard') {
         listContainerId = 'mobile-cards-list-discard';
@@ -14466,11 +13051,16 @@ function getActiveMobileListContainer() {
     return document.getElementById(listContainerId);
 }
 
+function handleMobileCardClick(event) {
+    if (event.target.closest('.card-actions, .mobile-card-fields')) return;
+    openEditBottomSheet(Number(event.currentTarget.dataset.index));
+}
+
 function openEditBottomSheet(idx) {
     const listContainer = getActiveMobileListContainer();
     if (!listContainer) return;
 
-    const cards = listContainer.querySelectorAll('.mobile-info-card');
+    const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
     const row = cards[idx];
     if (!row) return;
 
@@ -14518,7 +13108,10 @@ function openEditBottomSheet(idx) {
         if (qtyWrap) qtyWrap.id = 'wrap-sheet-qty';
 
         sheetContainer.appendChild(fields);
-        fields.style.display = 'block';
+        fields.removeAttribute('hidden');
+        fields.querySelectorAll('.sheet-form-field > label').forEach(label => {
+            label.htmlFor = label.nextElementSibling.querySelector('input').id;
+        });
 
         // 드롭다운 옵션 복원
         restoreDesktopDropdownOptions(fields, cardData);
@@ -14550,14 +13143,14 @@ function openEditBottomSheet(idx) {
     }
 
     prevBtn.disabled = idx === 0;
-    nextBtn.setAttribute('aria-label', idx === cards.length - 1 ? '카드 행 추가' : '다음 카드');
+    nextBtn.setAttribute('aria-label', idx === cards.length - 1 ? '입력란 추가' : '다음 카드');
 
     const sheet = document.getElementById('mobile-entry-bottom-sheet');
     // 같은 시트 내 행 전환은 기존 진입점과 수명주기를 유지한다.
     if (!isManagedSheetOpen(sheet)) {
         openManagedSheet(sheet, {
             backdrop: document.getElementById('bottom-sheet-overlay'),
-            trigger: row.querySelector('.btn-card-action.edit')
+            trigger: row.querySelector('.card-title-text')
         });
     }
 }
@@ -14582,7 +13175,7 @@ function returnEditingFields() {
         delete currentEditingRow.dataset.searchMode;
         fields.querySelectorAll('input[id^="sheet-card-"], div[id^="wrap-sheet-"]').forEach(el => el.removeAttribute('id'));
         currentEditingRow.appendChild(fields);
-        fields.style.display = 'none';
+        fields.setAttribute('hidden', '');
         updateMobileCardDisplay(currentEditingRow);
     }
     const sheet = document.getElementById('mobile-entry-bottom-sheet');
@@ -14607,7 +13200,7 @@ function navigateSheetCard(direction) {
     const listContainer = getActiveMobileListContainer();
     if (!listContainer) return;
 
-    const cards = listContainer.querySelectorAll('.mobile-info-card');
+    const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
     if (!currentEditingRow) return;
 
     const targetIdx = currentEditingRowIndex + direction;
@@ -14621,9 +13214,9 @@ function navigateSheetCard(direction) {
             openEditBottomSheet(targetIdx);
         } else {
             // 맨 마지막 카드에서 다음을 누를 때 카드 추가 및 바텀시트 전환
-            mobileAddEntry(UIStore.mode, addSubMode);
+            mobileAddEntry(UIStore.mode);
             reindexMobileCards(listContainer);
-            const updatedCards = listContainer.querySelectorAll('.mobile-info-card');
+            const updatedCards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
             openEditBottomSheet(updatedCards.length - 1);
         }
     }
@@ -14644,81 +13237,154 @@ function openSheetOverlay(type, event) {
         }
     }
 
+    const field = document.getElementById('sheet-card-' + type);
+    if (field?.disabled) return;
+    const value = field?.value.trim() || '';
+    if (type === 'qty') {
+        openQtyOverlay(value);
+        return;
+    }
+    const placeholders = { name: '카드 이름 입력', no: '카드 번호 입력', loc: '보관 위치 입력', to: '이동 위치 입력' };
+    openSheetInputOverlay(type, field, placeholders[type], value);
+}
+
+function openSheetInputOverlay(type, trigger, label, value, onSelect = null) {
     const overlay = document.getElementById('mobile-sheet-input-overlay');
     const input = document.getElementById('overlay-search-input');
     const clearBtn = document.getElementById('overlay-clear-btn');
     const list = document.getElementById('overlay-suggestions-list');
 
     if (!overlay || !input || !list) return;
+    overlay.dataset.sheetInputType = type;
     input._cancelSuggestions?.();
     activeOverlayType = type;
-
-    input.value = '';
-    clearBtn.style.display = 'none';
+    packOverlaySelect = onSelect;
+    packOverlayLastSuggestions = [];
+    registrationOverlayLastSuggestions = [];
+    input.type = 'text';
+    input.enterKeyHint = type === 'pack' || type === 'photo-name' ? 'search' : '';
+    input.placeholder = label;
+    input.value = value;
+    clearBtn.hidden = !value;
+    list.style.height = '';
     list.innerHTML = '';
-
-    // 바텀 시트 데이터 맵핑
-    const currentVal = document.getElementById('sheet-card-' + type) ? document.getElementById('sheet-card-' + type).value.trim() : '';
-
-    if (type === 'name') {
-        input.placeholder = '카드 이름 입력';
-        input.type = 'text';
-        input.value = currentVal;
-        if (currentVal) clearBtn.style.display = 'block';
-        showOverlaySuggestions(currentVal);
-    } else if (type === 'no') {
-        input.placeholder = '카드 번호 입력';
-        input.type = 'text';
-        input.value = currentVal;
-        if (currentVal) clearBtn.style.display = 'block';
-        showOverlaySuggestions(currentVal);
-    } else if (type === 'loc') {
-        input.placeholder = '보관 위치 입력';
-        input.type = 'text';
-        input.value = currentVal;
-        if (currentVal) clearBtn.style.display = 'block';
-        showOverlaySuggestions(''); // 보관 위치는 비어있어도 기존 목록 노출
-    } else if (type === 'to') {
-        input.placeholder = '이동 위치 입력';
-        input.type = 'text';
-        input.value = currentVal;
-        if (currentVal) clearBtn.style.display = 'block';
-        showOverlaySuggestions(''); // 이동 위치도 비어있어도 기존 목록 노출
-    } else if (type === 'qty') {
-        // 수량은 전용 수량 오버레이 활성화
-        openQtyOverlay(currentVal);
-        return;
-    }
-
-    overlay.setAttribute('aria-label', input.placeholder);
-    input.setAttribute('aria-label', input.placeholder);
-    openManagedSheet(overlay, {
-        trigger: document.getElementById('sheet-card-' + type), initialFocus: input
-    });
+    overlay.setAttribute('aria-label', label);
+    input.setAttribute('aria-label', label);
+    openManagedSheet(overlay, { trigger, initialFocus: input, onDismiss: closeSheetOverlay });
+    // 검색 오버레이는 탭을 누른 사용자 제스처 안에서 모바일 키보드를 연다.
+    if (type === 'pack' || type === 'photo-name') focusModalReturnTarget(input);
+    showOverlaySuggestions(type === 'loc' || type === 'to' ? '' : value);
 }
 
 function closeSheetOverlay() {
     document.getElementById('overlay-search-input')?._cancelSuggestions?.();
+    const list = document.getElementById('overlay-suggestions-list');
+    if (list) list.style.height = '';
     closeManagedSheet(document.getElementById('mobile-sheet-input-overlay'));
     activeOverlayType = '';
+    packOverlaySelect = null;
+    packOverlayLastSuggestions = [];
+    registrationOverlayLastSuggestions = [];
+}
+
+function closePackLookupInput() {
+    if (activeOverlayType === 'pack') closeSheetOverlay();
+}
+
+function closePhotoNameInput() {
+    if (activeOverlayType === 'photo-name') closeSheetOverlay();
 }
 
 function clearOverlayInput() {
     const input = document.getElementById('overlay-search-input');
     const clearBtn = document.getElementById('overlay-clear-btn');
     if (input) {
+        input._cancelSuggestions?.();
+        registrationOverlayLastSuggestions = [];
         input.value = '';
         input.focus();
-        if (clearBtn) clearBtn.style.display = 'none';
+        if (clearBtn) clearBtn.hidden = true;
         showOverlaySuggestions('');
+    }
+}
+
+let registrationOverlaySuggestions;
+let registrationOverlayLastSuggestions = [];
+
+function renderCardOverlaySuggestions(list, candidates, { remember = true } = {}) {
+    if (remember) registrationOverlayLastSuggestions = candidates;
+    if (remember || candidates.length) list.style.height = '';
+    else holdOpenSuggestionDropdown(list);
+    list.replaceChildren(...candidates.map(candidate => {
+        const { value } = candidate;
+        const item = document.createElement('li');
+        item.innerText = value;
+        item.className = 'ui-button color-type004 text-suggest';
+        item.setAttribute('role', 'button');
+        item.tabIndex = 0;
+        item.onclick = () => selectOverlayItem(value, candidate);
+        return item;
+    }));
+}
+
+async function showRegistrationCatalogSuggestions(list, field, query, fieldInput) {
+    const photoName = field === 'photo-name';
+    const row = photoName ? null : currentEditingRow;
+    const searchInput = document.getElementById('overlay-search-input');
+    const controller = registrationOverlaySuggestions = new AbortController();
+    const isCurrent = () => !controller.signal.aborted && activeOverlayType === field && searchInput.value.trim() === query
+        && (photoName || (currentEditingRow === row && usesRegistrationCatalog(field, fieldInput)));
+    try {
+        const candidates = await globalThis.AppBackend.registrationSuggestions(query, photoName ? 'name' : field, controller.signal);
+        if (!isCurrent()) return;
+        renderCardOverlaySuggestions(list, candidates.slice(0, 10));
+    } catch {
+        if (!isCurrent()) return;
+        registrationOverlayLastSuggestions = [];
+        list.style.height = '';
+        const message = document.createElement('li');
+        message.className = 'item-no-match color-text-001 no-result-item';
+        message.setAttribute('role', 'status');
+        message.textContent = '카드 추천을 불러오지 못했습니다.';
+        list.replaceChildren(message);
     }
 }
 
 // 8. 오버레이 자동완성 / 목록 추천
 function showOverlaySuggestions(query) {
+    registrationOverlaySuggestions?.abort();
     const list = document.getElementById('overlay-suggestions-list');
     if (!list) return;
-    list.innerHTML = '';
+    const field = activeOverlayType;
+    if (field === 'photo-name') {
+        if (query.trim() && globalThis.AppBackend?.registrationSuggestions) {
+            void showRegistrationCatalogSuggestions(list, field, query.trim());
+        } else {
+            renderCardOverlaySuggestions(list, []);
+        }
+        return;
+    }
+    const fieldInput = document.getElementById(`sheet-card-${field}`);
+    const choices = field === 'name' && registrationNameChoices(fieldInput);
+    if (choices) {
+        renderCardOverlaySuggestions(list, choices.filter(choice => normalizeStr(choice.value).includes(normalizeStr(query))));
+        return;
+    }
+    if (usesRegistrationCatalog(field, fieldInput)) {
+        if (query.trim()) void showRegistrationCatalogSuggestions(list, field, query.trim(), fieldInput);
+        else renderCardOverlaySuggestions(list, []);
+        return;
+    }
+    if (field === 'pack') {
+        if (query.trim()) void showPackOverlaySuggestions(query.trim(), list);
+        else {
+            packOverlayLastSuggestions = [];
+            list.replaceChildren();
+        }
+        return;
+    }
+    list.style.height = '';
+    list.replaceChildren();
 
     const normalizedQuery = query.trim().toLowerCase().replace(/\s+/g, '');
     const isMove = (UIStore.mode === 'move');
@@ -14782,14 +13448,7 @@ function showOverlaySuggestions(query) {
             }
         }
 
-        matches.forEach(name => {
-            const li = document.createElement('li');
-            li.innerText = name;
-            li.className = 'ui-button color-type004 text-suggest';            li.setAttribute('role', 'button');
-            li.tabIndex = 0;
-            li.onclick = () => selectOverlayItem(name);
-            list.appendChild(li);
-        });
+        renderCardOverlaySuggestions(list, matches.map(value => ({ value })));
     } else if (activeOverlayType === 'no') {
         let source = [];
 
@@ -14799,7 +13458,7 @@ function showOverlaySuggestions(query) {
             const li = document.createElement('li');
             li.className = 'item-no-match color-text-001 no-result-item';            li.setAttribute('role', 'status');
             li.innerText = '검색 중...';
-            list.appendChild(li);
+            list.replaceChildren(li);
             return;
         }
 
@@ -14817,6 +13476,16 @@ function showOverlaySuggestions(query) {
         }
 
         // 2. 옵션 데이터가 설정되어 있지 않다면 캐시 폴백 처리
+        if (!source.length && UIStore.mode === 'add' && (
+            editingRow?.dataset.searchMode === 'name'
+            || (editingRow?.dataset.cardData && document.getElementById('sheet-card-name')?.classList.contains('hyperlink-style'))
+        )) {
+            try { source = JSON.parse(editingRow.dataset.cardData || '{}').numbers || []; } catch {}
+            if (!source.length) {
+                list.replaceChildren();
+                return;
+            }
+        }
         if (source.length === 0) {
             if (isMove || isDiscard) {
                 let ownedNumbers = cardCacheInstance.getOwnedNumbers();
@@ -14849,7 +13518,7 @@ function showOverlaySuggestions(query) {
                     if (allNos) {
                         source = Array.from(allNos);
                     } else {
-                        // 일반/팩/덱 추가 모드에서는 사용자 소장 재고에 기인한 필터링을 생략하고, 발매 번호 풀로 안전하게 폴백
+                        // 등록 모드에서는 사용자 소장 재고에 기인한 필터링을 생략하고, 발매 번호 풀로 안전하게 폴백
                         source = (typeof CardDataStore.allCardNumbers !== 'undefined' && Array.isArray(CardDataStore.allCardNumbers) && CardDataStore.allCardNumbers.length > 0)
                             ? CardDataStore.allCardNumbers
                             : cardCacheInstance.getOwnedNumbers();
@@ -14872,14 +13541,7 @@ function showOverlaySuggestions(query) {
             }
         }
 
-        matches.forEach(no => {
-            const li = document.createElement('li');
-            li.innerText = no;
-            li.className = 'ui-button color-type004 text-suggest';            li.setAttribute('role', 'button');
-            li.tabIndex = 0;
-            li.onclick = () => selectOverlayItem(no);
-            list.appendChild(li);
-        });
+        renderCardOverlaySuggestions(list, matches.map(value => ({ value })));
     } else if (activeOverlayType === 'loc' || activeOverlayType === 'to') {
         const isMove = (UIStore.mode === 'move');
         const isDiscard = (UIStore.mode === 'discard');
@@ -14949,9 +13611,56 @@ function showOverlaySuggestions(query) {
     }
 }
 
+function renderPackOverlaySuggestions(list, names) {
+    list.replaceChildren(...names.slice(0, 5).map(name => {
+        const item = document.createElement('li');
+        item.className = 'ui-button color-type004 text-suggest';
+        item.setAttribute('role', 'button');
+        item.tabIndex = 0;
+        item.textContent = name;
+        item.onclick = () => selectOverlayItem(name);
+        return item;
+    }));
+}
+
+async function showPackOverlaySuggestions(query, list) {
+    packOverlaySuggestionRequest?.abort();
+    const request = new AbortController();
+    packOverlaySuggestionRequest = request;
+    const isCurrent = () => !request.signal.aborted && activeOverlayType === 'pack'
+        && isManagedSheetOpen(document.getElementById('mobile-sheet-input-overlay'))
+        && document.getElementById('overlay-search-input').value.trim() === query;
+    try {
+        const matches = globalThis.AppBackend?.packSuggestions
+            ? await AppBackend.packSuggestions(query, request.signal)
+            : getLocalPackNameMatches(query);
+        if (!isCurrent()) return;
+        packOverlayLastSuggestions = matches.slice(0, 5);
+        renderPackOverlaySuggestions(list, packOverlayLastSuggestions);
+    } catch (error) {
+        if (!isCurrent()) return;
+        packOverlayLastSuggestions = [];
+        const item = document.createElement('li');
+        item.className = 'item-no-match color-text-001 no-result-item';
+        item.setAttribute('role', 'status');
+        item.textContent = '팩 추천을 불러오지 못했습니다.';
+        list.replaceChildren(item);
+    }
+}
+
 // 오버레이 아이템 선택 핸들러
-function selectOverlayItem(value) {
-    if (!isManagedSheetOpen(document.getElementById('mobile-sheet-input-overlay')) || !currentEditingRow) return;
+function selectOverlayItem(value, candidate) {
+    if (!isManagedSheetOpen(document.getElementById('mobile-sheet-input-overlay'))) return;
+    if (activeOverlayType === 'pack' || activeOverlayType === 'photo-name') {
+        if (!value) return;
+        const select = packOverlaySelect;
+        if (!candidate && activeOverlayType === 'photo-name') {
+            candidate = registrationOverlayLastSuggestions.find(item => item.value === value);
+        }
+        closeSheetOverlay();
+        select?.(value, candidate);
+        return;
+    }
     const row = currentEditingRow;
     if (!row) return;
 
@@ -14964,6 +13673,11 @@ function selectOverlayItem(value) {
 
     if (activeOverlayType === 'name') {
         const sheetName = document.getElementById('sheet-card-name');
+        const choices = registrationNameChoices(sheetName);
+        if (choices) {
+            candidate = choices.includes(candidate) ? candidate : choices.find(choice => choice.value === value);
+            if (!candidate) return;
+        }
         sheetName.value = value;
         const originalName = row.querySelector(nameClass);
         if (originalName) {
@@ -14974,7 +13688,7 @@ function selectOverlayItem(value) {
         } else if (isDiscard) {
             handleDiscardNameInput(originalName || sheetName);
         } else {
-            fetchCardByName(originalName || sheetName, true);
+            fetchCardByName(originalName || sheetName, true, candidate?.cid, false, candidate?.number);
         }
     } else if (activeOverlayType === 'no') {
         const sheetNo = document.getElementById('sheet-card-no');
@@ -14987,11 +13701,21 @@ function selectOverlayItem(value) {
             validateMoveNoInput(originalNo || sheetNo, true);
         } else if (isDiscard) {
             validateDiscardNoInput(originalNo || sheetNo, true);
+        } else if (value && usesRegistrationCatalog('no', originalNo || sheetNo)) {
+            updateBottomSheetClearButtons();
+            updateSheetDropdownState();
+            closeSheetOverlay();
+            void confirmRegistrationNumber(originalNo || sheetNo, value, candidate);
+            return;
         } else {
             fetchCardByNumber(originalNo || sheetNo, true);
         }
     } else if (activeOverlayType === 'loc') {
         const sheetLoc = document.getElementById('sheet-card-loc');
+        if (sheetLoc?.disabled) {
+            closeSheetOverlay();
+            return;
+        }
         if (sheetLoc) {
             sheetLoc.value = value;
             const locWrap = sheetLoc.closest('.custom-select-wrapper');
@@ -15056,7 +13780,7 @@ function getCurrentMaxQty() {
 
     const listContainer = getActiveMobileListContainer();
     if (listContainer && currentEditingRowIndex !== -1) {
-        const cards = listContainer.querySelectorAll('.mobile-info-card');
+        const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
         const row = cards[currentEditingRowIndex];
         if (row) {
             const qtyInp = row.querySelector(qtyClass);
@@ -15069,6 +13793,12 @@ function getCurrentMaxQty() {
         }
     }
     return 99;
+}
+
+function setQtyPickerItemSelected(item, selected) {
+    item.classList.toggle('selected', selected);
+    item.classList.toggle('color-text-001', !selected);
+    item.classList.toggle('color-text-theme', selected);
 }
 
 function openQtyOverlay(currentVal) {
@@ -15097,7 +13827,8 @@ function openQtyOverlay(currentVal) {
     picker.innerHTML = '';
     for (let i = 1; i <= maxQty; i++) {
         const item = document.createElement('div');
-        item.className = 'qty-picker-item' + (i === val ? ' selected' : '');
+        item.className = 'qty-picker-item';
+        setQtyPickerItemSelected(item, i === val);
         item.innerText = i;
         item.dataset.val = i;
         item.setAttribute('role', 'button');
@@ -15132,7 +13863,7 @@ function closeQtyOverlay() {
     const overlay = document.getElementById('mobile-sheet-qty-overlay');
     if (!isManagedSheetOpen(overlay)) return;
     const inlineInput = document.getElementById('qty-inline-input');
-    if (inlineInput && inlineInput.style.display !== 'none') finishQtyInlineInput(inlineInput);
+    if (inlineInput && !inlineInput.hidden) finishQtyInlineInput(inlineInput);
     const input = document.getElementById('sheet-card-qty');
     if (currentEditingRow && input) {
         input.value = String(Math.max(1, Math.min(getCurrentMaxQty(), qtyPickerSelectedVal)));
@@ -15145,12 +13876,9 @@ function selectQtyFromPicker(i) {
     qtyPickerSelectedVal = i;
     const picker = document.getElementById('qty-picker-scroll-area');
     picker.querySelectorAll('.qty-picker-item').forEach(item => {
-        item.tabIndex = parseInt(item.dataset.val) === i ? 0 : -1;
-        if (parseInt(item.dataset.val) === i) {
-            item.classList.add('selected');
-        } else {
-            item.classList.remove('selected');
-        }
+        const selected = parseInt(item.dataset.val) === i;
+        item.tabIndex = selected ? 0 : -1;
+        setQtyPickerItemSelected(item, selected);
     });
 
     const selectedItem = picker.querySelector(`.qty-picker-item[data-val="${i}"]`);
@@ -15169,34 +13897,34 @@ function startQtyInlineInput(selectedItem) {
     if (!input || !picker) return;
 
     // 입력 중에는 스크롤 방지
-    picker.style.overflowY = 'hidden';
+    picker.classList.add('is-direct-entry');
 
     input.value = selectedItem.dataset.val;
-    input.style.display = 'block';
+    input.hidden = false;
     input.focus();
     input.select();
 
     // 버튼 토글: 초기화 숨김, 체크 표시
     const resetBtn = document.getElementById('qty-reset-btn');
     const checkBtn = document.getElementById('qty-check-btn');
-    if (resetBtn) resetBtn.style.display = 'none';
-    if (checkBtn) checkBtn.style.display = 'flex';
+    if (resetBtn) resetBtn.hidden = true;
+    if (checkBtn) checkBtn.hidden = false;
 }
 
 function finishQtyInlineInput(input) {
-    if (!input || input.style.display === 'none') return;
+    if (!input || input.hidden) return;
     let val = parseInt(input.value);
     const maxQty = getCurrentMaxQty();
     if (isNaN(val) || val < 1) val = 1;
     if (val > maxQty) val = maxQty;
 
     qtyPickerSelectedVal = val;
-    input.style.display = 'none';
+    input.hidden = true;
 
     // 스크롤 잠금 해제
     const picker = document.getElementById('qty-picker-scroll-area');
     if (picker) {
-        picker.style.overflowY = 'scroll';
+        picker.classList.remove('is-direct-entry');
     }
 
     // 최종 선택 값으로 정렬
@@ -15205,8 +13933,8 @@ function finishQtyInlineInput(input) {
     // 버튼 토글: 초기화 표시, 체크 숨김
     const resetBtn = document.getElementById('qty-reset-btn');
     const checkBtn = document.getElementById('qty-check-btn');
-    if (resetBtn) resetBtn.style.display = 'flex';
-    if (checkBtn) checkBtn.style.display = 'none';
+    if (resetBtn) resetBtn.hidden = false;
+    if (checkBtn) checkBtn.hidden = true;
 }
 
 function handleQtyInlineInput(input) {
@@ -15221,11 +13949,7 @@ function handleQtyInlineInput(input) {
     const picker = document.getElementById('qty-picker-scroll-area');
     if (picker) {
         picker.querySelectorAll('.qty-picker-item').forEach(item => {
-            if (parseInt(item.dataset.val) === val) {
-                item.classList.add('selected');
-            } else {
-                item.classList.remove('selected');
-            }
+            setQtyPickerItemSelected(item, parseInt(item.dataset.val) === val);
         });
         const selectedItem = picker.querySelector(`.qty-picker-item[data-val="${val}"]`);
         if (selectedItem) {
@@ -15254,10 +13978,10 @@ function handleQtyPickerScroll(picker) {
         const val = parseInt(closestItem.dataset.val);
         qtyPickerSelectedVal = val;
         items.forEach(it => {
-            it.classList.remove('selected');
-            it.tabIndex = it === closestItem ? 0 : -1;
+            const selected = it === closestItem;
+            it.tabIndex = selected ? 0 : -1;
+            setQtyPickerItemSelected(it, selected);
         });
-        closestItem.classList.add('selected');
     }
 }
 
@@ -15270,7 +13994,7 @@ function updateBottomSheetClearButtons() {
         const nameVal = nameInput.value.trim();
         const wrapper = nameInput.closest('.sheet-input-box');
         const nameClear = wrapper ? wrapper.querySelector('.clear-btn') : null;
-        if (nameClear) nameClear.style.display = nameVal ? 'block' : 'none';
+        if (nameClear) nameClear.hidden = !nameVal;
         // 카드 이름은 기본적으로 화살표가 없으므로 제어 불필요
     }
 
@@ -15281,14 +14005,14 @@ function updateBottomSheetClearButtons() {
         const arrow = wrapper ? wrapper.querySelector('.arrow-icon') : null;
         if (noClear) {
             const showClear = !!noVal;
-            noClear.style.display = showClear ? 'block' : 'none';
+            noClear.hidden = !showClear;
             if (arrow) {
                 if (showClear) {
-                    arrow.style.display = 'none'; // 지우기 버튼 노출 시 화살표 감춤
+                    arrow.hidden = true; // 지우기 버튼 노출 시 화살표 감춤
                 } else {
                     // 지우기 버튼 제거 시 옵션이 존재하는 상황인지 체크하고 복원
                     const hasOptions = wrapper && !wrapper.classList.contains('no-arrow') && !wrapper.classList.contains('no-option');
-                    arrow.style.display = hasOptions ? 'block' : 'none';
+                    arrow.hidden = !hasOptions;
                 }
             }
         }
@@ -15296,45 +14020,41 @@ function updateBottomSheetClearButtons() {
 }
 
 function updateSheetDropdownState() {
-    const rareWrap = document.getElementById('wrap-sheet-rare');
-    const illustWrap = document.getElementById('wrap-sheet-illust');
+    const fields = document.querySelector('#sheet-fields-container .card-info-fields');
+    if (!fields) return;
+    const identityLocked = syncCardIdentityFieldLocks(fields);
+    const awaitingNumber = !fields.querySelector('[data-field="no"]').value.trim();
 
-    if (rareWrap) {
+    for (const box of fields.querySelectorAll('[data-field-wrap="illust"], [data-field-wrap="rare"]')) {
+        const input = box.querySelector('input');
+        let count = 0;
         try {
-            const options = JSON.parse(rareWrap.dataset.options || '[]');
-            if (options.length <= 1) {
-                rareWrap.style.pointerEvents = 'none';
-                rareWrap.style.opacity = '0.6';
-                const arrow = rareWrap.querySelector('.arrow-icon');
-                if (arrow) arrow.style.display = 'none';
-            } else {
-                rareWrap.style.pointerEvents = '';
-                rareWrap.style.opacity = '';
-                const arrow = rareWrap.querySelector('.arrow-icon');
-                if (arrow) arrow.style.display = 'block';
-            }
-        } catch (e) {
-            console.error(e);
+            const options = JSON.parse(box.dataset.options || '[]');
+            if (Array.isArray(options)) count = options.length;
+        } catch (error) {
+            console.error(error);
         }
+        const unavailable = awaitingNumber || count <= 1;
+        box.classList.toggle('is-unavailable', unavailable);
+        box.classList.toggle('is-awaiting-number', awaitingNumber);
+        box.classList.toggle('color-text-000', !unavailable);
+        box.classList.toggle('color-text-002', unavailable);
+        input.tabIndex = unavailable ? -1 : 0;
+        input.setAttribute('aria-disabled', String(unavailable));
+        const arrow = box.querySelector('.arrow-icon');
+        if (arrow) arrow.hidden = !(awaitingNumber || !unavailable);
     }
 
-    if (illustWrap) {
-        try {
-            const options = JSON.parse(illustWrap.dataset.options || '[]');
-            if (options.length <= 1) {
-                illustWrap.style.pointerEvents = 'none';
-                illustWrap.style.opacity = '0.6';
-                const arrow = illustWrap.querySelector('.arrow-icon');
-                if (arrow) arrow.style.display = 'none';
-            } else {
-                illustWrap.style.pointerEvents = '';
-                illustWrap.style.opacity = '';
-                const arrow = illustWrap.querySelector('.arrow-icon');
-                if (arrow) arrow.style.display = 'block';
-            }
-        } catch (e) {
-            console.error(e);
-        }
+    const locBox = fields.querySelector('[data-field-wrap="loc"]');
+    if (locBox) {
+        locBox.classList.toggle('is-unavailable', identityLocked);
+        locBox.classList.toggle('color-text-000', !identityLocked);
+        locBox.classList.toggle('color-text-002', identityLocked);
+    }
+
+    for (const value of fields.querySelectorAll('.card-info-field-value')) {
+        const input = value.previousElementSibling;
+        value.textContent = input.closest('.is-awaiting-number') ? input.placeholder : input.value || input.placeholder;
     }
 }
 
@@ -15345,7 +14065,7 @@ function clearBottomSheetField(type, event) {
     const listContainer = getActiveMobileListContainer();
     if (!listContainer) return;
 
-    const cards = listContainer.querySelectorAll('.mobile-info-card');
+    const cards = listContainer.querySelectorAll('.mobile-info-card[data-index]');
     const row = cards[currentEditingRowIndex];
     if (!row) return;
 
@@ -15432,6 +14152,7 @@ function clearBottomSheetField(type, event) {
 
 function openSheetDropdownOverlay(type) {
     if (!currentEditingRow) return;
+    if (document.getElementById(type === 'illust' ? 'wrap-sheet-illust' : 'wrap-sheet-rare')?.classList.contains('is-unavailable')) return;
     if (type === 'illust') {
         const input = document.getElementById('sheet-card-illust');
         const wrapper = document.getElementById('wrap-sheet-illust');
@@ -15476,8 +14197,16 @@ function openSheetDropdownOverlay(type) {
 
             const li = document.createElement('li');
             li.innerText = displayText;
-            if (displayText === currentVal || val === currentVal) {
-                li.classList.add('selected');
+            const selected = displayText === currentVal || val === currentVal;
+            li.classList.toggle('selected', selected);
+            li.classList.add('rarity-sheet-option', 'ui-button', 'color-type002', 'border-basic', 'shape-rounded003');
+            li.setAttribute('aria-pressed', String(selected));
+            if (selected) {
+                const check = document.createElement('i');
+                check.className = 'material-icons';
+                check.setAttribute('aria-hidden', 'true');
+                check.textContent = 'check';
+                li.appendChild(check);
             }
             li.setAttribute('role', 'button');
             li.tabIndex = 0;
@@ -15516,6 +14245,7 @@ function selectSheetDropdownItem(type, val, raw, text) {
 
     if (type === 'rare') {
         const sheetInput = document.getElementById('sheet-card-rarity');
+        if (sheetInput?.disabled) return;
         if (sheetInput) {
             const localizedText = text || getLocalizedRarity(raw || val);
             sheetInput.value = localizedText;
@@ -15536,6 +14266,7 @@ function selectSheetDropdownItem(type, val, raw, text) {
         }
     } else if (type === 'illust') {
         const sheetInput = document.getElementById('sheet-card-illust');
+        if (sheetInput?.disabled) return;
         if (sheetInput) {
             sheetInput.value = val;
             sheetInput.dataset.raw = raw;
@@ -15565,12 +14296,28 @@ function initOverlaySearchListeners() {
         if (overlayInput._isInputBound) return;
         overlayInput._isInputBound = true;
 
-        const debouncedShowSuggestions = debounce((val) => {
+        const show = (val) => {
             if (isManagedSheetOpen(document.getElementById('mobile-sheet-input-overlay'))) showOverlaySuggestions(val);
-        }, 100);
-        overlayInput._cancelSuggestions = () => debouncedShowSuggestions.cancel();
+        };
+        const debouncedShowSuggestions = debounce(show, 100);
+        const debouncedShowPackSuggestions = debounce(show, 100);
+        overlayInput._cancelSuggestions = () => {
+            debouncedShowSuggestions.cancel();
+            debouncedShowPackSuggestions.cancel();
+            packOverlaySuggestionRequest?.abort();
+            registrationOverlaySuggestions?.abort();
+        };
 
         overlayInput.addEventListener('input', (e) => {
+            registrationOverlaySuggestions?.abort();
+            const pack = activeOverlayType === 'pack';
+            if (pack) {
+                overlayInput._cancelSuggestions();
+                const list = document.getElementById('overlay-suggestions-list');
+                if (list && overlayInput.value.trim()) {
+                    renderPackOverlaySuggestions(list, filterPackNameMatches(packOverlayLastSuggestions, overlayInput.value));
+                }
+            }
             if (activeOverlayType === 'no') {
                 const start = e.target.selectionStart;
                 e.target.value = e.target.value.replace(/[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/g, '').toUpperCase();
@@ -15578,18 +14325,28 @@ function initOverlaySearchListeners() {
             }
             const val = e.target.value.trim();
             if (val) {
-                if (overlayClearBtn) overlayClearBtn.style.display = 'block';
-                debouncedShowSuggestions(val);
+                const field = activeOverlayType;
+                if (field === 'photo-name' || (UIStore.mode === 'add' && (field === 'name' || field === 'no'))) {
+                    const list = document.getElementById('overlay-suggestions-list');
+                    const choices = field === 'name' && registrationNameChoices(document.getElementById('sheet-card-name'));
+                    const matches = choices
+                        ? choices.filter(choice => normalizeStr(choice.value).includes(normalizeStr(val)))
+                        : filterRegistrationCatalogSuggestions(registrationOverlayLastSuggestions, field === 'photo-name' ? 'name' : field, val);
+                    if (list) renderCardOverlaySuggestions(list, matches, { remember: false });
+                }
+                if (overlayClearBtn) overlayClearBtn.hidden = false;
+                (pack ? debouncedShowPackSuggestions : debouncedShowSuggestions)(val);
             } else {
+                registrationOverlayLastSuggestions = [];
                 debouncedShowSuggestions.cancel && debouncedShowSuggestions.cancel();
-                if (overlayClearBtn) overlayClearBtn.style.display = 'none';
+                if (overlayClearBtn) overlayClearBtn.hidden = true;
                 showOverlaySuggestions('');
             }
         });
 
         // 입력 오버레이에서 엔터를 칠 때 입력 확정 처리
         overlayInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
                 e.preventDefault();
                 selectOverlayItem(overlayInput.value.trim());
             }
@@ -15626,12 +14383,9 @@ function restoreSelectWrapperState(inputEl, state) {
 
 
 
-function renderDesktopCardsFromData(dataArray) {
+function renderDesktopCardsFromData(dataArray, previousRows) {
     let listContainerId = 'desktop-cards-list-general';
-    if (UIStore.mode === 'add') {
-        if (addSubMode === 'pack') listContainerId = 'desktop-cards-list-pack';
-        else if (addSubMode === 'deck') listContainerId = 'desktop-cards-list-deck';
-    } else if (UIStore.mode === 'move') {
+    if (UIStore.mode === 'move') {
         listContainerId = 'desktop-cards-list-move';
     } else if (UIStore.mode === 'discard') {
         listContainerId = 'desktop-cards-list-discard';
@@ -15640,22 +14394,18 @@ function renderDesktopCardsFromData(dataArray) {
     const listContainer = document.getElementById(listContainerId);
     if (!listContainer) return;
 
-    listContainer.innerHTML = '';
-    const wrapper = listContainer.closest('.desktop-cards-wrapper');
+    const previousChildren = previousRows && [...listContainer.children];
+    listContainer.querySelectorAll('.desktop-info-card[data-index]').forEach(releaseDesktopCardFields);
+    listContainer.replaceChildren();
 
     if (dataArray.length === 0) {
-        if (wrapper) wrapper.style.display = 'none';
+        globalThis.AppOverlays?.restoreRowExits?.(listContainer, previousChildren);
         return;
-    }
-
-    if (wrapper) {
-        listContainer.style.display = 'grid';
-        wrapper.style.display = 'block';
     }
 
     dataArray.forEach((data, idx) => {
         const nextNum = idx + 1;
-        const cardHtml = getDesktopCardHtml(UIStore.mode, addSubMode, idx, nextNum);
+        const cardHtml = getDesktopCardHtml(UIStore.mode, idx, nextNum);
         listContainer.insertAdjacentHTML('beforeend', cardHtml);
 
         const cardEl = listContainer.querySelector(`.desktop-info-card[data-index="${idx}"]`);
@@ -15701,15 +14451,17 @@ function renderDesktopCardsFromData(dataArray) {
 
             initCardWidgets(cardEl);
             restoreDesktopDropdownOptions(cardEl, data);
+            if (previousRows?.[idx]) globalThis.AppOverlays?.animateRowEntrance?.(cardEl, previousRows[idx]);
         }
     });
-    updateManagementCardStack(listContainer.querySelectorAll('.desktop-info-card'));
+    globalThis.AppOverlays?.restoreRowExits?.(listContainer, previousChildren);
+    reindexDesktopCards(listContainer);
 }
 
 
 
 function reindexDesktopCards(listContainer) {
-    const cards = listContainer.querySelectorAll('.desktop-info-card');
+    const cards = listContainer.querySelectorAll('.desktop-info-card[data-index]');
     const isSingleRow = (cards.length === 1);
 
     cards.forEach((card, idx) => {
@@ -15761,12 +14513,9 @@ function restoreDesktopDropdownOptions(cardEl, data) {
 
 
 
-function desktopAddEntry(mode, subMode, initialData = null) {
+function desktopAddEntry(mode, initialData = null) {
     let listContainerId = 'desktop-cards-list-general';
-    if (mode === 'add') {
-        if (subMode === 'pack') listContainerId = 'desktop-cards-list-pack';
-        else if (subMode === 'deck') listContainerId = 'desktop-cards-list-deck';
-    } else if (mode === 'move') {
+    if (mode === 'move') {
         listContainerId = 'desktop-cards-list-move';
     } else if (mode === 'discard') {
         listContainerId = 'desktop-cards-list-discard';
@@ -15775,15 +14524,9 @@ function desktopAddEntry(mode, subMode, initialData = null) {
     const listContainer = document.getElementById(listContainerId);
     if (!listContainer) return null;
 
-    const wrapper = listContainer.closest('.desktop-cards-wrapper');
-    if (wrapper) {
-        listContainer.style.display = 'grid';
-        wrapper.style.display = 'block';
-    }
-
-    const currentCount = listContainer.querySelectorAll('.desktop-info-card').length;
+    const currentCount = listContainer.querySelectorAll('.desktop-info-card[data-index]').length;
     const nextNum = currentCount + 1;
-    const cardHtml = getDesktopCardHtml(mode, subMode, currentCount, nextNum);
+    const cardHtml = getDesktopCardHtml(mode, currentCount, nextNum);
     listContainer.insertAdjacentHTML('beforeend', cardHtml);
 
     const cardEl = listContainer.querySelector(`.desktop-info-card[data-index="${currentCount}"]`);
@@ -15835,6 +14578,7 @@ function desktopAddEntry(mode, subMode, initialData = null) {
     }
 
     reindexDesktopCards(listContainer);
+    globalThis.AppOverlays?.animateRowEntrance?.(cardEl);
     return cardEl;
 }
 
@@ -15843,10 +14587,7 @@ function renderDesktopCards() {
     if (isMobile) return;
 
     let listContainerId = 'desktop-cards-list-general';
-    if (UIStore.mode === 'add') {
-        if (addSubMode === 'pack') listContainerId = 'desktop-cards-list-pack';
-        else if (addSubMode === 'deck') listContainerId = 'desktop-cards-list-deck';
-    } else if (UIStore.mode === 'move') {
+    if (UIStore.mode === 'move') {
         listContainerId = 'desktop-cards-list-move';
     } else if (UIStore.mode === 'discard') {
         listContainerId = 'desktop-cards-list-discard';
@@ -15855,79 +14596,66 @@ function renderDesktopCards() {
     const listContainer = document.getElementById(listContainerId);
     if (!listContainer) return;
 
-    if (UIStore.mode === 'add') {
-        if (addSubMode === 'pack' && (typeof PackDeckStore.isPackTableGenerated === 'undefined' || !PackDeckStore.isPackTableGenerated)) {
-            const wrapper = listContainer.closest('.desktop-cards-wrapper');
-            if (wrapper) wrapper.style.display = 'none';
-            return;
-        }
-        if (addSubMode === 'deck' && (typeof PackDeckStore.isDeckTableGenerated === 'undefined' || !PackDeckStore.isDeckTableGenerated)) {
-            const wrapper = listContainer.closest('.desktop-cards-wrapper');
-            if (wrapper) wrapper.style.display = 'none';
-            return;
-        }
-    }
-
-    const cards = listContainer.querySelectorAll('.desktop-info-card');
+    const cards = listContainer.querySelectorAll('.desktop-info-card[data-index]');
     const collectedData = [];
     cards.forEach(c => {
         collectedData.push(getDesktopCardData(c));
     });
 
-    renderDesktopCardsFromData(collectedData);
+    renderDesktopCardsFromData(collectedData, cards);
 }
 
 
 
-function getDesktopCardHtml(mode, subMode, idx, nextNum) {
+function getDesktopCardHtml(mode, idx, nextNum) {
     if (mode === 'move') {
         return `
-            <div class="desktop-info-card ui-stack-card shape-rounded003 ${idx % 2 === 0 ? 'color-card-odd' : 'color-card-even'}" data-index="${idx}">
-                <div class="card-row-top" style="display:flex; align-items:center; width:100%; gap:12px; position:relative; padding-left:30px; box-sizing:border-box;">
-                    <div style="position:absolute; left:0; display:flex; align-items:center; width:30px; height:100%;">
-                        <div style="position:absolute; left:0; width:14px; display:flex; align-items:center; justify-content:center;">
+            <div class="desktop-info-card desktop-info-card--editable ui-stack-card shape-rounded003 ${idx % 2 === 0 ? 'color-card-odd' : 'color-card-even'}" data-index="${idx}">
+                <div class="card-row-top">
+                    <div class="desktop-card-index">
+                        <div class="desktop-card-index-badge">
                             <span class="card-num-badge">${nextNum}</span>
                         </div>
-                        <span class="card-num-divider color-text-table" aria-hidden="true" style="position:absolute; left:22px; margin:0 !important;">|</span>
+                        <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
                     </div>
-                    <div class="custom-select-wrapper no-arrow" style="max-width:50%; flex:1; position:relative;">
-                        <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" style="font-weight:700; text-align:left !important; padding:0 24px 0 8px !important;" oninput="handleCardNameInput(this)" onblur="fetchCardByName(this)" onkeydown="if(event.isComposing && (event.key==='Enter' || event.key==='Tab')) { event.preventDefault(); return; } if(this.hasAttribute('readonly') && (event.key==='Escape' || event.key==='Backspace' || event.key==='Delete')) { clearPageNameAndNo(this); event.preventDefault(); return; } if(event.key==='Enter') { this.blur(); }" autocomplete="off">
-                        <i class="material-icons clear-name-btn" onclick="clearPageNameAndNo(this)" style="display:none; position:absolute; right:6px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.1rem; color:var(--text-muted);">cancel</i>
+                    <div class="custom-select-wrapper no-arrow" data-card-field="name">
+                        <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" autocomplete="off">
+                        <i class="material-icons clear-name-btn" onclick="clearPageNameAndNo(this)">cancel</i>
                     </div>
-                    <div class="custom-select-wrapper no-arrow" style="margin-left:auto; width:120px; flex-shrink:0;">
-                        <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" style="font-family:monospace; text-transform:uppercase; text-align:right !important; padding:0 28px 0 8px !important;" oninput="handleCardNoInput(this)" onblur="fetchCardByNumber(this)" onkeydown="if(event.key==='Enter' && !this.closest('.custom-select-wrapper').classList.contains('active')) fetchCardByNumber(this)" autocomplete="off">
-                        <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px; display:none;">arrow_drop_down</i>
+                    <div class="custom-select-wrapper no-arrow" data-card-field="no">
+                        <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" autocomplete="off">
+                        <i class="material-icons arrow-icon">arrow_drop_down</i>
                     </div>
-                    <div class="card-actions" style="display:flex; gap:6px; flex-shrink:0; width:72px;">
-                        <button class="btn-card-action delete" onclick="triggerDesktopDelete(this)" title="제거"><i class="material-icons" style="font-size:1.25rem;">delete</i></button>
+                    <div class="card-actions">
+                        <button type="button" class="btn-card-action delete ui-button color-danger ui-control--disabled color-disabled" onclick="triggerDesktopDelete(this)" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
                     </div>
                 </div>
-                <div class="card-row-bottom" style="display:flex; align-items:center; gap:12px; width:100%; padding-left:30px; box-sizing:border-box;">
-                    <div class="custom-select-wrapper no-option" style="width:80px; flex-shrink:0;" data-type="strict">
-                        <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" placeholder="일러스트" style="text-align:left !important; padding:0 8px !important;" readonly>
-                        <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
+                <div class="card-row-bottom">
+                    <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="illust">
+                        <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" inputmode="none" role="button" aria-label="일러스트 선택" aria-haspopup="dialog" aria-expanded="false" placeholder="일러스트" readonly>
+                        <i class="material-icons arrow-icon">arrow_drop_down</i>
                     </div>
-                    <div class="custom-select-wrapper no-option" style="width:90px; flex:none;" data-type="strict">
-                        <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" style="text-align:left !important; padding:0 8px !important;" readonly>
-                        <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
+                    <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="rare">
+                        <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" readonly>
+                        <i class="material-icons arrow-icon">arrow_drop_down</i>
                     </div>
-                    <div style="margin-left:auto; display:flex; gap:6px; align-items:center; flex:none; max-width:320px; justify-content:flex-end;">
-                        <div class="custom-select-wrapper no-option" style="width:120px; flex:none;" data-type="strict" id="desktop-wrap-move-from-${nextNum}">
-                            <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="보관 위치" style="text-align:right !important; padding:0 28px 0 8px !important;" readonly>
-                            <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
+                    <div class="desktop-card-move-locations">
+                        <div class="custom-select-wrapper no-option" data-type="strict" id="desktop-wrap-move-from-${nextNum}" data-card-field="loc">
+                            <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="보관 위치" readonly>
+                            <i class="material-icons arrow-icon">arrow_drop_down</i>
                         </div>
-                        <i class="material-icons loc-arrow" style="font-size:1rem; color:var(--text-table); flex-shrink:0;">arrow_forward</i>
-                        <div class="custom-select-wrapper" style="width:120px; flex:none;" data-type="free" id="desktop-wrap-move-to-${nextNum}">
-                            <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-to custom-input" data-field="to" placeholder="이동 위치" style="text-align:right !important; padding:0 28px 0 8px !important;">
-                            <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
+                        <i class="material-icons loc-arrow">arrow_forward</i>
+                        <div class="custom-select-wrapper" data-type="free" id="desktop-wrap-move-to-${nextNum}" data-card-field="to">
+                            <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-to custom-input" data-field="to" placeholder="이동 위치">
+                            <i class="material-icons arrow-icon">arrow_drop_down</i>
                         </div>
                     </div>
-                    <div class="desktop-qty-wrapper border-cardinput" style="width:72px; height:30px; flex-shrink:0; display:flex; align-items:center; border-radius:16px; background:transparent; padding:0 4px; box-sizing:border-box; gap:2px;">
-                        <input type="number" class="desktop-card-input desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly style="flex:1; width:0; border:none !important; background:transparent !important; text-align:right !important; padding:0 !important; outline:none !important; font-size:0.85rem;" oninput="handleCardQtyInput(this)" onfocus="updateMoveRowMaxQty(this)">
-                        <span style="font-size:0.85rem; font-weight:700; color:var(--text-table); flex-shrink:0; pointer-events:none; margin-right:2px;">장</span>
-                        <div class="desktop-qty-controls" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; gap:1px; flex-shrink:0;">
-                            <div class="qty-up-btn" onclick="adjustStepQty(this, 1)" style="cursor:pointer; display:flex; align-items:center; justify-content:center; height:12px; line-height:12px; color:var(--text-table);"><i class="material-icons" style="font-size:0.9rem;">keyboard_arrow_up</i></div>
-                            <div class="qty-down-btn" onclick="adjustStepQty(this, -1)" style="cursor:pointer; display:flex; align-items:center; justify-content:center; height:12px; line-height:12px; color:var(--text-table);"><i class="material-icons" style="font-size:0.9rem;">keyboard_arrow_down</i></div>
+                    <div class="desktop-qty-wrapper border-cardinput shape-capsule color-text-table">
+                        <input type="number" class="desktop-card-input color-text-table shape-capsule browser-default desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly oninput="handleCardQtyInput(this)" onfocus="updateMoveRowMaxQty(this)">
+                        <span>장</span>
+                        <div class="desktop-qty-controls">
+                            <div class="qty-up-btn" onclick="adjustStepQty(this, 1)"><i class="material-icons">keyboard_arrow_up</i></div>
+                            <div class="qty-down-btn" onclick="adjustStepQty(this, -1)"><i class="material-icons">keyboard_arrow_down</i></div>
                         </div>
                     </div>
                 </div>
@@ -15937,55 +14665,55 @@ function getDesktopCardHtml(mode, subMode, idx, nextNum) {
 
     const isDiscard = (mode === 'discard');
     const actionsHtml = isDiscard ? `
-        <button class="btn-card-action delete" onclick="triggerDesktopDelete(this)" title="제거"><i class="material-icons" style="font-size:1.25rem;">delete</i></button>
+        <button type="button" class="btn-card-action delete ui-button color-danger ui-control--disabled color-disabled" onclick="triggerDesktopDelete(this)" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
     ` : `
-        <button class="btn-card-action copy" onclick="triggerDesktopCopy(this)" title="복제"><i class="material-icons" style="font-size:1.25rem;">library_add</i></button>
-        <button class="btn-card-action delete" onclick="triggerDesktopDelete(this)" title="제거"><i class="material-icons" style="font-size:1.25rem;">delete</i></button>
+        <button type="button" class="btn-card-action copy ui-button color-theme" onclick="triggerDesktopCopy(this)" title="복제" aria-label="복제"><i class="material-icons" aria-hidden="true">library_add</i></button>
+        <button type="button" class="btn-card-action delete ui-button color-danger ui-control--disabled color-disabled" onclick="triggerDesktopDelete(this)" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
     `;
 
     const locPlaceholder = "보관 위치";
     const locReadonly = isDiscard ? "readonly" : "";
 
     return `
-        <div class="desktop-info-card ui-stack-card shape-rounded003 ${idx % 2 === 0 ? 'color-card-odd' : 'color-card-even'}" data-index="${idx}">
-            <div class="card-row-top" style="display:flex; align-items:center; width:100%; gap:12px; position:relative; padding-left:30px; box-sizing:border-box;">
-                <div style="position:absolute; left:0; display:flex; align-items:center; width:30px; height:100%;">
-                    <div style="position:absolute; left:0; width:14px; display:flex; align-items:center; justify-content:center;">
+        <div class="desktop-info-card desktop-info-card--editable ui-stack-card shape-rounded003 ${idx % 2 === 0 ? 'color-card-odd' : 'color-card-even'}" data-index="${idx}">
+            <div class="card-row-top">
+                <div class="desktop-card-index">
+                    <div class="desktop-card-index-badge">
                         <span class="card-num-badge">${nextNum}</span>
                     </div>
-                    <span class="card-num-divider color-text-table" aria-hidden="true" style="position:absolute; left:22px; margin:0 !important;">|</span>
+                    <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
                 </div>
-                <div class="custom-select-wrapper no-arrow" style="max-width:50%; flex:1; position:relative;">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" style="font-weight:700; text-align:left !important; padding:0 24px 0 8px !important;" oninput="handleCardNameInput(this)" onblur="fetchCardByName(this)" onkeydown="if(event.isComposing && (event.key==='Enter' || event.key==='Tab')) { event.preventDefault(); return; } if(this.hasAttribute('readonly') && (event.key==='Escape' || event.key==='Backspace' || event.key==='Delete')) { clearPageNameAndNo(this); event.preventDefault(); return; } if(event.key==='Enter') { this.blur(); }" autocomplete="off">
-                    <i class="material-icons clear-name-btn" onclick="clearPageNameAndNo(this)" style="display:none; position:absolute; right:6px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.1rem; color:var(--text-muted);">cancel</i>
+                <div class="custom-select-wrapper no-arrow" data-card-field="name">
+                    <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" autocomplete="off">
+                    <i class="material-icons clear-name-btn" onclick="clearPageNameAndNo(this)">cancel</i>
                 </div>
-                <div class="custom-select-wrapper no-arrow" style="margin-left:auto; width:120px; flex-shrink:0;">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" style="font-family:monospace; text-transform:uppercase; text-align:right !important; padding:0 28px 0 8px !important;" oninput="handleCardNoInput(this)" onblur="fetchCardByNumber(this)" onkeydown="if(event.key==='Enter' && !this.closest('.custom-select-wrapper').classList.contains('active')) fetchCardByNumber(this)" autocomplete="off">
-                    <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px; display:none;">arrow_drop_down</i>
+                <div class="custom-select-wrapper no-arrow" data-card-field="no">
+                    <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" autocomplete="off">
+                    <i class="material-icons arrow-icon">arrow_drop_down</i>
                 </div>
-                <div class="card-actions" style="display:flex; gap:6px; flex-shrink:0; width:72px;">
+                <div class="card-actions">
                     ${actionsHtml}
                 </div>
             </div>
-            <div class="card-row-bottom" style="display:flex; align-items:center; gap:12px; width:100%; padding-left:30px; box-sizing:border-box;">
-                <div class="custom-select-wrapper no-option" style="width:80px; flex-shrink:0;" data-type="strict">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" placeholder="일러스트" style="text-align:left !important; padding:0 8px !important;" readonly>
-                    <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
+            <div class="card-row-bottom">
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="illust">
+                    <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" inputmode="none" role="button" aria-label="일러스트 선택" aria-haspopup="dialog" aria-expanded="false" placeholder="일러스트" readonly>
+                    <i class="material-icons arrow-icon">arrow_drop_down</i>
                 </div>
-                <div class="custom-select-wrapper no-option" style="width:90px; flex:none;" data-type="strict">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" style="text-align:left !important; padding:0 8px !important;" readonly>
-                    <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="rare">
+                    <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" readonly>
+                    <i class="material-icons arrow-icon">arrow_drop_down</i>
                 </div>
-                <div class="custom-select-wrapper${mode === 'discard' ? ' no-option' : ''}" style="margin-left:auto; width:120px; flex:none;" data-type="${mode === 'add' ? 'free' : 'strict'}" id="desktop-wrap-${mode}-${idx}">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="${locPlaceholder}" style="text-align:right !important; padding:0 28px 0 8px !important;" ${locReadonly}>
-                    <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
+                <div class="custom-select-wrapper${mode === 'discard' ? ' no-option' : ''}" data-type="${mode === 'add' ? 'free' : 'strict'}" id="desktop-wrap-${mode}-${idx}" data-card-field="loc">
+                    <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="${locPlaceholder}" ${locReadonly}>
+                    <i class="material-icons arrow-icon">arrow_drop_down</i>
                 </div>
-                <div class="desktop-qty-wrapper border-cardinput" style="width:72px; height:30px; flex-shrink:0; display:flex; align-items:center; border-radius:16px; background:transparent; padding:0 4px; box-sizing:border-box; gap:2px;">
-                    <input type="number" class="desktop-card-input desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly style="flex:1; width:0; border:none !important; background:transparent !important; text-align:right !important; padding:0 !important; outline:none !important; font-size:0.85rem;" oninput="handleCardQtyInput(this)">
-                    <span style="font-size:0.85rem; font-weight:700; color:var(--text-table); flex-shrink:0; pointer-events:none; margin-right:2px;">장</span>
-                    <div class="desktop-qty-controls" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; gap:1px; flex-shrink:0;">
-                        <div class="qty-up-btn" onclick="adjustStepQty(this, 1)" style="cursor:pointer; display:flex; align-items:center; justify-content:center; height:12px; line-height:12px; color:var(--text-table);"><i class="material-icons" style="font-size:0.9rem;">keyboard_arrow_up</i></div>
-                        <div class="qty-down-btn" onclick="adjustStepQty(this, -1)" style="cursor:pointer; display:flex; align-items:center; justify-content:center; height:12px; line-height:12px; color:var(--text-table);"><i class="material-icons" style="font-size:0.9rem;">keyboard_arrow_down</i></div>
+                <div class="desktop-qty-wrapper border-cardinput shape-capsule color-text-table">
+                    <input type="number" class="desktop-card-input color-text-table shape-capsule browser-default desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly oninput="handleCardQtyInput(this)">
+                    <span>장</span>
+                    <div class="desktop-qty-controls">
+                        <div class="qty-up-btn" onclick="adjustStepQty(this, 1)"><i class="material-icons">keyboard_arrow_up</i></div>
+                        <div class="qty-down-btn" onclick="adjustStepQty(this, -1)"><i class="material-icons">keyboard_arrow_down</i></div>
                     </div>
                 </div>
             </div>
@@ -16018,7 +14746,7 @@ function getDesktopCardData(cardEl) {
     return {
         name: nameInp ? nameInp.value.trim() : "",
         cardNo: noInp ? noInp.value.trim().toUpperCase() : "",
-        illustration: illustInp ? (illustInp.dataset.raw || illustInp.value) : "",
+        illustration: getIllustrationValue(illustInp),
         rarity: rareInp ? (rareInp.dataset.raw || rareInp.value) : "",
         loc: locInp ? locInp.value.trim() : "",
         to: toInp ? toInp.value.trim() : "",
@@ -16038,10 +14766,7 @@ function getDesktopCardData(cardEl) {
 
 function triggerDesktopCopy(btn) {
     let listContainerId = 'desktop-cards-list-general';
-    if (UIStore.mode === 'add') {
-        if (addSubMode === 'pack') listContainerId = 'desktop-cards-list-pack';
-        else if (addSubMode === 'deck') listContainerId = 'desktop-cards-list-deck';
-    } else if (UIStore.mode === 'move') {
+    if (UIStore.mode === 'move') {
         listContainerId = 'desktop-cards-list-move';
     } else if (UIStore.mode === 'discard') {
         listContainerId = 'desktop-cards-list-discard';
@@ -16064,7 +14789,7 @@ function triggerDesktopCopy(btn) {
         cardData: data.cardData
     };
 
-    const newCard = desktopAddEntry(UIStore.mode, addSubMode, copyData);
+    const newCard = desktopAddEntry(UIStore.mode, copyData);
     if (newCard) {
         if (card.nextSibling) {
             listContainer.insertBefore(newCard, card.nextSibling);
@@ -16077,10 +14802,7 @@ function triggerDesktopCopy(btn) {
 
 function triggerDesktopDelete(btn) {
     let listContainerId = 'desktop-cards-list-general';
-    if (UIStore.mode === 'add') {
-        if (addSubMode === 'pack') listContainerId = 'desktop-cards-list-pack';
-        else if (addSubMode === 'deck') listContainerId = 'desktop-cards-list-deck';
-    } else if (UIStore.mode === 'move') {
+    if (UIStore.mode === 'move') {
         listContainerId = 'desktop-cards-list-move';
     } else if (UIStore.mode === 'discard') {
         listContainerId = 'desktop-cards-list-discard';
@@ -16088,18 +14810,19 @@ function triggerDesktopDelete(btn) {
 
     const listContainer = document.getElementById(listContainerId);
     if (!listContainer) return;
-    const card = btn.closest('.desktop-info-card');
+    const card = btn.closest('.desktop-info-card[data-index]');
     if (!card) return;
 
     const delBtn = card.querySelector('.btn-card-action.delete');
     if (delBtn && delBtn.hasAttribute('disabled')) return;
 
-    card.remove();
+    releaseDesktopCardFields(card);
+    if (!globalThis.AppOverlays?.animateRowExit?.(card)) card.remove();
     reindexDesktopCards(listContainer);
     
-    const remainingCards = listContainer.querySelectorAll('.desktop-info-card');
+    const remainingCards = listContainer.querySelectorAll('.desktop-info-card[data-index]');
     if (remainingCards.length === 0) {
-        desktopAddEntry(UIStore.mode, addSubMode);
+        desktopAddEntry(UIStore.mode);
     }
 }
 
@@ -16108,20 +14831,17 @@ function savePendingFormData() {
     
     const payload = {
         mode: UIStore.mode,
-        subMode: null,
         ts: Date.now(),
         data: {}
     };
 
     const isMobile = document.documentElement.classList.contains('is-mobile-device');
-    const subMode = (UIStore.mode === 'add') ? (UIStore.chipState.add || 'general') : UIStore.mode;
-    const containerId = isMobile 
-        ? `mobile-cards-list-${subMode}` 
-        : `desktop-cards-list-${subMode}`;
+    const listMode = UIStore.mode === 'add' ? 'general' : UIStore.mode;
+    const containerId = `${isMobile ? 'mobile' : 'desktop'}-cards-list-${listMode}`;
     const container = document.getElementById(containerId);
 
     if (container) {
-        const cardClass = isMobile ? '.mobile-info-card' : '.desktop-info-card';
+        const cardClass = isMobile ? '.mobile-info-card[data-index]' : '.desktop-info-card[data-index]';
         const cards = container.querySelectorAll(cardClass);
         const rows = [];
         cards.forEach(card => {
@@ -16142,27 +14862,14 @@ function savePendingFormData() {
                     qty: qtyInput ? parseInt(qtyInput.value) || 1 : 1,
                     loc: locInput ? locInput.value.trim() : '',
                     to: toInput ? toInput.value.trim() : '',
-                    illustration: illustrationInput ? (illustrationInput.dataset.raw || illustrationInput.value || '') : ''
+                    illustration: getIllustrationValue(illustrationInput)
                 });
             }
         });
         payload.data.rows = rows;
     }
 
-    if (UIStore.mode === 'add') {
-        payload.subMode = UIStore.chipState.add || 'general';
-        if (payload.subMode === 'pack') {
-            const packSearchInput = document.getElementById('pack-search-input');
-            payload.data.packSearchVal = packSearchInput ? packSearchInput.value.trim() : '';
-            payload.data.isPackTableGenerated = typeof PackDeckStore.isPackTableGenerated !== 'undefined' ? PackDeckStore.isPackTableGenerated : false;
-            payload.data.currentPackInfo = typeof PackDeckStore.currentPackInfo !== 'undefined' ? PackDeckStore.currentPackInfo : null;
-        } else if (payload.subMode === 'deck') {
-            const deckCodeInput = document.getElementById('deck-code-input');
-            payload.data.deckCodeVal = deckCodeInput ? deckCodeInput.value.trim() : '';
-            payload.data.isDeckTableGenerated = typeof PackDeckStore.isDeckTableGenerated !== 'undefined' ? PackDeckStore.isDeckTableGenerated : false;
-            payload.data.currentDeckName = typeof PackDeckStore.currentDeckName !== 'undefined' ? PackDeckStore.currentDeckName : '';
-        }
-    } else if (UIStore.mode === 'move') {
+    if (UIStore.mode === 'move') {
         if (typeof isRenameMode !== 'undefined' && isRenameMode) {
             payload.data.isRenameMode = true;
             const renameFrom = document.getElementById('rename-from-input');
@@ -16203,84 +14910,37 @@ function restorePendingFormData() {
         return;
     }
 
-
-
-    switchToMode(payload.mode, true, payload.subMode, null, true);
+    switchToMode(payload.mode, true);
+    const rows = payload.data?.rows;
+    if (!Array.isArray(rows) || (!rows.length && !payload.data.isRenameMode)) {
+        sessionStorage.removeItem('pending_action_data');
+        return;
+    }
 
     setTimeout(() => {
-        const isMobile = document.documentElement.classList.contains('is-mobile-device');
-        if (isMobile) {
-            const dataArray = (payload.data.rows || []).map(r => ({
-                name: r.nameText || r.cardName || "",
-                cardNo: r.cardNo || "",
-                illustration: r.illustrationRaw || r.illustration || "",
-                rarity: r.procRaw || r.rarity || "",
-                loc: r.loc || r.currentLoc || "",
-                to: r.targetLoc || "",
-                qty: r.qty || r.moveQty || 1,
-                cardData: null
-            }));
-            renderMobileCardsFromData(dataArray);
-            updateManageFooter(payload.mode);
-            sessionStorage.removeItem('pending_action_data');
-            showToast('이전 입력 데이터가 복원되었습니다.', 'toast-info');
-            return;
-        }
-
-        const dataArray = (payload.data.rows || []).map(r => ({
+        const dataArray = rows.map(r => ({
             name: r.nameText || r.cardName || "",
             cardNo: r.cardNo || "",
             illustration: r.illustrationRaw || r.illustration || "",
-            rarity: r.procRaw || r.rarity || "",
+            rarity: r.procRaw || r.rarityRaw || r.rarity || "",
             loc: r.loc || r.currentLoc || "",
-            to: r.targetLoc || "",
+            to: r.targetLoc || r.to || "",
             qty: r.qty || r.moveQty || 1,
             cardData: null
         }));
 
-        if (payload.mode === 'add') {
-            const isPack = (payload.subMode === 'pack');
-            const isDeck = (payload.subMode === 'deck');
-
-            if (isPack) {
-                const packSearchInput = document.getElementById('pack-search-input');
-                if (packSearchInput && payload.data.packSearchVal) packSearchInput.value = payload.data.packSearchVal;
-                if (payload.data.currentPackInfo) {
-                    PackDeckStore.currentPackInfo = payload.data.currentPackInfo;
-                }
-                if (payload.data.isPackTableGenerated && PackDeckStore.currentPackInfo) {
-                    PackDeckStore.isPackTableGenerated = true;
-                    const area = document.getElementById('pack-table-area');
-                    if (area) area.style.display = 'block';
-                    const container = document.getElementById('manage-table-container');
-                    setModePanelActive(container, true);
-                }
-            } else if (isDeck) {
-                const deckCodeInput = document.getElementById('deck-code-input');
-                if (deckCodeInput && payload.data.deckCodeVal) deckCodeInput.value = payload.data.deckCodeVal;
-                if (payload.data.currentDeckName) {
-                    PackDeckStore.currentDeckName = payload.data.currentDeckName;
-                }
-                if (payload.data.isDeckTableGenerated && PackDeckStore.currentDeckName) {
-                    PackDeckStore.isDeckTableGenerated = true;
-                    const area = document.getElementById('deck-table-area');
-                    if (area) area.style.display = 'block';
-                    const container = document.getElementById('manage-table-container');
-                    setModePanelActive(container, true);
-                }
-            }
-        } else if (payload.mode === 'move') {
-            if (payload.data.isRenameMode) {
-                isRenameMode = true;
-                const renameFrom = document.getElementById('rename-from-input');
-                const renameTo = document.getElementById('rename-to-input');
-                if (renameFrom && payload.data.renameFromVal) renameFrom.value = payload.data.renameFromVal;
-                if (renameTo && payload.data.renameToVal) renameTo.value = payload.data.renameToVal;
-                updateManageFooter('move');
-            }
+        if (payload.mode === 'move' && payload.data.isRenameMode) {
+            isRenameMode = true;
+            const renameFrom = document.getElementById('rename-from-input');
+            const renameTo = document.getElementById('rename-to-input');
+            if (renameFrom && payload.data.renameFromVal) renameFrom.value = payload.data.renameFromVal;
+            if (renameTo && payload.data.renameToVal) renameTo.value = payload.data.renameToVal;
         }
 
-        renderDesktopCardsFromData(dataArray);
+        if (dataArray.length) {
+            if (document.documentElement.classList.contains('is-mobile-device')) renderMobileCardsFromData(dataArray);
+            else renderDesktopCardsFromData(dataArray);
+        }
         updateManageFooter(payload.mode);
         sessionStorage.removeItem('pending_action_data');
         showToast('이전 입력 데이터가 복원되었습니다.', 'toast-info');

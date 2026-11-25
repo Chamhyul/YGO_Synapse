@@ -91,16 +91,16 @@ input.account-card__nickname-input.ui-input--filled {
 
 .account-card__joined,
 .account-card__membership {
-  margin: 0;
   font-size: 0.95rem;
 }
 
 .account-card__joined {
-  margin-top: 2px;
+  margin: 2px 0 0;
   font-weight: 500;
 }
 
 .account-card__membership {
+  margin: 0;
   font-weight: 700;
 }
 
@@ -149,4 +149,184 @@ input.account-card__nickname-input.ui-input--filled {
   .account-card__membership {
     font-size: 0.85rem;
   }
+}
+
+/* 데이터 관리 버튼의 기존 배치와 치수 */
+.settings-data-actions {
+    margin-bottom: 40px;
+    padding-bottom: 30px;
+}
+
+.settings-data-actions__heading {
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    font-weight: 700;
+}
+
+.settings-data-actions__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px;
+    padding-block: 2px;
+}
+
+.settings-data-actions__row + .settings-data-actions__row { margin-top: 15px; }
+
+.settings-data-actions__description {
+    flex: 1;
+    font-size: 0.9rem;
+}
+
+.settings-data-actions__button {
+    flex-shrink: 0;
+    width: 90px;
+    height: 32px;
+    border-radius: 2px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.settings-data-actions__button--danger { font-weight: 700; }
+
+@media (max-width: 600px) {
+    .settings-data-actions__row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .settings-data-actions__button {
+        width: 100%;
+        height: 42px;
+    }
+}
+
+.settings-intro { margin-bottom: 30px; }
+.settings-container { text-align: left; }
+.settings-provider-links { margin-bottom: 40px; }
+
+.settings-provider-links__heading {
+  font-weight: 700;
+  margin-bottom: 4px;
+  padding-bottom: 8px;
+}
+
+.settings-provider-links__row,
+.settings-provider-links__name {
+  display: flex;
+  align-items: center;
+}
+
+.settings-provider-links__row {
+  justify-content: space-between;
+  padding: 12px 0;
+}
+
+.settings-provider-links__name {
+  gap: 10px;
+  font-weight: 600;
+}
+
+.settings-provider-links__x-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  fill: currentColor;
+  transform: scale(1);
+}
+
+.link-state-box {
+  position: relative;
+  width: 90px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.link-status-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--theme-000);
+  transition: opacity 0.3s ease, visibility 0.3s, var(--transition-colors);
+  pointer-events: none;
+  z-index: 1;
+  white-space: nowrap;
+}
+
+.link-state-box .settings-provider-link {
+  margin: 0;
+  transition: opacity 0.3s ease, visibility 0.3s, var(--transition-colors);
+  z-index: 2;
+  position: absolute;
+  width: 90px;
+  height: 32px;
+  line-height: 32px;
+  font-size: 0.8rem;
+  padding: 0;
+}
+
+/* 연동된 상태 (Linked) */
+.link-state-box.is-linked .link-status-label {
+  opacity: 1;
+  visibility: visible;
+}
+
+.link-state-box.is-linked .settings-provider-link {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.link-state-box.is-linked:hover .link-status-label {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.link-state-box.is-linked:hover .settings-provider-link {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* 연동되지 않은 상태 (Unlinked) */
+.link-state-box.is-unlinked .link-status-label {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.link-state-box.is-unlinked .settings-provider-link {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  background-color: var(--theme-000);
+  color: #fff;
+  font-weight: 600;
+  transition: transform 0.3s ease, var(--transition-colors);
+}
+
+.link-state-box.is-unlinked .settings-provider-link:focus {
+  background-color: #00796b;
+  box-shadow: none;
+}
+
+html.dark-mode .link-state-box.is-unlinked .settings-provider-link {
+  color: #282828;
+}
+
+html.dark-mode .link-state-box.is-unlinked .settings-provider-link:focus {
+  background-color: #26a69a;
+}
+
+/* 환경 설정 페이지 하단 여백 (전역 푸터와의 간격 확보) */
+
+#app-page-settings .page-transition-inner::after {
+  content: "";
+  display: block;
+  height: 30px;
 }

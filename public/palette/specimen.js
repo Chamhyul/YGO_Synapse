@@ -2,6 +2,15 @@ import { renderExamples } from './examples.js';
 
 const root = document.getElementById('specimens');
 const params = new URLSearchParams(location.search);
+// 뷰어의 ‘현재 CSS 다시 읽기’가 HTML뿐 아니라 실제 스타일 원본도 새로 요청한다.
+const revision = params.get('revision');
+if (revision) await Promise.all([...document.querySelectorAll('link[rel="stylesheet"]')].map(link => new Promise(resolve => {
+  const url = new URL(link.href);
+  url.searchParams.set('palette-revision', revision);
+  link.addEventListener('load', resolve, { once: true });
+  link.addEventListener('error', resolve, { once: true });
+  link.href = url.href;
+})));
 const allowed = new Set(['tokens', 'combinations', 'geometry', 'examples', 'measurements']);
 let category = allowed.has(params.get('category')) ? params.get('category') : 'tokens';
 const el = (tag, text, attributes = {}) => {
@@ -22,9 +31,9 @@ function caption(node, text) { node.append(el('code', text, { 'data-palette-code
 function tokenValue(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function renderTokens() {
   const groups = [
-    ['테마', 'theme', ['000', '001', '002', '003', '004', 'card-odd', 'card-even'], '색조 174 계열 · 실행·선택·틴트·관리 카드 교차색'],
+    ['테마', 'theme', ['000', '001', '002', '003', '004', '005', '006', 'card-odd', 'card-even'], '색조 174 계열 · 실행·선택·틴트·관리 카드 교차색'],
     ['표면', 'surface', ['000', '001', '002', '003', 'navi', 'white', 'black', 'search-detail'], '표면색은 실제 토큰을 읽습니다. surface-black은 공통 오버레이 배경막에 사용합니다.'],
-    ['글자', 'text', ['000', '001', '002', '003', 'navi', 'table', 'white', 'black'], '글자 토큰은 Aa 견본의 글자색으로만 표시합니다. 고정 명도 토큰의 실제 적용 범위는 문서를 따릅니다.'],
+    ['글자', 'text', ['000', '001', '002', '003', '004', 'navi', 'table', 'white', 'black'], '글자 토큰은 Aa 견본의 글자색으로만 표시합니다. 고정 명도 토큰의 실제 적용 범위는 문서를 따릅니다.'],
     ['브랜드', 'brand', ['youtube', 'discord'], '기존 브랜드 원본색 · 라이트/다크 동일'],
     ['테두리', 'border', ['000', '001', '002', '003', 'navi'], '색상을 비교하는 선 견본입니다. 실제 선 굵기는 형태·선·그림자 분류에서 확인합니다.'],
   ];
@@ -100,7 +109,13 @@ function renderCombinations() {
     const item = el('div', undefined, { 'data-palette-card': '' });
     const sample = el('button', '텍스트 버튼', { class: `ui-button ui-button--text ${name}`, type: 'button' }); item.append(sample); caption(item, name); inspect(sample, item); texts.append(item);
   }
-  const state = group('비활성·정적 소비자', '선택형 색상(color-text-selectable, color-navi, color-switch-theme)은 실제 사용 조합 분류에서 비교합니다.');
+  const surfaces = grid(group('표면·배경막 조합', '실제 표면과 전역 로딩 배경막의 색상 연결입니다. 고정 위치·전체 화면 차단은 재현하지 않습니다.'));
+  for (const name of ['color-surface-000', 'color-surface-001', 'color-surface-002', 'color-surface-black', 'color-backdrop-navi']) {
+    const item = el('div', undefined, { 'data-palette-card': '' });
+    const sample = el('div', '표면·배경막', { class: `${name} ${name === 'color-surface-black' ? 'color-text-theme' : 'color-text-001'} shape-rounded003`, 'data-palette-backdrop-sample': '' });
+    item.append(sample); caption(item, name); inspect(sample, item); surfaces.append(item);
+  }
+  const state = group('비활성·정적 소비자', '선택형 색상(color-text-selectable, color-navi)은 실제 사용 조합 분류에서 비교합니다.');
   const row = el('div', undefined, { 'data-palette-row': '' }); state.append(row);
   const disabled = el('button', '사용할 수 없음', { class: 'ui-button ui-control--disabled color-type001 color-disabled shape-capsule', disabled: '', 'data-palette-color-sample': '' }); row.append(disabled);
   row.append(el('span', '시크릿 레어 • 3장', { class: 'ui-chip ui-chip--compact color-tint-theme shape-capsule' }));
@@ -133,6 +148,7 @@ function renderMeasurements() {
   const section = group('역할별 글자와 내부 간격', '코드의 고유 클래스를 그대로 적용합니다. 상세 출처·확정 여부는 Design.md의 현황 표를 참고하십시오.');
   const samples = [
     ['[홈]-[안내 본문]', '<div class="home-page"><p data-measure>카드를 검색하고 보유 현황을 확인합니다.</p></div>'],
+    ['[홈]-[로그인 버튼]', '<button type="button" class="ui-button ui-button--sign-in color-theme shape-capsule" data-measure>로그인하기</button>'],
     ['[홈]-[로그인 안내 제목]', '<div class="home-page"><div class="home-signin__description"><h2 class="home-signin__title" data-measure>로그인하고 카드를 관리하세요.</h2></div></div>'],
     ['[홈]-[FAQ 질문]', '<div class="ui-disclosure__summary color-text-000" data-measure>보유 카드는 어떻게 확인하나요?</div>'],
     ['[홈]-[FAQ 답변]', '<p class="ui-disclosure__body color-text-001" data-measure>카드 이름 또는 번호로 검색할 수 있습니다. 긴 설명의 줄 간격을 확인하는 예시입니다.</p>'],
@@ -141,6 +157,7 @@ function renderMeasurements() {
     ['[단일 카드]-[보유 요약 번호]', '<p class="owned-card__number color-text-000" data-measure>DEMO-KR001</p>'],
     ['[단일 카드]-[분류·보유 위치 소형 칩]', '<span class="ui-chip ui-chip--compact color-tint-theme shape-capsule" data-measure>보관 위치</span>'],
     ['[홈·보유 현황]-[통계 숫자]', '<span class="ui-stat__value color-text-theme" data-measure>1,234</span>'],
+    ['[전역 헤더]-[테마 아이콘 버튼]', '<button type="button" class="ui-button ui-button--text color-text-002 color-highlight-theme shape-capsule theme-toggle" aria-label="테마 전환 견본" data-measure><i class="material-icons" aria-hidden="true">dark_mode</i></button>'],
     ['[환경설정]-[계정 닉네임]', '<span class="account-card__nickname color-text-000" data-measure>팔레트 사용자</span>'],
     ['[환경설정]-[멤버십 확인·로그아웃 버튼]', '<button type="button" class="ui-button color-type001 shape-capsule account-card__action-button" data-measure>멤버십 확인</button>'],
     ['[단일 카드]-[정보 외곽]', '<div class="search-card color-surface-001 shape-rounded002" data-measure><span>정보 묶음 A</span><span>정보 묶음 B</span></div>'],

@@ -89,12 +89,11 @@ table,
 .btn,
 .modal-content,
 select {
-  font-family: 'Pretendard', sans-serif !important;
+  font-family: 'Pretendard', sans-serif;
 }
 
 .visually-hidden,
-.ui-segment__input,
-.segment-control input[type="radio"] {
+.ui-segment__input {
   position: absolute;
   width: 1px;
   height: 1px;

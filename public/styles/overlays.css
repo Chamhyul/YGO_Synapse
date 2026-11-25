@@ -20,7 +20,8 @@ html.overlay-scroll-locked { overflow-y: hidden; }
   outline: none;
 }
 
-.modal.ui-overlay__panel { display: none; }
+.modal.ui-overlay__panel:not([hidden]) { display: flex; }
+.ui-overlay[data-sheet-display="css"]:not([hidden]) { display: flex; }
 
 .ui-overlay--modal.ui-overlay__panel {
   position: fixed;
@@ -55,8 +56,12 @@ html.overlay-scroll-locked { overflow-y: hidden; }
 .ui-overlay--popup.ui-overlay__panel {
   position: fixed;
   width: min(400px, calc(100% - 32px));
-  max-height: calc(var(--overlay-viewport-height, 100dvh) - 32px);
+  max-height: min(calc(var(--overlay-viewport-height, 100dvh) - 32px), var(--overlay-popup-available-height, 100dvh));
   padding: 16px;
+}
+
+.ui-overlay--popup.ui-overlay__panel[data-overlay-size="small"] {
+  width: min(320px, calc(100% - 32px));
 }
 
 /* CSS를 사용하는 시트는 기존 active 상태와 동일한 200ms 전환을 공유한다. */
@@ -72,9 +77,21 @@ html.overlay-scroll-locked { overflow-y: hidden; }
   inset: 0;
   opacity: 0;
   pointer-events: none;
+  transition: var(--transition-colors);
+}
+
+.ui-overlay__backdrop:where(:not(.color-backdrop-navi)) {
   transition: opacity 0.2s ease, var(--transition-colors);
 }
-.ui-overlay__backdrop.active { opacity: 0.4; pointer-events: auto; }
+
+.ui-overlay__backdrop.active { opacity: var(--overlay-backdrop-active-opacity, 0.4); }
+.ui-overlay__backdrop:is(.active, .color-backdrop-navi) { pointer-events: auto; }
+
+.ui-overlay__backdrop.color-backdrop-navi {
+  --overlay-backdrop-active-opacity: 1;
+  display: block;
+  background-color: var(--color-bg);
+}
 
 .ui-overlay__header {
   display: flex;
@@ -152,6 +169,193 @@ html.overlay-scroll-locked { overflow-y: hidden; }
 .ui-overlay__panel[hidden], .ui-overlay__backdrop[hidden],
 .ui-overlay__footer[hidden], .ui-item-navigation[hidden] { display: none; }
 
+.registration-lookup {
+  position: fixed;
+  inset: 0;
+}
+
+.registration-lookup__body {
+  --search-content-offset: 0.07rem;
+}
+
+.registration-lookup__body > form:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.registration-lookup__submit {
+  flex: none;
+  width: 60px;
+  height: 40px;
+}
+
+html.is-mobile-device .registration-lookup__submit { display: none; }
+
+.registration-lookup__submit .material-icons { font-size: 21px; }
+
+.registration-lookup__body .search-input--mobile {
+  --search-input-padding-start: 1rem;
+}
+
+.registration-lookup__body input.search-input--mobile,
+#mobile-sheet-input-overlay[data-sheet-input-type="pack"] #overlay-search-input {
+  --search-content-offset: -0.5px;
+}
+
+.registration-lookup__pack-trigger {
+  --color-bg: transparent;
+  flex: 1;
+  min-width: 0;
+  padding-inline: var(--search-input-padding-start) var(--search-input-padding-end);
+  font-size: var(--search-input-font-size);
+  text-align: start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.registration-lookup__pack-trigger[data-empty] {
+  color: var(--search-input-placeholder);
+}
+
+.registration-lookup__pack-trigger[hidden],
+.registration-lookup__body input.search-input[hidden] {
+  display: none;
+}
+
+.registration-lookup__pack-trigger:focus-visible {
+  outline: 2px solid var(--theme-000);
+  outline-offset: -2px;
+}
+
+.registration-lookup__footer { flex-wrap: nowrap; }
+
+.registration-lookup__footer > :is(.registration-lookup__status, .registration-lookup__pack-summary, .registration-lookup__suggestions) {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: .9rem;
+  line-height: 1.6;
+  text-align: start;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.registration-lookup__footer > :is(.registration-lookup__status, .registration-lookup__pack-summary) {
+  padding-inline-start: 1rem;
+}
+
+.registration-lookup__suggestions {
+  flex-wrap: nowrap;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  white-space: nowrap;
+}
+
+.registration-lookup__suggestions > li { flex: none; }
+.registration-lookup__suggestions .ui-chip { cursor: pointer; }
+.registration-lookup__suggestions .ui-chip.selected { background-color: var(--color-highlight-bg); }
+
+.registration-lookup__suggestions[hidden],
+.registration-lookup__footer:has(> .registration-lookup__suggestions:not([hidden])) > :is(.registration-lookup__status, .registration-lookup__pack-summary) {
+  display: none;
+}
+
+.registration-lookup__footer > [data-lookup-add] {
+  flex: none;
+  white-space: nowrap;
+}
+
+.registration-lookup__footer:has(> .registration-lookup__status.color-text-red:not([hidden], :empty)):has(> .registration-lookup__pack-summary:not([hidden])) {
+  flex-wrap: wrap;
+}
+
+.registration-lookup__footer:has(> .registration-lookup__pack-summary:not([hidden])) > .registration-lookup__status.color-text-red:not([hidden], :empty) {
+  flex-basis: 100%;
+}
+
+.registration-lookup__status:empty { display: none; }
+
+.registration-lookup__pack-summary:not([hidden]) {
+  --pack-region-control-size: 16px;
+  --pack-region-label-gap: 4px;
+  display: flex;
+  align-items: center;
+  gap: var(--pack-region-label-gap);
+  white-space: nowrap;
+}
+
+.registration-lookup__pack-editions:not([hidden]) {
+  display: flex;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow-x: auto;
+}
+
+.registration-lookup__pack-editions > label {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--pack-region-label-gap);
+  min-height: 28px;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.registration-lookup__pack-editions input[type="radio"] {
+  position: static;
+  opacity: 1;
+  pointer-events: auto;
+  width: var(--pack-region-control-size);
+  height: var(--pack-region-control-size);
+  margin: 0;
+  accent-color: var(--theme-000);
+}
+
+.registration-lookup__pack-detail:not([hidden]),
+.registration-lookup__pack-detail > dd:not([hidden]) {
+  display: flex;
+  flex: none;
+  align-items: center;
+  margin: 0;
+}
+
+.registration-lookup__pack-detail:not([hidden]) { gap: 8px; }
+.registration-lookup__pack-detail > dd:not([hidden]) { gap: inherit; }
+
+.registration-lookup__pack-summary > .registration-lookup__pack-reset {
+  --pack-reset-size: 32px;
+  flex: none;
+  width: var(--pack-reset-size);
+  height: var(--pack-reset-size);
+  min-height: var(--pack-reset-size);
+  /* 라디오와 같은 너비만 차지하면서 버튼의 클릭 영역을 유지한다. */
+  margin-inline: calc((var(--pack-region-control-size) - var(--pack-reset-size)) / 2);
+  padding: 0;
+}
+
+.registration-lookup__pack-reset[hidden] { display: none; }
+
+.registration-lookup__pack-reset > .material-icons {
+  font-size: 24px;
+  translate: -1px 1px;
+}
+
+html.is-mobile-device .registration-lookup__pack-summary:not([hidden]) {
+  --pack-region-control-size: 12px;
+  --pack-region-label-gap: 3px;
+  font-size: .8rem;
+}
+
+html.is-mobile-device .registration-lookup__pack-detail { gap: 4px; }
+html.is-mobile-device .registration-lookup__pack-editions { gap: 12px; }
+
 @media (prefers-reduced-motion: reduce) {
   .ui-overlay__panel, .ui-overlay__backdrop, .mobile-sheet-qty-overlay.ui-overlay { transition: none; }
 }
@@ -161,7 +365,8 @@ html.overlay-scroll-locked { overflow-y: hidden; }
 :where(#auth-modal, #signup-modal, #membership-auth-modal,
     #migration-modal, #export-modal,
     #data-clear-confirm-modal, #data-clear-success-modal, #legacy-migration-modal,
-    [data-result-operation]) > .ui-overlay__body {
+    [data-result-operation]) > .ui-overlay__body,
+.registration-lookup__body {
   display: flex;
   flex-direction: column;
   gap: 16px;

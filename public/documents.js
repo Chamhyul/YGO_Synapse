@@ -1,4 +1,4 @@
-/* 공지 HTML 안전 표시와 전용 열람 페이지. 인증·사용자 데이터 쓰기 없음. */
+/* 공지 HTML 안전 표시와 독립 문서 페이지. 인증·사용자 데이터 쓰기 없음. */
 (function(root) {
 'use strict';
 const NOTICE_ALLOWED_TAGS = new Set([
@@ -51,9 +51,15 @@ function sanitizeNoticeHtml(content) {
 
 
 root.AppDocuments = { sanitize: sanitizeNoticeHtml };
-if (!document.querySelector('[data-notice-page]')) return;
+const noticePage = document.querySelector('[data-notice-page]');
+if (!noticePage && !document.querySelector('.document-page')) return;
+let theme;
+try { theme = localStorage.getItem('yugioh_theme_mode'); } catch {}
+const dark = theme === 'dark' ||
+    (!noticePage && theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+document.documentElement.classList.toggle('dark-mode', dark);
+if (!noticePage) return;
 const content = document.querySelector('.document-view__content');
-if (localStorage.getItem('yugioh_theme_mode') === 'dark') document.documentElement.classList.add('dark-mode');
 (async () => {
     try {
         const response = await fetch('https://storage.googleapis.com/ygo-synapse.firebasestorage.app/public/notices.json', {cache:'no-cache'});

@@ -1,0 +1,209 @@
+/* 모바일 카드 정보 시트 필드 배치와 상호작용 상태. */
+#mobile-entry-bottom-sheet {
+    --card-info-field-bg: hsl(0, 0%, 98%);
+}
+
+.dark-mode #mobile-entry-bottom-sheet {
+    --card-info-field-bg: hsl(0, 0%, 13%);
+}
+
+#sheet-fields-container .card-info-fields:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+#mobile-entry-bottom-sheet .sheet-form-row {
+    display: flex;
+    gap: 12px;
+}
+
+#mobile-entry-bottom-sheet .sheet-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+#mobile-entry-bottom-sheet .sheet-form-row > .sheet-form-field {
+    flex: 1;
+}
+
+#mobile-entry-bottom-sheet .sheet-form-field > label {
+    font-size: .8rem;
+    font-weight: 600;
+}
+
+#mobile-entry-bottom-sheet .sheet-form-field:has(> [data-field-wrap="illust"]) {
+    flex: 0 0 84px;
+}
+
+#mobile-entry-bottom-sheet .sheet-form-field:has(> [data-field-wrap="qty"]) {
+    max-width: 56px;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box {
+    --card-info-field-border: var(--border-001);
+    display: flex;
+    align-items: center;
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    height: 44px;
+    padding: 0 12px;
+    cursor: pointer;
+    background-color: var(--card-info-field-bg);
+    border-color: var(--card-info-field-border);
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box.is-unavailable {
+    --card-info-field-border: var(--border-000);
+    pointer-events: none;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box:not(.is-unavailable):has(> input:focus-visible) {
+    --card-info-field-border: var(--border-highlight);
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box > input,
+#mobile-entry-bottom-sheet .sheet-input-box > input:focus {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0 40px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+    color: var(--color-text);
+    font-size: .9rem;
+    text-align: center;
+    pointer-events: none;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box > input::placeholder {
+    color: var(--color-text);
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box > input.error-placeholder::placeholder {
+    color: var(--red);
+    font-weight: 700;
+    opacity: 1;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box[data-field-wrap="qty"] > input {
+    appearance: textfield;
+    padding: 0;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box[data-field-wrap="qty"] > input::-webkit-inner-spin-button,
+#mobile-entry-bottom-sheet .sheet-input-box[data-field-wrap="qty"] > input::-webkit-outer-spin-button {
+    appearance: none;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box:has(> .card-info-field-value),
+#mobile-entry-bottom-sheet .sheet-input-box[data-field-wrap="qty"] {
+    height: auto;
+    min-height: 44px;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box:has(> .card-info-field-value) {
+    gap: 2px;
+    padding: 7px 4px;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box:is([data-field-wrap="loc"], [data-field-wrap="to"], [data-field-wrap="qty"]) {
+    flex: 1 0 auto;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box:has(> .card-info-field-value) > input {
+    position: absolute;
+    inset: 0;
+    padding: 0;
+    opacity: 0;
+}
+
+#mobile-entry-bottom-sheet .card-info-field-value {
+    flex: 1;
+    grid-column: 2;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--color-text);
+    text-align: center;
+    font-size: .9rem;
+    line-height: 1.35;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box:is(.is-awaiting-number, :not(.no-option, .single-option, .no-arrow)):has(> .card-info-field-value + .arrow-icon) {
+    display: grid;
+    grid-template-columns: .6rem minmax(0, 1fr) 1.2rem;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box > .arrow-icon {
+    position: static;
+    color: var(--card-info-field-border);
+    font-size: 1.2rem;
+    line-height: 1;
+    opacity: 1;
+    pointer-events: none;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box:not(.is-awaiting-number):is(.no-option, .single-option, .no-arrow) > .arrow-icon {
+    display: none;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box > :is(.clear-btn, #sheet-card-no ~ .arrow-icon):not([hidden]),
+#mobile-entry-bottom-sheet .sheet-input-box:is([data-field-wrap="illust"], [data-field-wrap="rare"]) > .arrow-icon:not([hidden]) {
+    display: block;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box > :is(.arrow-icon, .clear-btn)[hidden] {
+    display: none;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box > input:is(.hyperlink-style, .is-card-retry) {
+    cursor: pointer;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box > input.hyperlink-style {
+    text-decoration: underline;
+}
+
+#mobile-entry-bottom-sheet .sheet-form-field[hidden] {
+    display: none;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box > .card-info-field-value + .arrow-icon {
+    grid-column: 3;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box > .clear-btn,
+#mobile-entry-bottom-sheet .sheet-input-box > #sheet-card-no ~ .arrow-icon {
+    position: absolute;
+    inset-inline-end: 8px;
+    top: 50%;
+    translate: 0 -50%;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-size: 1.2rem;
+    line-height: 28px;
+    text-align: center;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box > .clear-btn {
+    --color-text: var(--card-info-field-border);
+    --color-highlight-text: var(--card-info-field-border);
+    cursor: pointer;
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box > .clear-btn:focus-visible {
+    outline: 1px solid var(--border-highlight);
+}
+
+#mobile-entry-bottom-sheet .sheet-input-box > .clear-btn > .material-icons {
+    display: block;
+    font-size: inherit;
+    line-height: inherit;
+}

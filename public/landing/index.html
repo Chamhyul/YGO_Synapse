@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" id="synapse-landing">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,15 +11,19 @@
   <link rel="stylesheet" href="/vendor/ui/aba72a1d60bf725f6cabcd9bc940ea546707378936e5f1a3b4b1f7d4885d1854.css">
   <link rel="stylesheet" href="/vendor/ui/65db03ecf48e2c4b24c7020615d9d3c96dd1540536df57301ac7ea84eaed8b74.css">
   <link rel="stylesheet" href="/vendor/ui/452b88e08deeba5cb9bb31c2cee114561c7120f4a9ccc2eb65c8b602cd4b63eb.css">
-  <link rel="stylesheet" href="/styles/tokens.css?v=177-danger-tokens">
-  <link rel="stylesheet" href="/styles/base.css?v=142-common-ui">
-  <link rel="stylesheet" href="/styles/components.css?v=191-filter-alignment">
-  <link rel="stylesheet" href="/style.css">
-  <link rel="stylesheet" href="/styles/search.css?v=166-style-cleanup">
+  <link rel="stylesheet" href="/styles/tokens.css?v=20261124-service-css-cleanup">
+  <link rel="stylesheet" href="/styles/base.css?v=20261124-css-structure">
+  <link rel="stylesheet" href="/styles/components.css?v=20261125-card-input-border">
+  <link rel="stylesheet" href="/styles/field-controls.css?v=20261125-search-text">
+  <link rel="stylesheet" href="/styles/management.css?v=20261125-form-actions">
+  <link rel="stylesheet" href="/styles/desktop-card-fields.css?v=20261125-form-actions">
+  <link rel="stylesheet" href="/styles/card-row-actions.css?v=20261125-form-actions">
+  <link rel="stylesheet" href="/styles/search.css?v=20261125-ui-standardization">
+  <link rel="stylesheet" href="/styles/overlays.css?v=20261125-ui-standardization">
   <link rel="stylesheet" href="/styles/dashboard.css?v=154-ui-structure">
-  <link rel="stylesheet" href="/styles/layout.css?v=20261028-theme-icon-v40">
-  <link rel="stylesheet" href="/landing/landing.css?v=1">
-  <script src="/landing/landing.js?v=1" defer></script>
+  <link rel="stylesheet" href="/styles/layout.css?v=20261124-css-structure">
+  <link rel="stylesheet" href="/landing/landing.css?v=20261125-small-button">
+  <script src="/landing/landing.js?v=2" defer></script>
 </head>
 <body class="landing-page">
   <a class="landing-skip" href="#main">본문으로 바로가기</a>
@@ -42,7 +46,7 @@
         <div class="landing-search" id="search">
           <label for="search-card-search">카드 이름 또는 번호로 검색해 보세요.</label>
           <form id="landing-search-form" aria-label="서비스에서 카드 검색"><div class="landing-search-desktop"><div class="search-row">
-                    <div class="search-input-wrapper dropdown-capsule" id="search-search-wrapper" style="--measured-capsule-height: 46px; --dropdown-height: 0px;">
+                    <div class="search-input-wrapper dropdown-capsule" id="search-search-wrapper">
                         <div class="search-expansion-bg dropdown-capsule__surface ui-search-surface color-surface-001 shadow-small shape-capsule border-basic">
                             <ul id="search-custom-dropdown" class="custom-dropdown"></ul>
                         </div>
@@ -73,403 +77,219 @@
                                 <div class="ui-segment__indicator color-surface-002 shape-capsule" aria-hidden="true"></div>
                             </fieldset>
         <div class="landing-panel" id="preview-add-panel" data-manage-panel="add" role="region" aria-label="등록 입력 항목">
-          <div class="landing-entry landing-entry--desktop"><div class="desktop-info-card ui-stack-card shape-rounded003 color-card-odd" data-index="0" inert="" aria-hidden="true">
-            <div class="card-row-top" style="display:flex; align-items:center; width:100%; gap:12px; position:relative; padding-left:30px; box-sizing:border-box;">
-                <div style="position:absolute; left:0; display:flex; align-items:center; width:30px; height:100%;">
-                    <div style="position:absolute; left:0; width:14px; display:flex; align-items:center; justify-content:center;">
-                        <span class="card-num-badge">1</span>
-                    </div>
-                    <span class="card-num-divider color-text-table" aria-hidden="true" style="position:absolute; left:22px; margin:0 !important;">|</span>
+          <div id="desktop-cards-list-general" class="landing-entry landing-entry--desktop shadow-drop-small">
+            <div class="desktop-info-card desktop-info-card--editable ui-stack-card shape-rounded003 color-card-odd" inert aria-hidden="true">
+              <div class="card-row-top">
+                <div class="desktop-card-index">
+                  <div class="desktop-card-index-badge">
+                    <span class="card-num-badge">1</span>
+                  </div>
+                  <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
                 </div>
-                <div class="custom-select-wrapper no-arrow" style="max-width:50%; flex:1; position:relative;">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" style="font-weight:700; text-align:left !important; padding:0 24px 0 8px !important;" autocomplete="off">
-                    <i class="material-icons clear-name-btn" style="display:none; position:absolute; right:6px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.1rem; color:var(--text-muted);">cancel</i>
+                <div class="custom-select-wrapper no-arrow" data-card-field="name">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" autocomplete="off">
+                  <i class="material-icons clear-name-btn" aria-hidden="true">cancel</i>
                 </div>
-                <div class="custom-select-wrapper no-arrow" style="margin-left:auto; width:120px; flex-shrink:0;">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" style="font-family:monospace; text-transform:uppercase; text-align:right !important; padding:0 28px 0 8px !important;" autocomplete="off">
-                    <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px; display:none;">arrow_drop_down</i>
+                <div class="custom-select-wrapper no-arrow" data-card-field="no">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" autocomplete="off">
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
                 </div>
-                <div class="card-actions" style="display:flex; gap:6px; flex-shrink:0; width:72px;">
-                    
-        <button class="btn-card-action copy" title="복제"><i class="material-icons" style="font-size:1.25rem;">library_add</i></button>
-        <button class="btn-card-action delete" title="제거"><i class="material-icons" style="font-size:1.25rem;">delete</i></button>
-    
+                <div class="card-actions">
+                  <button type="button" class="btn-card-action copy ui-button color-theme" title="복제" aria-label="복제"><i class="material-icons" aria-hidden="true">library_add</i></button>
+                  <button type="button" disabled class="btn-card-action delete ui-button color-danger ui-control--disabled color-disabled" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
                 </div>
+              </div>
+              <div class="card-row-bottom">
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="illust">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" inputmode="none" role="button" aria-label="일러스트 선택" aria-haspopup="dialog" aria-expanded="false" placeholder="일러스트" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="rare">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="custom-select-wrapper" data-type="free" id="desktop-wrap-add-0" data-card-field="loc">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="보관 위치" disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="desktop-qty-wrapper border-cardinput shape-capsule color-text-table">
+                  <input type="number" class="desktop-card-input color-text-table shape-capsule browser-default desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly>
+                  <span>장</span>
+                  <div class="desktop-qty-controls">
+                    <div class="qty-up-btn"><i class="material-icons">keyboard_arrow_up</i></div>
+                    <div class="qty-down-btn"><i class="material-icons">keyboard_arrow_down</i></div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="card-row-bottom" style="display:flex; align-items:center; gap:12px; width:100%; padding-left:30px; box-sizing:border-box;">
-                <div class="custom-select-wrapper no-option" style="width:80px; flex-shrink:0;" data-type="strict">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" placeholder="일러스트" style="text-align:left !important; padding:0 8px !important;" readonly="">
-                    <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
-                </div>
-                <div class="custom-select-wrapper no-option" style="width:90px; flex:none;" data-type="strict">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" style="text-align:left !important; padding:0 8px !important;" readonly="">
-                    <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
-                </div>
-                <div class="custom-select-wrapper" style="margin-left:auto; width:120px; flex:none;" data-type="free" id="add-desktop-wrap-add-0">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="보관 위치" style="text-align:right !important; padding:0 28px 0 8px !important;">
-                    <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
-                </div>
-                <div class="desktop-qty-wrapper border-cardinput" style="width:72px; height:30px; flex-shrink:0; display:flex; align-items:center; border-radius:16px; background:transparent; padding:0 4px; box-sizing:border-box; gap:2px;">
-                    <input type="number" class="desktop-card-input desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly="" style="flex:1; width:0; border:none !important; background:transparent !important; text-align:right !important; padding:0 !important; outline:none !important; font-size:0.85rem;">
-                    <span style="font-size:0.85rem; font-weight:700; color:var(--text-table); flex-shrink:0; pointer-events:none; margin-right:2px;">장</span>
-                    <div class="desktop-qty-controls" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; gap:1px; flex-shrink:0;">
-                        <div class="qty-up-btn" style="cursor:pointer; display:flex; align-items:center; justify-content:center; height:12px; line-height:12px; color:var(--text-table);"><i class="material-icons" style="font-size:0.9rem;">keyboard_arrow_up</i></div>
-                        <div class="qty-down-btn" style="cursor:pointer; display:flex; align-items:center; justify-content:center; height:12px; line-height:12px; color:var(--text-table);"><i class="material-icons" style="font-size:0.9rem;">keyboard_arrow_down</i></div>
-                    </div>
-                </div>
-            </div>
-        </div></div><div class="landing-entry landing-entry--mobile"><div class="mobile-info-card ui-stack-card shape-rounded003 color-card-odd" data-index="0" inert="" aria-hidden="true">
-            <div class="card-row-top">
+          </div>
+          <div class="landing-entry landing-entry--mobile shadow-drop-small">
+            <div class="mobile-info-card ui-stack-card shape-rounded003 color-card-odd" inert aria-hidden="true">
+              <div class="card-row-top">
                 <span class="card-num-badge">1</span>
                 <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
-                <span class="card-title-text">카드 추가</span>
-                <span class="card-code-text">미입력</span>
+                <button type="button" class="card-title-text ui-button ui-button--text color-text-table">카드 추가</button>
+                <span class="card-code-text color-text-table">-</span>
                 <div class="card-actions">
-                    <button class="btn-card-action edit" title="수정"><i class="material-icons">edit</i></button>
-                    
-        <button class="btn-card-action copy" title="복제"><i class="material-icons">library_add</i></button>
-        <button class="btn-card-action delete" title="제거"><i class="material-icons">delete</i></button>
-    
+                  <button type="button" class="btn-card-action copy ui-button ui-button--text color-text-table" title="복제" aria-label="복제"><i class="material-icons" aria-hidden="true">library_add</i></button>
+                  <button type="button" disabled class="btn-card-action delete ui-button ui-button--text color-text-table ui-control--disabled" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
                 </div>
+              </div>
+              <div class="card-row-bottom">
+                <span class="card-info-badge color-text-table illust">일러스트</span>
+                <span class="card-info-badge color-text-table rarity">레어도</span>
+                <span class="card-info-badge color-text-table location">보관 위치</span>
+                <span class="card-info-badge color-text-table qty">수량</span>
+              </div>
             </div>
-            <div class="card-row-bottom">
-                
-        <span class="card-info-badge illust">미선택</span>
-        <span class="card-info-badge rarity">미선택</span>
-        <span class="card-info-badge location">보관 위치</span>
-        <span class="card-info-badge qty">수량</span>
-    
-            </div>
-
-            <div class="mobile-card-fields" style="display: none;">
-                <!-- 카드 이름 -->
-                <div class="sheet-form-field">
-                    <label>카드 이름</label>
-                    <div class="custom-select-wrapper sheet-input-box no-arrow" style="position:relative;">
-                        <input type="text" class="custom-input page-card-name" data-field="name" value="" placeholder="카드 이름 입력" autocomplete="off" readonly="">
-                        <i class="material-icons clear-name-btn clear-btn" style="display:none; position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.25rem; color:var(--text-muted);">cancel</i>
-                    </div>
-                </div>
-                <!-- 카드 번호 -->
-                <div class="sheet-form-field">
-                    <label>카드 번호</label>
-                    <div class="custom-select-wrapper sheet-input-box no-arrow" style="position:relative;">
-                        <input type="text" class="custom-input page-card-no" data-field="no" value="" placeholder="카드 번호 입력" autocomplete="off" readonly="">
-                        <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px; display:none;">arrow_drop_down</i>
-                        <i class="material-icons clear-btn" style="display:none; position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.25rem; color:var(--text-muted);">cancel</i>
-                    </div>
-                </div>
-                <!-- 일러스트 & 레어도 -->
-                <div class="sheet-form-row">
-                    <div class="sheet-form-field half">
-                        <label>일러스트</label>
-                        <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="illust" data-type="strict" style="position:relative;">
-                            <input type="text" class="custom-input page-card-illustration" data-field="illust" data-raw="" value="" placeholder="일러스트" readonly="">
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
-                        </div>
-                    </div>
-                    <div class="sheet-form-field half">
-                        <label>레어도</label>
-                        <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="rare" data-type="strict" style="position:relative;">
-                            <input type="text" class="custom-input page-card-rarity" data-field="rare" value="" placeholder="레어도" readonly="">
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
-                        </div>
-                    </div>
-                </div>
-                <!-- 보관 위치 & 이동 위치 & 수량 -->
-                <div class="sheet-form-row">
-                    <div class="sheet-form-field" style="flex: 1;">
-                        <label>보관 위치</label>
-                        <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="loc" data-type="free" style="position:relative;">
-                            <input type="text" class="custom-input page-card-loc" data-field="loc" value="" placeholder="보관 위치" readonly="">
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
-                        </div>
-                    </div>
-                    <div class="sheet-form-field" style="flex: 1; display: none;">
-                        <label>이동 위치</label>
-                        <div class="custom-select-wrapper sheet-input-box" data-field-wrap="to" data-type="free" style="position:relative;">
-                            <input type="text" class="custom-input move-card-to" data-field="to" value="" placeholder="이동 위치" readonly="">
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
-                        </div>
-                    </div>
-                    <div class="sheet-form-field" style="flex: 1;">
-                        <label>수량</label>
-                        <div class="custom-select-wrapper sheet-input-box no-arrow" data-field-wrap="qty" style="position:relative;">
-                            <input type="number" class="custom-input page-card-qty qty-input" data-field="qty" value="" placeholder="수량" min="1" readonly="" style="flex:1; border:none !important; background:transparent !important; outline:none !important; font-size:0.9rem; text-align:left;">
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div></div>
+          </div>
           <div class="landing-panel-copy"><h3>카드 이름부터 보관 위치까지.</h3><p>보유한 카드를 등록하고<br>레어도·수량·보관 위치를 함께 관리합니다.</p></div>
         </div>
         <div class="landing-panel" id="preview-move-panel" data-manage-panel="move" role="region" aria-label="이동 입력 항목" hidden>
-          <div class="landing-entry landing-entry--desktop"><div class="desktop-info-card ui-stack-card shape-rounded003 color-card-odd" data-index="0" inert="" aria-hidden="true">
-                <div class="card-row-top" style="display:flex; align-items:center; width:100%; gap:12px; position:relative; padding-left:30px; box-sizing:border-box;">
-                    <div style="position:absolute; left:0; display:flex; align-items:center; width:30px; height:100%;">
-                        <div style="position:absolute; left:0; width:14px; display:flex; align-items:center; justify-content:center;">
-                            <span class="card-num-badge">1</span>
-                        </div>
-                        <span class="card-num-divider color-text-table" aria-hidden="true" style="position:absolute; left:22px; margin:0 !important;">|</span>
-                    </div>
-                    <div class="custom-select-wrapper no-arrow" style="max-width:50%; flex:1; position:relative;">
-                        <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" style="font-weight:700; text-align:left !important; padding:0 24px 0 8px !important;" autocomplete="off">
-                        <i class="material-icons clear-name-btn" style="display:none; position:absolute; right:6px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.1rem; color:var(--text-muted);">cancel</i>
-                    </div>
-                    <div class="custom-select-wrapper no-arrow" style="margin-left:auto; width:120px; flex-shrink:0;">
-                        <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" style="font-family:monospace; text-transform:uppercase; text-align:right !important; padding:0 28px 0 8px !important;" autocomplete="off">
-                        <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px; display:none;">arrow_drop_down</i>
-                    </div>
-                    <div class="card-actions" style="display:flex; gap:6px; flex-shrink:0; width:72px;">
-                        <button class="btn-card-action delete" title="제거"><i class="material-icons" style="font-size:1.25rem;">delete</i></button>
-                    </div>
+          <div id="desktop-cards-list-move" class="landing-entry landing-entry--desktop shadow-drop-small">
+            <div class="desktop-info-card desktop-info-card--editable ui-stack-card shape-rounded003 color-card-odd" inert aria-hidden="true">
+              <div class="card-row-top">
+                <div class="desktop-card-index">
+                  <div class="desktop-card-index-badge">
+                    <span class="card-num-badge">1</span>
+                  </div>
+                  <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
                 </div>
-                <div class="card-row-bottom" style="display:flex; align-items:center; gap:12px; width:100%; padding-left:30px; box-sizing:border-box;">
-                    <div class="custom-select-wrapper no-option" style="width:80px; flex-shrink:0;" data-type="strict">
-                        <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" placeholder="일러스트" style="text-align:left !important; padding:0 8px !important;" readonly="">
-                        <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
-                    </div>
-                    <div class="custom-select-wrapper no-option" style="width:90px; flex:none;" data-type="strict">
-                        <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" style="text-align:left !important; padding:0 8px !important;" readonly="">
-                        <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
-                    </div>
-                    <div style="margin-left:auto; display:flex; gap:6px; align-items:center; flex:none; max-width:320px; justify-content:flex-end;">
-                        <div class="custom-select-wrapper no-option" style="width:120px; flex:none;" data-type="strict" id="move-desktop-wrap-move-from-1">
-                            <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="보관 위치" style="text-align:right !important; padding:0 28px 0 8px !important;" readonly="">
-                            <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
-                        </div>
-                        <i class="material-icons loc-arrow" style="font-size:1rem; color:var(--text-table); flex-shrink:0;">arrow_forward</i>
-                        <div class="custom-select-wrapper" style="width:120px; flex:none;" data-type="free" id="move-desktop-wrap-move-to-1">
-                            <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-to custom-input" data-field="to" placeholder="이동 위치" style="text-align:right !important; padding:0 28px 0 8px !important;">
-                            <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
-                        </div>
-                    </div>
-                    <div class="desktop-qty-wrapper border-cardinput" style="width:72px; height:30px; flex-shrink:0; display:flex; align-items:center; border-radius:16px; background:transparent; padding:0 4px; box-sizing:border-box; gap:2px;">
-                        <input type="number" class="desktop-card-input desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly="" style="flex:1; width:0; border:none !important; background:transparent !important; text-align:right !important; padding:0 !important; outline:none !important; font-size:0.85rem;">
-                        <span style="font-size:0.85rem; font-weight:700; color:var(--text-table); flex-shrink:0; pointer-events:none; margin-right:2px;">장</span>
-                        <div class="desktop-qty-controls" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; gap:1px; flex-shrink:0;">
-                            <div class="qty-up-btn" style="cursor:pointer; display:flex; align-items:center; justify-content:center; height:12px; line-height:12px; color:var(--text-table);"><i class="material-icons" style="font-size:0.9rem;">keyboard_arrow_up</i></div>
-                            <div class="qty-down-btn" style="cursor:pointer; display:flex; align-items:center; justify-content:center; height:12px; line-height:12px; color:var(--text-table);"><i class="material-icons" style="font-size:0.9rem;">keyboard_arrow_down</i></div>
-                        </div>
-                    </div>
+                <div class="custom-select-wrapper no-arrow" data-card-field="name">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" autocomplete="off">
+                  <i class="material-icons clear-name-btn" aria-hidden="true">cancel</i>
                 </div>
-            </div></div><div class="landing-entry landing-entry--mobile"><div class="mobile-info-card ui-stack-card shape-rounded003 color-card-odd" data-index="0" inert="" aria-hidden="true">
-            <div class="card-row-top">
+                <div class="custom-select-wrapper no-arrow" data-card-field="no">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" autocomplete="off">
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="card-actions">
+                  <button type="button" disabled class="btn-card-action delete ui-button color-danger ui-control--disabled color-disabled" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
+                </div>
+              </div>
+              <div class="card-row-bottom">
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="illust">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" inputmode="none" role="button" aria-label="일러스트 선택" aria-haspopup="dialog" aria-expanded="false" placeholder="일러스트" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="rare">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="desktop-card-move-locations">
+                  <div class="custom-select-wrapper no-option" data-type="strict" id="desktop-wrap-move-from-1" data-card-field="loc">
+                    <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="보관 위치" readonly disabled>
+                    <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                  </div>
+                  <i class="material-icons loc-arrow" aria-hidden="true">arrow_forward</i>
+                  <div class="custom-select-wrapper" data-type="free" id="desktop-wrap-move-to-1" data-card-field="to">
+                    <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-to custom-input" data-field="to" placeholder="이동 위치">
+                    <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                  </div>
+                </div>
+                <div class="desktop-qty-wrapper border-cardinput shape-capsule color-text-table">
+                  <input type="number" class="desktop-card-input color-text-table shape-capsule browser-default desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly>
+                  <span>장</span>
+                  <div class="desktop-qty-controls">
+                    <div class="qty-up-btn"><i class="material-icons">keyboard_arrow_up</i></div>
+                    <div class="qty-down-btn"><i class="material-icons">keyboard_arrow_down</i></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="landing-entry landing-entry--mobile shadow-drop-small">
+            <div class="mobile-info-card ui-stack-card shape-rounded003 color-card-odd" inert aria-hidden="true">
+              <div class="card-row-top">
                 <span class="card-num-badge">1</span>
                 <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
-                <span class="card-title-text">카드 추가</span>
-                <span class="card-code-text">미입력</span>
+                <button type="button" class="card-title-text ui-button ui-button--text color-text-table">카드 추가</button>
+                <span class="card-code-text color-text-table">-</span>
                 <div class="card-actions">
-                    <button class="btn-card-action edit" title="수정"><i class="material-icons">edit</i></button>
-                    
-        <button class="btn-card-action copy" title="복제"><i class="material-icons">library_add</i></button>
-        <button class="btn-card-action delete" title="제거"><i class="material-icons">delete</i></button>
-    
+                  <button type="button" class="btn-card-action copy ui-button ui-button--text color-text-table" title="복제" aria-label="복제"><i class="material-icons" aria-hidden="true">library_add</i></button>
+                  <button type="button" disabled class="btn-card-action delete ui-button ui-button--text color-text-table ui-control--disabled" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
                 </div>
+              </div>
+              <div class="card-row-bottom">
+                <span class="card-info-badge color-text-table illust">일러스트</span>
+                <span class="card-info-badge color-text-table rarity">레어도</span>
+                <span class="card-info-badge color-text-table location">보관 위치</span>
+                <i class="material-icons loc-arrow color-text-table" aria-hidden="true">arrow_forward</i>
+                <span class="card-info-badge color-text-table location to-loc">이동 위치</span>
+                <span class="card-info-badge color-text-table qty">수량</span>
+              </div>
             </div>
-            <div class="card-row-bottom">
-                
-        <span class="card-info-badge illust">미선택</span>
-        <span class="card-info-badge rarity">미선택</span>
-        <span class="card-info-badge location">보관 위치</span>
-        <i class="material-icons loc-arrow" style="font-size:0.8rem; color:var(--text-muted); align-self:center; margin:0 -2px;">arrow_forward</i>
-        <span class="card-info-badge location to-loc">이동 위치</span>
-        <span class="card-info-badge qty">수량</span>
-    
-            </div>
-
-            <div class="mobile-card-fields" style="display: none;">
-                <!-- 카드 이름 -->
-                <div class="sheet-form-field">
-                    <label>카드 이름</label>
-                    <div class="custom-select-wrapper sheet-input-box no-arrow" style="position:relative;">
-                        <input type="text" class="custom-input card-name-input" data-field="name" value="" placeholder="카드 이름 입력" autocomplete="off" readonly="">
-                        <i class="material-icons clear-name-btn clear-btn" style="display:none; position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.25rem; color:var(--text-muted);">cancel</i>
-                    </div>
-                </div>
-                <!-- 카드 번호 -->
-                <div class="sheet-form-field">
-                    <label>카드 번호</label>
-                    <div class="custom-select-wrapper sheet-input-box no-arrow" style="position:relative;">
-                        <input type="text" class="custom-input move-card-no" data-field="no" value="" placeholder="카드 번호 입력" autocomplete="off" readonly="">
-                        <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px; display:none;">arrow_drop_down</i>
-                        <i class="material-icons clear-btn" style="display:none; position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.25rem; color:var(--text-muted);">cancel</i>
-                    </div>
-                </div>
-                <!-- 일러스트 & 레어도 -->
-                <div class="sheet-form-row">
-                    <div class="sheet-form-field half">
-                        <label>일러스트</label>
-                        <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="illust" data-type="strict" style="position:relative;">
-                            <input type="text" class="custom-input move-card-illustration" data-field="illust" data-raw="" value="" placeholder="일러스트" readonly="">
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
-                        </div>
-                    </div>
-                    <div class="sheet-form-field half">
-                        <label>레어도</label>
-                        <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="rare" data-type="strict" style="position:relative;">
-                            <input type="text" class="custom-input move-card-rarity" data-field="rare" value="" placeholder="레어도" readonly="">
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
-                        </div>
-                    </div>
-                </div>
-                <!-- 보관 위치 & 이동 위치 & 수량 -->
-                <div class="sheet-form-row">
-                    <div class="sheet-form-field" style="flex: 1;">
-                        <label>보관 위치</label>
-                        <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="loc" data-type="strict" style="position:relative;">
-                            <input type="text" class="custom-input move-card-from" data-field="loc" value="" placeholder="보관 위치" readonly="">
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
-                        </div>
-                    </div>
-                    <div class="sheet-form-field" style="flex: 1; display: block;">
-                        <label>이동 위치</label>
-                        <div class="custom-select-wrapper sheet-input-box" data-field-wrap="to" data-type="free" style="position:relative;">
-                            <input type="text" class="custom-input move-card-to" data-field="to" value="" placeholder="이동 위치" readonly="">
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
-                        </div>
-                    </div>
-                    <div class="sheet-form-field" style="flex: 1;">
-                        <label>수량</label>
-                        <div class="custom-select-wrapper sheet-input-box no-arrow" data-field-wrap="qty" style="position:relative;">
-                            <input type="number" class="custom-input move-card-qty qty-input" data-field="qty" value="" placeholder="수량" min="1" readonly="" style="flex:1; border:none !important; background:transparent !important; outline:none !important; font-size:0.9rem; text-align:left;">
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div></div>
+          </div>
           <div class="landing-panel-copy"><h3>보관 위치가 바뀌었을 때도.</h3><p>이동할 카드와 수량을 선택하고<br>새로운 보관 위치로 옮깁니다.</p></div>
         </div>
         <div class="landing-panel" id="preview-discard-panel" data-manage-panel="discard" role="region" aria-label="제거 입력 항목" hidden>
-          <div class="landing-entry landing-entry--desktop"><div class="desktop-info-card ui-stack-card shape-rounded003 color-card-odd" data-index="0" inert="" aria-hidden="true">
-            <div class="card-row-top" style="display:flex; align-items:center; width:100%; gap:12px; position:relative; padding-left:30px; box-sizing:border-box;">
-                <div style="position:absolute; left:0; display:flex; align-items:center; width:30px; height:100%;">
-                    <div style="position:absolute; left:0; width:14px; display:flex; align-items:center; justify-content:center;">
-                        <span class="card-num-badge">1</span>
-                    </div>
-                    <span class="card-num-divider color-text-table" aria-hidden="true" style="position:absolute; left:22px; margin:0 !important;">|</span>
+          <div id="desktop-cards-list-discard" class="landing-entry landing-entry--desktop shadow-drop-small">
+            <div class="desktop-info-card desktop-info-card--editable ui-stack-card shape-rounded003 color-card-odd" inert aria-hidden="true">
+              <div class="card-row-top">
+                <div class="desktop-card-index">
+                  <div class="desktop-card-index-badge">
+                    <span class="card-num-badge">1</span>
+                  </div>
+                  <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
                 </div>
-                <div class="custom-select-wrapper no-arrow" style="max-width:50%; flex:1; position:relative;">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" style="font-weight:700; text-align:left !important; padding:0 24px 0 8px !important;" autocomplete="off">
-                    <i class="material-icons clear-name-btn" style="display:none; position:absolute; right:6px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.1rem; color:var(--text-muted);">cancel</i>
+                <div class="custom-select-wrapper no-arrow" data-card-field="name">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" autocomplete="off">
+                  <i class="material-icons clear-name-btn" aria-hidden="true">cancel</i>
                 </div>
-                <div class="custom-select-wrapper no-arrow" style="margin-left:auto; width:120px; flex-shrink:0;">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" style="font-family:monospace; text-transform:uppercase; text-align:right !important; padding:0 28px 0 8px !important;" autocomplete="off">
-                    <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px; display:none;">arrow_drop_down</i>
+                <div class="custom-select-wrapper no-arrow" data-card-field="no">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" autocomplete="off">
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
                 </div>
-                <div class="card-actions" style="display:flex; gap:6px; flex-shrink:0; width:72px;">
-                    
-        <button class="btn-card-action delete" title="제거"><i class="material-icons" style="font-size:1.25rem;">delete</i></button>
-    
+                <div class="card-actions">
+                  <button type="button" disabled class="btn-card-action delete ui-button color-danger ui-control--disabled color-disabled" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
                 </div>
+              </div>
+              <div class="card-row-bottom">
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="illust">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" inputmode="none" role="button" aria-label="일러스트 선택" aria-haspopup="dialog" aria-expanded="false" placeholder="일러스트" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="rare">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="custom-select-wrapper no-option" data-type="strict" id="desktop-wrap-discard-0" data-card-field="loc">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="보관 위치" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="desktop-qty-wrapper border-cardinput shape-capsule color-text-table">
+                  <input type="number" class="desktop-card-input color-text-table shape-capsule browser-default desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly>
+                  <span>장</span>
+                  <div class="desktop-qty-controls">
+                    <div class="qty-up-btn"><i class="material-icons">keyboard_arrow_up</i></div>
+                    <div class="qty-down-btn"><i class="material-icons">keyboard_arrow_down</i></div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="card-row-bottom" style="display:flex; align-items:center; gap:12px; width:100%; padding-left:30px; box-sizing:border-box;">
-                <div class="custom-select-wrapper no-option" style="width:80px; flex-shrink:0;" data-type="strict">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" placeholder="일러스트" style="text-align:left !important; padding:0 8px !important;" readonly="">
-                    <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
-                </div>
-                <div class="custom-select-wrapper no-option" style="width:90px; flex:none;" data-type="strict">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" style="text-align:left !important; padding:0 8px !important;" readonly="">
-                    <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
-                </div>
-                <div class="custom-select-wrapper no-option" style="margin-left:auto; width:120px; flex:none;" data-type="strict" id="discard-desktop-wrap-discard-0">
-                    <input type="text" class="desktop-card-input browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="보관 위치" style="text-align:right !important; padding:0 28px 0 8px !important;" readonly="">
-                    <i class="material-icons arrow-icon" style="font-size:1rem; right:8px; line-height:30px;">arrow_drop_down</i>
-                </div>
-                <div class="desktop-qty-wrapper border-cardinput" style="width:72px; height:30px; flex-shrink:0; display:flex; align-items:center; border-radius:16px; background:transparent; padding:0 4px; box-sizing:border-box; gap:2px;">
-                    <input type="number" class="desktop-card-input desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly="" style="flex:1; width:0; border:none !important; background:transparent !important; text-align:right !important; padding:0 !important; outline:none !important; font-size:0.85rem;">
-                    <span style="font-size:0.85rem; font-weight:700; color:var(--text-table); flex-shrink:0; pointer-events:none; margin-right:2px;">장</span>
-                    <div class="desktop-qty-controls" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; gap:1px; flex-shrink:0;">
-                        <div class="qty-up-btn" style="cursor:pointer; display:flex; align-items:center; justify-content:center; height:12px; line-height:12px; color:var(--text-table);"><i class="material-icons" style="font-size:0.9rem;">keyboard_arrow_up</i></div>
-                        <div class="qty-down-btn" style="cursor:pointer; display:flex; align-items:center; justify-content:center; height:12px; line-height:12px; color:var(--text-table);"><i class="material-icons" style="font-size:0.9rem;">keyboard_arrow_down</i></div>
-                    </div>
-                </div>
-            </div>
-        </div></div><div class="landing-entry landing-entry--mobile"><div class="mobile-info-card ui-stack-card shape-rounded003 color-card-odd" data-index="0" inert="" aria-hidden="true">
-            <div class="card-row-top">
+          </div>
+          <div class="landing-entry landing-entry--mobile shadow-drop-small">
+            <div class="mobile-info-card ui-stack-card shape-rounded003 color-card-odd" inert aria-hidden="true">
+              <div class="card-row-top">
                 <span class="card-num-badge">1</span>
                 <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
-                <span class="card-title-text">카드 추가</span>
-                <span class="card-code-text">미입력</span>
+                <button type="button" class="card-title-text ui-button ui-button--text color-text-table">카드 추가</button>
+                <span class="card-code-text color-text-table">-</span>
                 <div class="card-actions">
-                    <button class="btn-card-action edit" title="수정"><i class="material-icons">edit</i></button>
-                    
-        <button class="btn-card-action delete" title="제거"><i class="material-icons">delete</i></button>
-    
+                  <button type="button" disabled class="btn-card-action delete ui-button ui-button--text color-text-table ui-control--disabled" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
                 </div>
+              </div>
+              <div class="card-row-bottom">
+                <span class="card-info-badge color-text-table illust">일러스트</span>
+                <span class="card-info-badge color-text-table rarity">레어도</span>
+                <span class="card-info-badge color-text-table location">보관 위치</span>
+                <span class="card-info-badge color-text-table qty">수량</span>
+              </div>
             </div>
-            <div class="card-row-bottom">
-                
-        <span class="card-info-badge illust">미선택</span>
-        <span class="card-info-badge rarity">미선택</span>
-        <span class="card-info-badge location">보관 위치</span>
-        <span class="card-info-badge qty">수량</span>
-    
-            </div>
-
-            <div class="mobile-card-fields" style="display: none;">
-                <!-- 카드 이름 -->
-                <div class="sheet-form-field">
-                    <label>카드 이름</label>
-                    <div class="custom-select-wrapper sheet-input-box no-arrow" style="position:relative;">
-                        <input type="text" class="custom-input card-name-input" data-field="name" value="" placeholder="카드 이름 입력" autocomplete="off" readonly="">
-                        <i class="material-icons clear-name-btn clear-btn" style="display:none; position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.25rem; color:var(--text-muted);">cancel</i>
-                    </div>
-                </div>
-                <!-- 카드 번호 -->
-                <div class="sheet-form-field">
-                    <label>카드 번호</label>
-                    <div class="custom-select-wrapper sheet-input-box no-arrow" style="position:relative;">
-                        <input type="text" class="custom-input discard-card-no" data-field="no" value="" placeholder="카드 번호 입력" autocomplete="off" readonly="">
-                        <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px; display:none;">arrow_drop_down</i>
-                        <i class="material-icons clear-btn" style="display:none; position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.25rem; color:var(--text-muted);">cancel</i>
-                    </div>
-                </div>
-                <!-- 일러스트 & 레어도 -->
-                <div class="sheet-form-row">
-                    <div class="sheet-form-field half">
-                        <label>일러스트</label>
-                        <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="illust" data-type="strict" style="position:relative;">
-                            <input type="text" class="custom-input discard-card-illustration" data-field="illust" data-raw="" value="" placeholder="일러스트" readonly="">
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
-                        </div>
-                    </div>
-                    <div class="sheet-form-field half">
-                        <label>레어도</label>
-                        <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="rare" data-type="strict" style="position:relative;">
-                            <input type="text" class="custom-input discard-card-rarity" data-field="rare" value="" placeholder="레어도" readonly="">
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
-                        </div>
-                    </div>
-                </div>
-                <!-- 보관 위치 & 이동 위치 & 수량 -->
-                <div class="sheet-form-row">
-                    <div class="sheet-form-field" style="flex: 1;">
-                        <label>보관 위치</label>
-                        <div class="custom-select-wrapper sheet-input-box no-option" data-field-wrap="loc" data-type="strict" style="position:relative;">
-                            <input type="text" class="custom-input discard-card-loc" data-field="loc" value="" placeholder="보관 위치" readonly="">
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
-                        </div>
-                    </div>
-                    <div class="sheet-form-field" style="flex: 1; display: none;">
-                        <label>이동 위치</label>
-                        <div class="custom-select-wrapper sheet-input-box" data-field-wrap="to" data-type="free" style="position:relative;">
-                            <input type="text" class="custom-input move-card-to" data-field="to" value="" placeholder="이동 위치" readonly="">
-                            <i class="material-icons arrow-icon" style="font-size:1.4rem; right:12px; line-height:44px;">arrow_drop_down</i>
-                        </div>
-                    </div>
-                    <div class="sheet-form-field" style="flex: 1;">
-                        <label>수량</label>
-                        <div class="custom-select-wrapper sheet-input-box no-arrow" data-field-wrap="qty" style="position:relative;">
-                            <input type="number" class="custom-input discard-card-qty qty-input" data-field="qty" value="" placeholder="수량" min="1" readonly="" style="flex:1; border:none !important; background:transparent !important; outline:none !important; font-size:0.9rem; text-align:left;">
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div></div>
+          </div>
           <div class="landing-panel-copy"><h3>보유 정보도 현재에 맞게.</h3><p>더 이상 보유하지 않는 카드의<br>수량을 선택해 보유 목록에서 제거합니다.</p></div>
         </div>
-        <a class="ui-button ui-button--text color-text-theme landing-open-mode" href="https://ygo-synapse.web.app/#add/general" target="_blank" rel="noopener noreferrer">등록 화면 열기 <i class="material-icons" aria-hidden="true">arrow_forward</i><span class="visually-hidden">(새 탭)</span></a>
+        <a class="ui-button ui-button--text color-text-theme landing-open-mode" href="https://ygo-synapse.web.app/#add" target="_blank" rel="noopener noreferrer">등록 화면 열기 <i class="material-icons" aria-hidden="true">arrow_forward</i><span class="visually-hidden">(새 탭)</span></a>
       </div>
     </section>
 
@@ -480,17 +300,24 @@
     <section class="landing-register landing-wrap" id="register" aria-labelledby="register-title">
       <div class="landing-section-heading"><div><p class="landing-kicker">카드 관리</p><h2 id="register-title">한 장씩 등록하거나,<br>팩과 덱으로 불러오거나.</h2></div><p>카드마다 입력하는 방법 외에도<br>팩 단위 등록과 NEURON 덱 불러오기를 지원합니다.</p></div>
       <div class="landing-register-grid">
-        <article class="landing-method color-surface-001 shape-rounded-lg"><div class="landing-method-copy"><h3>팩 단위 등록</h3><p>팩 이름으로 수록된 카드를 검색하고<br>카드 목록을 만들어 등록하세요.</p></div><div class="landing-native-input"><div class="form-row" inert="" aria-hidden="true">
-                                            <input type="text" id="pack-pack-search-input" class="custom-input mode-input browser-default border-basic" placeholder="팩 이름 검색" autocomplete="off">
-                                            <i id="pack-pack-clear-btn" class="material-icons mode-clear-btn">cancel</i>
-
-                                            <button id="pack-pack-search-btn" class="btn-flat mode-search-btn"><i class="material-icons">search</i></button>
-                                        </div></div><a class="ui-button ui-button--text color-text-theme color-highlight-theme landing-method-link" href="https://ygo-synapse.web.app/#add/pack" target="_blank" rel="noopener noreferrer">팩 추가 <i class="material-icons" aria-hidden="true">arrow_forward</i><span class="visually-hidden">(새 탭)</span></a></article>
-        <article class="landing-method color-surface-001 shape-rounded-lg"><div class="landing-method-copy"><h3>덱 불러오기</h3><p>덱 코드를 입력해 Yu-Gi-Oh! NEURON에<br>등록된 덱 레시피를 불러오세요.</p></div><div class="landing-native-input"><div class="form-row" inert="" aria-hidden="true">
-                                            <input type="text" id="deck-deck-code-input" class="custom-input mode-input browser-default border-basic" placeholder="덱 코드">
-                                            <i id="deck-deck-clear-btn" class="material-icons mode-clear-btn">cancel</i>
-                                            <button id="deck-deck-search-btn" class="btn-flat mode-search-btn"><i class="material-icons">search</i></button>
-                                        </div></div><a class="ui-button ui-button--text color-text-theme color-highlight-theme landing-method-link" href="https://ygo-synapse.web.app/#add/deck" target="_blank" rel="noopener noreferrer">덱 불러오기 <i class="material-icons" aria-hidden="true">arrow_forward</i><span class="visually-hidden">(새 탭)</span></a></article>
+        <article class="landing-method color-surface-001 shape-rounded-lg"><div class="landing-method-copy"><h3>팩 단위 등록</h3><p>팩 이름으로 수록된 카드를 검색하고<br>카드 목록을 만들어 등록하세요.</p></div><div class="landing-native-input registration-lookup__body" inert aria-hidden="true">
+            <form>
+              <div class="mobile-search__input-wrap">
+                <div class="mobile-search__surface ui-search-surface color-surface-001 shadow-small shape-capsule border-basic"></div>
+                <input type="search" class="search-input search-input--mobile color-text-000" placeholder="팩 이름 검색" readonly>
+              </div>
+              <button type="button" class="ui-button color-surface-002 color-text-001 shape-capsule registration-lookup__submit" disabled><i class="material-icons">search</i></button>
+            </form>
+          </div><a class="ui-button ui-button--text color-text-theme color-highlight-theme landing-method-link" href="https://ygo-synapse.web.app/#add" target="_blank" rel="noopener noreferrer">팩 추가 <i class="material-icons" aria-hidden="true">arrow_forward</i><span class="visually-hidden">(새 탭)</span></a></article>
+        <article class="landing-method color-surface-001 shape-rounded-lg"><div class="landing-method-copy"><h3>덱 불러오기</h3><p>덱 코드를 입력해 Yu-Gi-Oh! NEURON에<br>등록된 덱 레시피를 불러오세요.</p></div><div class="landing-native-input registration-lookup__body" inert aria-hidden="true">
+            <form>
+              <div class="mobile-search__input-wrap">
+                <div class="mobile-search__surface ui-search-surface color-surface-001 shadow-small shape-capsule border-basic"></div>
+                <input type="search" class="search-input search-input--mobile color-text-000" placeholder="뉴런 덱 코드" readonly>
+              </div>
+              <button type="button" class="ui-button color-surface-002 color-text-001 shape-capsule registration-lookup__submit" disabled><i class="material-icons">search</i></button>
+            </form>
+          </div><a class="ui-button ui-button--text color-text-theme color-highlight-theme landing-method-link" href="https://ygo-synapse.web.app/#add" target="_blank" rel="noopener noreferrer">덱 불러오기 <i class="material-icons" aria-hidden="true">arrow_forward</i><span class="visually-hidden">(새 탭)</span></a></article>
       </div>
     </section>
 
