@@ -1,0 +1,11 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path');
+const root=path.resolve(__dirname,'..'),out=path.join(root,'transition/api/crawler');
+const source=fs.readFileSync(path.join(root,'card-service/src/scrapers/cardScraper.js'),'utf8');
+const end=source.indexOf('\n/**\n * 카드 번호로 크롤링');if(end<0)throw Error('공통 파서 경계 확인 필요');
+let pure=source.slice(0,end).replace('const axios = require("axios");','').replace('require("../utils/common")','require("./text.cjs")');
+pure=pure.replaceAll('#cardname h1','#cardname h1, .cardname h1').replaceAll('$("#cardname")','$("#cardname, .cardname")');
+pure+='\nmodule.exports={parseCardDetailHtml};\n';fs.mkdirSync(out,{recursive:true});
+fs.writeFileSync(path.join(out,'metadata.generated.cjs'),pure);
+fs.copyFileSync(path.join(root,'card-service/src/utils/text.js'),path.join(out,'text.cjs'));
+fs.copyFileSync(path.join(root,'card-service/src/utils/cardSchema.js'),path.join(out,'schema.cjs'));

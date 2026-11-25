@@ -16,6 +16,9 @@
         unconfirmed_result: '처리 결과 확인 필요'
     };
     const reasonText = reason => reasons[reason] || '처리 결과 확인 필요';
+    const pendingDetails = new WeakMap();
+    const escape = value => String(value ?? '').replace(/[&<>"']/g, char =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 
     // updatedItems는 최종 보유량이다. 작업량으로 계산하거나 성공을 추정하지 않는다.
     function reconcile(requests, response, errorMessage = '') {
@@ -67,15 +70,17 @@
             failures: [...failures].map(([reason, count]) => ({ reason, count })) };
     }
     // 표시는 복사한 값으로 구성한다. 원본 입력과 저장 식별자는 변경하지 않는다.
-    function present(items, operation, { formatIllustration, formatRarity = value => value } = {}) {
+    function presentSummary(items) {
         const totals = summarize(items);
-        const escape = value => String(value ?? '').replace(/[&<>"']/g, char =>
-            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
         const summaryItem = (name, count, error = false) =>
             `<li class="color-surface-002 color-text-001 shape-rounded002"><span${error ? ' class="color-text-red"' : ''}>${escape(name)}</span><span class="${error ? 'color-text-red' : 'color-text-theme'}">${escape(count)}</span></li>`;
         const summaryHTML = totals.summary.map(item => summaryItem(item.name, `${item.qty}장`)).join('')
             + totals.failures.map(item => summaryItem(item.reason, `${item.count}건`, true)).join('');
-        const detailHTML = items.map((item, index) => {
+        return { ...totals, summaryHTML };
+    }
+
+    function presentDetails(items, operation, { formatIllustration, formatRarity = value => value } = {}) {
+        return items.map((item, index) => {
             const fail = item.status !== 'success', reason = fail ? item.failReason : null;
             const cell = (column, value, error = false) => `<td data-column="${column}"${error ? ' class="color-text-red"' : ''}>${escape(value)}</td>`;
             const numberError = ['empty_no', 'invalid_no', 'loading'].includes(reason);
@@ -94,12 +99,16 @@
                 + cell('location', operation !== 'move' && locationError ? '미선택' : location, locationError)
                 + `<td data-column="quantity" class="${fail ? 'color-text-red' : 'color-text-theme'}">${escape(quantity)}${fail ? `<br>${escape(reasonText(reason))}` : ''}</td></tr>`;
         }).join('');
-        return { ...totals, summaryHTML, detailHTML };
+    }
+
+    function present(items, operation, options) {
+        return { ...presentSummary(items), detailHTML: presentDetails(items, operation, options) };
     }
 
     function render(modal, items, options = {}) {
         const operation = modal.dataset.resultOperation;
-        const result = present(items, operation, options);
+        const deferDetails = operation === 'import';
+        const result = deferDetails ? presentSummary(items) : present(items, operation, options);
         const query = selector => modal.querySelector(selector);
         const label = { add: '등록', move: '이동', discard: '제거', import: '가져오기' }[operation];
         const unconfirmed = items.some(item => item.failReason === 'unconfirmed_result');
@@ -122,7 +131,15 @@
         const rest = query('[data-result-rest]');
         rest.hidden = !result.restQty;
         rest.textContent = result.restQty ? `그 외 ${result.restQty}장` : '';
-        query('[data-result-detail] tbody').innerHTML = result.detailHTML;
+        const detailBody = query('[data-result-detail] tbody');
+        if (deferDetails) {
+            detailBody.textContent = '';
+            pendingDetails.set(modal, () => {
+                detailBody.innerHTML = presentDetails(items, operation, options);
+            });
+        } else {
+            detailBody.innerHTML = result.detailHTML;
+        }
         query('[data-result-detail] table').dataset.hasFailures = String(result.failCount > 0);
         query('th[data-column="quantity"]').textContent = result.failCount ? '수량 • 실패 사유' : '수량';
         modal.dataset.hasSuccess = String(result.successCount > 0);
@@ -131,6 +148,10 @@
 
     function setView(modal, view) {
         const detail = view === 'detail';
+        if (detail && pendingDetails.has(modal)) {
+            pendingDetails.get(modal)();
+            pendingDetails.delete(modal);
+        }
         modal.querySelector('[data-result-summary]').hidden = detail;
         modal.querySelector('[data-result-detail]').hidden = !detail;
         modal.querySelector('input[value="summary"]').checked = !detail;

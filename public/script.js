@@ -64,6 +64,7 @@ const PRODUCTION_READ_FUNCTIONS = new Set([
     'searchCardByImage'
 ]);
 function getFunctionBaseUrl(name) {
+    if (globalThis.AppBackend || typeof document !== 'undefined' && document.documentElement?.dataset?.backend === 'supabase') return '/api/unconnected';
     return IS_LOCAL_DEV && !PRODUCTION_READ_FUNCTIONS.has(name)
         ? LOCAL_FUNCTION_BASE_URL
         : PRODUCTION_FUNCTION_BASE_URL;
@@ -230,14 +231,12 @@ function escapeHTML(str) {
 
 // 프리-정규화된 카드 이름 동기화 함수
 function updateNormalizedNames() {
-    CardDataStore.allCardNamesNormalized = CardDataStore.allCardNames.map(name => {
-        const normalized = name.replace(/\s+/g, '').toLowerCase();
-        return {
-            original: name,
-            normalized: normalized,
-            chosung: getChosung(normalized)
-        };
-    });
+    cardCacheInstance.setAllKnownNames(CardDataStore.allCardNames);
+    const previous = CardDataStore.allCardNamesNormalized;
+    // 전역 목록의 입력 순서와 캐시의 검색 정렬은 따로 유지하고 이름별 계산만 공유한다.
+    if (previous?.length === CardDataStore.allCardNames.length
+        && CardDataStore.allCardNames.every((name, i) => previous[i] === cardCacheInstance.getKnownNameSearchEntry(name))) return;
+    CardDataStore.allCardNamesNormalized = CardDataStore.allCardNames.map(name => cardCacheInstance.getKnownNameSearchEntry(name));
 }
 
 
@@ -274,7 +273,7 @@ let migrationValidationTimeout = null; // 마이그레이션 링크 검증용 �
 
 // Master JSON 원형 저장 및 관리를 위한 IndexedDB 유틸리티
 const MasterDB = {
-    DB_NAME: 'YgoSynapseDB',
+    DB_NAME: globalThis.AppBackend?.cacheName || 'YgoSynapseDB',
     STORE_NAME: 'masterCache',
     VERSION: 1,
     dbInstance: null, // 싱글톤 연결 객체 캐시 저장소
@@ -430,7 +429,6 @@ const CardListCache = {
         CardDataStore.allCardNames = [...new Set([...this.manifest.names, ...this.supplement.names])];
         CardDataStore.allCardNumbers = [...new Set([...this.manifest.numbers, ...this.supplement.numbers])];
         updateNormalizedNames();
-        cardCacheInstance.setAllKnownNames(CardDataStore.allCardNames);
     },
     persist(manifest = null) {
         // 로컬 저장 순서를 유지하고 실패한 이전 쓰기가 후속 쓰기를 막지 않게 합니다.
@@ -481,8 +479,13 @@ class ClientCache {
         this._inventory = [];
         this._inventoryRevision = 0;
         this._allKnownNames = new Set();
+        this._knownNames = [];
+        this._knownNamesNormalized = [];
+        this._knownNameEntries = new Map();
+        this._inventoryNames = new Set();
+        this._inventoryNameIndex = new Map();
+        this._nameIndexKnownSource = null;
         this._indexes = {
-            names: new Set(),
             ownedNumbers: new Set(),
             nameToNos: {},
             locations: new Set()
@@ -547,6 +550,7 @@ class ClientCache {
      * 앱 시작 시 IndexedDB에서 마스터 캐시 1회 일괄 로드 (Single Batch Read)
      */
     static async init() {
+        if (globalThis.AppBackend) return globalThis.AppBackend.ready();
         const data = await MasterDB.loadAllMasterData();
 
         CardListCache.init(data);
@@ -684,9 +688,38 @@ class ClientCache {
     /**
      * [Phase 2] 인벤토리 설정 및 인덱스 갱신
      */
-    setInventory(data) {
-        this._inventory = (data || []).map(row => [...row.slice(0, 6), row[6] || null]);
-        this.refreshIndexes();
+    bindInventorySource(source) {
+        this._inventorySource = source;
+        this.syncInventorySource();
+    }
+
+    syncInventorySource() {
+        if (!this._inventorySource || this._syncingInventorySource) return;
+        const value = this._inventorySource.snapshot();
+        if (value.allCards === this._inventory) return;
+        this._syncingInventorySource = true;
+        try {
+            this._inventory = value.allCards;
+            this._summary = { amount: value.amount, locations: value.inventoryDisplaySummary.locations,
+                rarities: value.inventoryDisplaySummary.rarities };
+            this.refreshIndexes({ summaryComplete: true });
+        } finally { this._syncingInventorySource = false; }
+    }
+
+    setInventory(data, options) {
+        if (this._inventorySource) { this.syncInventorySource(); return; }
+        this._inventory = (data || []).map(row => [...row.slice(0, 6), row[6] || null, ...row.slice(7)]);
+        this.refreshIndexes(options);
+    }
+
+    // 전체 응답은 서버 요약을 먼저 적용한 뒤 목록·검색 인덱스·집계를 한 번
+    // 갱신한다. 빈 목록과 구형 요약 보존 규칙도 기존 재계산에서 처리한다.
+    setInventorySnapshot(data, amount, locations, rarities, options) {
+        if (this._inventorySource) { this.syncInventorySource(); return; }
+        this._summary.amount = amount || 0;
+        this._summary.locations = locations || {};
+        this._summary.rarities = rarities || {};
+        this.setInventory(data, options);
     }
 
     /**
@@ -694,9 +727,56 @@ class ClientCache {
      */
     setAllKnownNames(names) {
         if (!names || !Array.isArray(names)) return;
-        this._allKnownNames.clear(); // [중요] 기존 데이터를 비우고 서버의 최신 데이터로 교체
-        names.forEach(n => this._allKnownNames.add(n));
-        this.refreshIndexes();
+        const next = new Set(names);
+        if (next.size === this._allKnownNames.size && [...next].every(name => this._allKnownNames.has(name))) return;
+        const previousKnown = this._knownNameEntries;
+        this._allKnownNames = next;
+        this._knownNames = Array.from(next).sort();
+        this._knownNameEntries = new Map(this._knownNames.map(name => [name,
+            previousKnown.get(name) || this._inventoryNameIndex.get(name) || this.createNameSearchEntry(name)]));
+        this._knownNamesNormalized = this._knownNames.map(name => this._knownNameEntries.get(name));
+        // 공개 이름의 변경은 보유 수량·위치·CID·집계를 바꾸지 않는다.
+        this.refreshInventoryNameIndex(this._inventoryNames, previousKnown);
+    }
+
+    getKnownNameSearchEntry(name) { return this._knownNameEntries.get(name); }
+
+    createNameSearchEntry(name) {
+        const normalized = name.replace(/\s+/g, '').toLowerCase();
+        return { original: name, normalized, chosung: getChosung(normalized) };
+    }
+
+    // 공개 이름의 색인은 보존하고, 현재 보유 목록에만 있는 이름을 별도로 관리한다.
+    // 검색에 제공하는 합집합은 기존 문자열 정렬/중복 제거 규칙을 유지한다.
+    refreshInventoryNameIndex(names, previousKnown) {
+        const previous = this._inventoryNameIndex;
+        const extraNames = [...names].filter(name => !this._allKnownNames.has(name)).sort();
+        if (this._nameIndexKnownSource === this._knownNamesNormalized && extraNames.length === previous.size
+            && extraNames.every(name => previous.has(name))) return;
+        this._nameIndexKnownSource = this._knownNamesNormalized;
+        this._inventoryNameIndex = new Map(extraNames.map(name => [name,
+            previous.get(name) || previousKnown?.get(name) || this.createNameSearchEntry(name)]));
+        if (!extraNames.length) {
+            this._sortedNames = this._knownNames;
+            this._sortedNamesNormalized = this._knownNamesNormalized;
+            return;
+        }
+        const mergedNames = [], mergedEntries = [];
+        let known = 0, extra = 0;
+        while (known < this._knownNames.length || extra < extraNames.length) {
+            const useKnown = extra === extraNames.length || known < this._knownNames.length
+                && this._knownNames[known] < extraNames[extra];
+            if (useKnown) {
+                mergedNames.push(this._knownNames[known]);
+                mergedEntries.push(this._knownNamesNormalized[known++]);
+            } else {
+                const name = extraNames[extra++];
+                mergedNames.push(name);
+                mergedEntries.push(this._inventoryNameIndex.get(name));
+            }
+        }
+        this._sortedNames = mergedNames;
+        this._sortedNamesNormalized = mergedEntries;
     }
 
 
@@ -704,6 +784,7 @@ class ClientCache {
      * [Phase 2] 인벤토리 부분 업데이트
      */
     updateInventory(updates) {
+        if (this._inventorySource) { this.syncInventorySource(); return; }
         if (!updates || !Array.isArray(updates)) return;
         updates.forEach(item => {
             const idx = this._inventory.findIndex(row =>
@@ -730,7 +811,7 @@ class ClientCache {
     /**
      * [Phase 2] 인덱스 및 전역 룩업 변수 자동 동기화
      */
-    refreshIndexes() {
+    refreshIndexes({ summaryComplete = false } = {}) {
         this._inventoryRevision = (this._inventoryRevision || 0) + 1;
         this._inventoryNameToCid = Object.create(null);
         this._inventoryNoToCid = Object.create(null);
@@ -746,7 +827,7 @@ class ClientCache {
             if (!this._ownedByCid.has(cid)) this._ownedByCid.set(cid, []);
             this._ownedByCid.get(cid).push(row);
         }
-        const names = new Set(this._allKnownNames); // 전체 이름에서 시작
+        const names = new Set();
         const nos = new Set();
         const locations = new Set();
         const nameToNos = {};
@@ -766,7 +847,6 @@ class ClientCache {
             }
         });
 
-        this._indexes.names = names;
         this._indexes.ownedNumbers = nos;
         this._indexes.locations = locations;
 
@@ -775,23 +855,14 @@ class ClientCache {
             this._indexes.nameToNos[key] = Array.from(nameToNos[key]).sort();
         }
 
-        // [Phase 3] 정렬된 배열 미리 계산 및 캐싱 (성능 최적화)
-        this._sortedNames = Array.from(names).sort();
+        // 보유 변경은 공개 카드 이름의 정렬·정규화·초성을 재계산하지 않는다.
+        this._inventoryNames = names;
+        this.refreshInventoryNameIndex(names);
         this._sortedLocations = Array.from(locations).sort();
         this._sortedOwnedNumbers = Array.from(nos).sort();
 
-        // 보유 카드 이름 정규화 캐시 배열 생성
-        this._sortedNamesNormalized = this._sortedNames.map(name => {
-            const normalized = name.replace(/\s+/g, '').toLowerCase();
-            return {
-                original: name,
-                normalized: normalized,
-                chosung: getChosung(normalized)
-            };
-        });
-
         // 로컬 인벤토리 데이터를 바탕으로 대시보드 요약 통계 강제 동기화
-        this.rebuildSummaryFromInventory();
+        if (!summaryComplete) this.rebuildSummaryFromInventory();
         this.rebuildOwnedSets();
 
         // UI 반영
@@ -805,6 +876,7 @@ class ClientCache {
      * 로컬 인벤토리를 기준으로 대시보드 통계용 summary 객체를 재구축합니다.
      */
     rebuildSummaryFromInventory() {
+        if (this._inventorySource) { this.syncInventorySource(); return; }
         // 인벤토리가 완전히 비어있고, 이미 서버 통계에 데이터가 존재하는 최초 로딩 전에는 덮어쓰지 않음
         if (this._inventory.length === 0 && this._summary.amount > 0) {
             return;
@@ -843,6 +915,7 @@ class ClientCache {
     }
 
     getOwnedNamesSet() {
+        this.syncInventorySource();
         if (!this._cachedOwnedNamesSet) {
             this.rebuildOwnedSets();
         }
@@ -850,6 +923,7 @@ class ClientCache {
     }
 
     getOwnedNumbersSet() {
+        this.syncInventorySource();
         if (!this._cachedOwnedNumbersSet) {
             this.rebuildOwnedSets();
         }
@@ -870,16 +944,17 @@ class ClientCache {
         this._cachedOwnedNumbersSet = ownedNumbers;
     }
 
-    getInventory() { return this._inventory; }
-    getAllNames() { return this._sortedNames; }
-    getAllNamesNormalized() { return this._sortedNamesNormalized; }
-    getOwnedNumbers() { return this._sortedOwnedNumbers; }
-    getAllLocations() { return this._sortedLocations; }
+    getInventory() { this.syncInventorySource(); return this._inventory; }
+    getAllNames() { this.syncInventorySource(); return this._sortedNames; }
+    getAllNamesNormalized() { this.syncInventorySource(); return this._sortedNamesNormalized; }
+    getOwnedNumbers() { this.syncInventorySource(); return this._sortedOwnedNumbers; }
+    getAllLocations() { this.syncInventorySource(); return this._sortedLocations; }
 
     /**
      * 서버 요약 통계 설정
      */
     setSummary(amount, locations, rarities) {
+        if (this._inventorySource) { this.syncInventorySource(); return; }
         this._inventoryRevision = (this._inventoryRevision || 0) + 1;
         this._summary.amount = amount || 0;
         this._summary.locations = locations || {};
@@ -893,20 +968,20 @@ class ClientCache {
         if (typeof refreshLocalLookups === 'function') refreshLocalLookups();
     }
 
-    getAmount() { return this._summary.amount; }
-    getLocationsMap() { return this._summary.locations; }
-    getRaritiesMap() { return this._summary.rarities; }
+    getAmount() { this.syncInventorySource(); return this._summary.amount; }
+    getLocationsMap() { this.syncInventorySource(); return this._summary.locations; }
+    getRaritiesMap() { this.syncInventorySource(); return this._summary.rarities; }
 
-    getNosByName(name) { return this._indexes.nameToNos[name] || []; }
+    getNosByName(name) { this.syncInventorySource(); return this._indexes.nameToNos[name] || []; }
 
     /**
      * 모든 데이터 초기화 (데이터 삭제 시 사용)
      */
     clearAll() {
+        if (this._inventorySource) { this.syncInventorySource(); return; }
         this._inventory = [];
         this._indexes.ownedNumbers = new Set();
         this._indexes.locations = new Set();
-        this._indexes.names = new Set();
         this._summary.amount = 0;
         this._summary.locations = {};
         this._summary.rarities = {};
@@ -937,20 +1012,8 @@ const UIStore = {
     activeDropdownInput: null,
     lastHashBeforeModal: "",
     currentRegion: 'ko',
-    isMobileSearchInProgress: false,
-    activeLocaleTooltip: null
+    isMobileSearchInProgress: false
 };
-
-/**
- * [유틸리티] 유희왕 공식 DB 카드 상세 페이지 URL 조합
- */
-function getCardDetailUrl(cid, locale) {
-    if (!cid) return "";
-    // 입력값이 URL이든 숫자든 상관없이 숫자 ID(CID)만 추출하여 조합
-    const cidOnly = String(cid).match(/cid=(\d+)/) ? String(cid).match(/cid=(\d+)/)[1] : String(cid).replace(/[^0-9]/g, '');
-    const loc = locale || UIStore.currentRegion || 'ko';
-    return "https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid=" + cidOnly + "&request_locale=" + loc;
-}
 
 /**
  * [공통] 리스트 항목 하이라이트 처리
@@ -963,51 +1026,6 @@ function updateHighlight(items, index) {
     }
 }
 
-/**
- * 카드 로케일 선택 툴팁 표시
- */
-function showCardLocaleTooltip(target, locales, cid) {
-    UIStore.activeLocaleTooltip?._dismiss?.();
-    const tooltip = document.createElement('div');
-    tooltip.className = 'card-locale-tooltip ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium';
-    tooltip.setAttribute('role', 'dialog');
-    tooltip.setAttribute('aria-label', '공식 카드 페이지 지역 선택');
-    const close = (restoreFocus = false) => {
-        document.removeEventListener('click', outside);
-        document.removeEventListener('keydown', escape);
-        globalThis.AppOverlays.closePopup(tooltip, () => tooltip.remove());
-        target.setAttribute('aria-expanded', 'false');
-        if (UIStore.activeLocaleTooltip === tooltip) UIStore.activeLocaleTooltip = null;
-        if (restoreFocus) target.focus({ preventScroll: true });
-    };
-    const outside = event => { if (!tooltip.contains(event.target) && !target.contains(event.target)) close(); };
-    const escape = event => { if (event.key === 'Escape') { event.preventDefault(); close(true); } };
-    tooltip._dismiss = close;
-    const localeMap = {
-        ko: '한국', ja: '일본', ae: '아시아', cn: '중국', en: '영미',
-        de: '독일', fr: '프랑스', it: '이탈리아', es: '스페인', pt: '포르투갈'
-    };
-    locales.forEach(loc => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'locale-capsule';
-        btn.textContent = localeMap[loc] || loc.toUpperCase();
-        btn.onclick = event => {
-            event.stopPropagation();
-            window.open(getCardDetailUrl(cid, loc), '_blank');
-            close(true);
-        };
-        tooltip.appendChild(btn);
-    });
-    document.body.appendChild(tooltip);
-    UIStore.activeLocaleTooltip = tooltip;
-    target.setAttribute('aria-expanded', 'true');
-    globalThis.AppOverlays.openPopup(tooltip, target);
-    document.addEventListener('click', outside);
-    document.addEventListener('keydown', escape);
-}
-
-
 let currentSheetLastUpdated = 0;
 let currentCacheSeq = 0; // JSON 캐시 동기화용 시퀀스 번호
 
@@ -1015,6 +1033,7 @@ let currentCacheSeq = 0; // JSON 캐시 동기화용 시퀀스 번호
  * 인벤토리 변경 API 호출 시 필요한 공통 동기화 페이로드 생성
  */
 function buildAuthPayload() {
+    if (globalThis.AppBackend) return globalThis.AppBackend.buildAuthPayload();
     return { lastUpdated: currentSheetLastUpdated, cacheSeq: currentCacheSeq };
 }
 
@@ -1191,9 +1210,12 @@ let syncCounter = 0;
 
 
 let deckCardsPromise = null;     // 덱 카드 상세 검색 promise 저장 (미리 로딩)
+let deckSearchRevision = 0;
 
 // 카드이름 기반 팩 등록 메커니즘 상태 변수
 let _packCrawlNewRunning = false; // 신규 배경 크롤링 실행 플래그 (기존과 분리)
+let packCrawlRevision = 0;
+let packPageController;
 let _currentDisplayCrawlCount = 0; // 화면에 표시 중인 현재 크롤링 수량 (애니메이션용)
 let _crawlIntervalId = null;       // 애니메이션 인터벌 ID
 
@@ -1209,6 +1231,7 @@ const AD_REFRESH_INTERVAL = 45000; // 정책 준수를 위해 안전하게 45초
  * @param {string} slotId 광고 컨테이너 ID
  */
 function refreshAdUnit(slotId) {
+    if (globalThis.AppBackend && !globalThis.AppBackend.capabilities.advertising) return;
     const container = document.getElementById(slotId);
     if (!container || !container.offsetParent) return; // 미노출 상태면 무시
 
@@ -1285,6 +1308,7 @@ function showToast(html, classes) {
 }
 
 function updateLocalInventory(updates) {
+    if (globalThis.AppBackend) return globalThis.AppBackend.refreshInventory();
     if (!updates || !Array.isArray(updates)) return;
     cardCacheInstance.updateInventory(updates);
     refreshLocalLookups();
@@ -1501,9 +1525,15 @@ function checkLegacyMigrationQuery() {
  * 애플리케이션 통합 초기화 함수
  */
 async function initApp() {
+    if (document.documentElement?.dataset?.backend === 'supabase' && !globalThis.AppBackend) {
+        showLoading(false);
+        showToast('데이터 연결 모듈을 불러오지 못했습니다. 새로고침해 주세요.', 'toast-error');
+        return;
+    }
     if (window.YgoDiscordPopup?.isCallback) return;
     window.YgoLoginTiming?.mark('ui_init_start');
     initFirebaseAuth();
+    if (globalThis.AppBackend?.discordReturnSession) handleDiscordOAuthCallback();
     let uiPrepared = false;
     try {
     const footerVer = document.getElementById('footer-version');
@@ -1526,7 +1556,7 @@ async function initApp() {
     // 서브 모듈 리스너 및 기능 초기화 일괄 실행
     fetchNotices();
 
-    if (typeof handleDiscordOAuthCallback === 'function') handleDiscordOAuthCallback();
+    if (!globalThis.AppBackend?.discordReturnSession) handleDiscordOAuthCallback();
     if (typeof initSearchButtonBlurListeners === 'function') initSearchButtonBlurListeners();
     if (typeof initMobileSearchListeners === 'function') initMobileSearchListeners();
     if (typeof initOverlaySearchListeners === 'function') initOverlaySearchListeners();
@@ -1640,8 +1670,16 @@ async function initApp() {
                 updateHighlight(items, UIStore.dropdownFocus);
             } else if (e.key === 'Enter') {
                 e.preventDefault();
-                this.blur();
-                startSearch(false, 'auto', false);
+                const selectedItem = list.style.display !== 'none' && list.classList.contains('active')
+                    ? items[UIStore.dropdownFocus] : null;
+                if (selectedItem?.dataset.val) {
+                    this.value = selectedItem.dataset.val;
+                    checkClearBtn();
+                    startSearch(false, selectedItem.dataset.type || 'auto', selectedItem.dataset.isTarget === 'true');
+                } else {
+                    this.blur();
+                    startSearch(false, 'auto', false);
+                }
             }
         });
 
@@ -1958,10 +1996,6 @@ function finishModalLifecycle(modal) {
             if (['add-result-modal', 'move-result-modal', 'discard-result-modal'].includes(modal.id)) {
                 // 성공 행이 제거되어 원래 입력란이 사라졌다면 관리 실행 버튼으로 돌아간다.
                 focusModalReturnTarget(document.getElementById('manage-primary-btn'));
-            } else if (modal.id === 'mobile-entry-bottom-sheet') {
-                // 시트가 닫히는 동안 경로가 바뀌었다면 현재 페이지가 초점을 이어받는다.
-                const page = document.querySelector('#app-page-stack > .content-section.active');
-                if (page) focusActivePage(page, currentFocus);
             }
         }
     } else if (canRestoreFocus) {
@@ -2111,24 +2145,6 @@ function setActivePage(page) {
     document.querySelectorAll('#app-page-stack > .content-section').forEach(section => {
         setViewActive(section, section === page);
     });
-}
-
-function focusActivePage(page, previousFocus) {
-    if (!page.classList.contains('active') || page.closest('[inert], [hidden], [aria-hidden="true"]')) return;
-    const currentFocus = document.activeElement;
-    // 예약한 전환 사이에 사용자가 다른 컨트롤로 이동했다면 초점을 가져오지 않습니다.
-    if (currentFocus !== previousFocus && currentFocus !== document.body && currentFocus !== document.documentElement) return;
-
-    // 모달 공통화 전까지는 기존 창의 열림/닫힘 애니메이션 구간도 초점을 소유하도록 둡니다.
-    const overlaySelector = '.modal, .ui-overlay, #mobile-search-overlay, .mobile-bottom-sheet, '
-        + '#mobile-sheet-input-overlay, #mobile-sheet-qty-overlay, '
-        + '.illustration-picker-root, .onboarding-overlay';
-    if (document.body.classList.contains('onboarding-active') || [...document.querySelectorAll(overlaySelector)].some(el => el.getClientRects().length > 0)) return;
-
-    const target = page.querySelector('.content-title, h1, #result-area') || page;
-    if (target.closest('[inert], [hidden], [aria-hidden="true"]')) return;
-    target.setAttribute('tabindex', '-1');
-    target.focus({ preventScroll: true });
 }
 
 /**
@@ -2678,6 +2694,7 @@ document.addEventListener('pointerdown',event=>{
 document.addEventListener('keydown',event=>{if (event.key==='Escape' && inventoryFilterEditor) {event.preventDefault();closeInventoryFilter();}});
 
 function switchToMode(mode, isInstant = false, subMode = null, params = null, skipAutomation = false) {
+    if (typeof OnboardingManager !== 'undefined' && OnboardingManager.isActive()) OnboardingManager.stop();
     if (mode !== 'search' && UIStore.mode === 'search' && typeof SearchNavigation !== 'undefined') SearchNavigation.leave();
     // 모바일 검색 모드 활성화 시 다른 페이지로 이동하면 검색창 자동 닫기 + 실제 페이지는 전환 애니메이션 스킵
     if (mode !== 'search') {
@@ -2769,7 +2786,6 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     updateActiveNav(mode);
     const body = document.body;
     const searchInput = document.getElementById('card-search');
-    const previousFocus = document.activeElement;
 
     // URL 해시 업데이트
     if (!isInternalHashChange) {
@@ -2869,7 +2885,7 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     if (currentEl === nextEl) {
         setActivePage(nextEl);
         if (['add', 'move', 'discard'].includes(mode)) {
-            handleManageUI(mode);
+            handleManageUI(mode, previousMode === 'search');
             if (mode === 'add' && !skipAutomation) {
                 handleAutomationParams(params);
             }
@@ -2890,7 +2906,7 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
         setActivePage(nextEl);
 
         if (['add', 'move', 'discard'].includes(mode)) {
-            handleManageUI(mode);
+            handleManageUI(mode, previousMode === 'search');
             // skipAutomation 옵션에 따라 자동화 처리 수행
             if (mode === 'add' && !skipAutomation) {
                 handleAutomationParams(params);
@@ -2909,8 +2925,6 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
             if (transitionRevision !== pageTransitionRevision) return;
             pageTransitionFrame = null;
             document.body.classList.remove('no-transition');
-            // 최초 표시·새로고침에서는 제목으로 초점을 강제로 옮기지 않는다.
-            if (currentEl) focusActivePage(nextEl, previousFocus);
         });
         return;
     }
@@ -2918,7 +2932,7 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
     // 절대 위치 배치 제거: 문서 흐름을 유지하여 높이 붕괴 방지
 
     if (['add', 'move', 'discard'].includes(mode)) {
-        handleManageUI(mode);
+        handleManageUI(mode, previousMode === 'search');
         const innerContainer = document.getElementById('manage-mode-forms');
         if (innerContainer) void innerContainer.offsetHeight;
         if (mode === 'add' && !skipAutomation) {
@@ -2936,7 +2950,6 @@ function switchToMode(mode, isInstant = false, subMode = null, params = null, sk
         pageTransitionFrame = null;
         document.body.classList.remove('no-transition');
         setActivePage(nextEl);
-        if (currentEl) focusActivePage(nextEl, previousFocus);
     });
 
     transitionTimer = setTimeout(() => {
@@ -3664,7 +3677,9 @@ function handleCardNoInput(input) {
     const isDiscard = !!container.querySelector('.discard-card-no') || (UIStore.mode === 'discard' && !!container.closest('.desktop-info-card'));
 
     const start = input.selectionStart;
-    input.value = input.value.replace(/[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/g, '').toUpperCase();
+    if (!globalThis.AppBackend?.isQualifiedNumber?.(input.value)) {
+        input.value = input.value.replace(/[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/g, '').toUpperCase();
+    }
     input.setSelectionRange(start, start);
 
     if (isMove || isDiscard) {
@@ -3780,7 +3795,7 @@ function clearPageNameAndNo(btn_or_input) {
 
 }
 
-async function fetchCardByName(input, force = false) {
+async function fetchCardByName(input, force = false, confirmedCid = null, unresolvedDeckName = false) {
     if (!input) return;
     if (!force && input.hasAttribute('readonly')) return;
 
@@ -3860,7 +3875,8 @@ async function fetchCardByName(input, force = false) {
         let res = null;
 
         if (mode === 'add') {
-            res = await callApi('searchCardByName', { name: nameVal });
+            res = unresolvedDeckName ? { isError: true, isNotFoundError: true }
+                : await callApi('searchCardByName', { name: nameVal, ...(confirmedCid && globalThis.AppBackend ? { cid: confirmedCid } : {}) });
         } else {
             const ownedNames = cardCacheInstance.getOwnedNamesSet();
             if (!ownedNames.has(nameVal)) {
@@ -4092,32 +4108,16 @@ function lockNameInputAndSetLink(nameInput, name, container, linkData = null) {
     nameInput.dataset.programmatic = "true";
     nameInput.value = name;
     
-    let finalLinkId = null;
-    let finalLocale = UIStore.currentRegion;
-    let finalLocales = [];
-    
-    if (linkData) {
-        finalLinkId = linkData.id;
-        finalLocale = linkData.locale || UIStore.currentRegion;
-        finalLocales = linkData.locales || [];
-    } else {
-        const cid = findCidByNameOrNo(name);
-        if (cid) {
-            finalLinkId = cid;
-        }
-    }
-    
+    const finalLinkId = linkData?.id || findCidByNameOrNo(name);
+
     if (finalLinkId && finalLinkId !== "MISSING_CID") {
         prepareCardIllustrations(container, finalLinkId);
         nameInput.classList.add('hyperlink-style');
         nameInput.style.cursor = 'pointer';
         nameInput.style.textDecoration = 'underline';
-        nameInput.onclick = function() {
-            if (finalLocales.length > 1) {
-                showCardLocaleTooltip(this, finalLocales, finalLinkId);
-            } else {
-                window.open(getCardDetailUrl(finalLinkId, finalLocale), '_blank');
-            }
+        nameInput.onclick = function(event) {
+            event?.stopPropagation();
+            void renderTargetByCid(String(finalLinkId));
         };
     }
     
@@ -5092,8 +5092,9 @@ async function submitDiscardEntries() {
             el.dataset.status = 'fail';
             detailLog.push({ no, name: nameText, cardNo, illustration: illustration || "-", rarity: rarity || "-", loc: loc || "-", qty: qty || 0, status: 'fail', failReason });
         } else {
-            validRows.push({ cardNo, name: nameText, rarity, illustration, loc, qty });
-            detailLog.push({ no, cid: findCidByNameOrNo(nameText, cardNo), name: nameText, cardNo, illustration, rarity, loc, qty, status: 'pending' });
+            const cid = findCidByNameOrNo(nameText, cardNo);
+            validRows.push({ cardNo, cid, name: nameText, rarity, illustration, loc, qty });
+            detailLog.push({ no, cid, name: nameText, cardNo, illustration, rarity, loc, qty, status: 'pending' });
             el.dataset.status = 'pending';
             submittedRows.push({ log: detailLog[detailLog.length - 1], el });
         }
@@ -5259,6 +5260,10 @@ function showRecentInDropdown() {
 }
 
 function filterAndShowDropdown(val, isMobile = false) {
+    const prepared = arguments[2] === true;
+    if (globalThis.AppBackend && !prepared) return globalThis.AppBackend.prepareSuggestions(val, isMobile).then(current => {
+        if (current) return filterAndShowDropdown(val, isMobile, true);
+    });
     const listId = isMobile ? 'mobile-custom-dropdown' : 'custom-dropdown';
     if (!val) {
         if (isMobile) showMobileRecentInDropdown(); else showRecentInDropdown();
@@ -5407,8 +5412,14 @@ function rememberTheme(mode) {
 function applyTheme(mode) {
     UserStore.settings.theme = mode;
     document.documentElement.classList.toggle('dark-mode', mode === 'dark');
-    const checkbox = document.getElementById('checkbox-theme');
-    if (checkbox) checkbox.checked = mode === 'dark';
+    const toggle = document.getElementById('theme-toggle-btn');
+    if (toggle) {
+        const dark = mode === 'dark';
+        toggle.setAttribute('aria-pressed', String(dark));
+        toggle.setAttribute('aria-label', dark ? '라이트 모드로 전환' : '다크 모드로 전환');
+        const icon = toggle.querySelector('.material-icons');
+        if (icon) icon.textContent = dark ? 'light_mode' : 'dark_mode';
+    }
     updateMetaThemeColor(mode);
 }
 
@@ -5442,7 +5453,9 @@ async function saveUserSetting(field, value) {
             const settings = {};
             settings[field] = value;
             // 2번째 인자는 URL 쿼리(params), 3번째 인자가 POST 본문(postData)입니다.
-            await callApi('updateUserSettings', {}, { settings });
+            if (field === 'onboarding' && globalThis.AppBackend?.syncOnboarding) await globalThis.AppBackend.syncOnboarding(value);
+            else if (field === 'readNotices' && globalThis.AppBackend?.syncReadNotices) await globalThis.AppBackend.syncReadNotices(value);
+            else await callApi('updateUserSettings', {}, { settings });
         } catch (e) {
             console.error("Settings sync failed:", e);
         }
@@ -5462,17 +5475,18 @@ function loadUserSettings(settingsFromServer) {
 
     // 온보딩 정보 동기화 (DB -> LocalStorage)
     if (settingsFromServer && settingsFromServer.onboarding) {
-        const localOnboarding = JSON.parse(localStorage.getItem('ygo_onboarding_done') || '{}');
-        const mergedOnboarding = { ...localOnboarding, ...settingsFromServer.onboarding };
-        localStorage.setItem('ygo_onboarding_done', JSON.stringify(mergedOnboarding));
+        if (typeof OnboardingManager !== 'undefined') OnboardingManager.restore(settingsFromServer.onboarding);
     }
 
     // 공지사항 읽음 정보 동기화 (DB -> LocalStorage)
     if (settingsFromServer && Array.isArray(settingsFromServer.readNotices)) {
-        let localNotices = JSON.parse(localStorage.getItem('ygo_synapse_read_notices') || '[]');
-        let mergedNotices = [...new Set([...localNotices, ...settingsFromServer.readNotices])];
-        localStorage.setItem('ygo_synapse_read_notices', JSON.stringify(mergedNotices));
+        let localNotices;
+        try { localNotices = JSON.parse(localStorage.getItem(getReadNoticesStorageKey()) || '[]'); } catch (_) { localNotices = []; }
+        const mergedNotices = [...new Set([...(Array.isArray(localNotices) ? localNotices : []), ...settingsFromServer.readNotices])];
+        localStorage.setItem(getReadNoticesStorageKey(), JSON.stringify(mergedNotices));
+        globalThis.AppBackend?.syncReadNotices?.(mergedNotices).catch(() => {});
     }
+    refreshNoticeReadState();
 
 }
 
@@ -5495,8 +5509,7 @@ function loadTheme() {
     applyTheme(getLocalTheme(THEME_KEY) || getSystemTheme());
 }
 function toggleTheme() {
-    const isDark = document.getElementById('checkbox-theme').checked;
-    const mode = isDark ? 'dark' : 'light';
+    const mode = document.documentElement.classList.contains('dark-mode') ? 'light' : 'dark';
     applyTheme(mode);
     saveUserSetting('theme', mode);
 }
@@ -5878,15 +5891,19 @@ async function getApiAppCheckToken(forceRefresh = false) {
     } catch (error) {
         // SDK 원문·토큰·URL을 전달하지 않고 알려진 설정 거부만 고정 분류한다.
         const failure = typeof window === 'undefined' ? undefined : window.YgoLoginTiming?.appCheckFailure?.(error);
-        let denied = false;
-        try { denied = ['appCheck/fetch-status-error', 'app-check/fetch-status-error'].includes(error?.code)
-            && [400, 403, 404].includes(error?.customData?.httpStatus); } catch (_) {}
+        let denied = false, throttled = false;
+        try {
+            denied = ['appCheck/fetch-status-error', 'app-check/fetch-status-error'].includes(error?.code)
+                && [400, 403, 404].includes(error?.customData?.httpStatus);
+            throttled = ['appCheck/initial-throttle', 'app-check/initial-throttle', 'appCheck/throttled', 'app-check/throttled'].includes(error?.code);
+        } catch (_) {}
         throw Object.assign(new Error(denied
             ? (IS_LOCAL_DEV ? '로컬 앱 인증 설정이 거부되었습니다. 현재 브라우저의 디버그 토큰 등록을 확인해 주세요.'
                 : '앱 인증 설정을 확인하지 못했습니다. 관리자에게 문의해 주세요.')
             : '앱 인증을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'),
         { code: denied ? 'APPCHECK_CONFIGURATION_REJECTED' : 'APPCHECK_UNAVAILABLE',
-            ...(failure ? { retryable: failure.retryable } : {}) });
+            ...(throttled ? { reason: 'throttled', retryable: false } : denied ? { retryable: false }
+                : failure ? { retryable: failure.retryable } : {}) });
     }
 }
 
@@ -5907,6 +5924,8 @@ function awaitApiPreparation(promise, signal) {
 
 let membershipAuthenticationSerial = 0;
 async function requestApi(action, params = {}, postData = null) {
+    if (globalThis.AppBackend) return globalThis.AppBackend.request(action, params, postData);
+    if (typeof document !== 'undefined' && document.documentElement?.dataset?.backend === 'supabase') throw new Error('Supabase 연결 모듈을 불러오지 못했습니다.');
     if (postData && ['addCards', 'moveCards', 'discardCards', 'clearUserData', 'migrateFromData', 'migrateFromSheet'].includes(action)
         && !requireInventoryReady()) throw Object.assign(new Error('보유 정보 동기화가 필요합니다.'), { code: 'INVENTORY_SYNC_REQUIRED' });
     const loginTiming = typeof window !== 'undefined' && params.warmup !== 'true' && ['getRegistrationStatus', 'getUserData'].includes(action)
@@ -5932,8 +5951,12 @@ async function requestApi(action, params = {}, postData = null) {
     if (action === 'searchCardByImage') options.signal = AbortSignal.timeout(45000);
     if (action === 'getRegistrationStatus') options.signal = AbortSignal.timeout(30000);
     const preparingMembership = postData?.membershipPrepare === true;
-    const resultStream = !preparingMembership && ['verifyYoutubeMembership', 'verifyDiscordMembership'].includes(action)
+    const loginResultStream = !preparingMembership && (action === 'getRegistrationStatus' && String(params.includeUserData) === 'true'
+        || action === 'getUserData' && postData && !postData.membershipClaimsOnly && !postData.membershipClaimsReadOnly
+          && params.warmup !== 'true' && postData.warmup !== 'true');
+    const resultStream = !preparingMembership && (loginResultStream || ['verifyYoutubeMembership', 'verifyDiscordMembership'].includes(action))
         && typeof window !== 'undefined' && window.YgoAuthenticationResult;
+    if (resultStream && loginResultStream && action === 'getRegistrationStatus') url.searchParams.set('loginMembershipResult', 'true');
     const resultSerial = resultStream ? ++membershipAuthenticationSerial : 0, resultRevision = resultStream ? authStateRevision : 0;
     // 첫 결과 뒤 화면을 이동해도 작은 인증 요청의 기록 정리를 이어간다.
     if (resultStream) options.keepalive = true;
@@ -5970,7 +5993,7 @@ async function requestApi(action, params = {}, postData = null) {
         // POST 요청 시 ssId를 본문에 포함
         const body = {
             ...postData,
-            ...(resultStream ? { authenticationResultStream: true } : {}),
+            ...(resultStream ? loginResultStream ? { loginMembershipResult: true } : { authenticationResultStream: true } : {}),
             ssId: savedId
         };
         options.body = JSON.stringify(body);
@@ -5994,7 +6017,14 @@ async function requestApi(action, params = {}, postData = null) {
         const currentResult = () => resultSerial === membershipAuthenticationSerial && resultRevision === authStateRevision
             && authUser?.uid === UserStore.user?.uid && firebase.auth().currentUser?.uid === authUser?.uid;
         const parse = () => resultStream ? resultStream.read(response, {
+            // 기존 전체 JSON과 같은 보유 정보 크기를 허용한다. 인증 단독 응답의 1MiB 제한은 유지한다.
+            ...(loginResultStream ? { maxBytes: Infinity } : {}),
             async onRecorded(result) {
+                if (loginResultStream) {
+                    // 첫 응답의 회원 여부/보유 정보를 늦은 기록 프레임으로 덮어쓰지 않는다.
+                    // 전체 데이터 적용에서 시작한 제한된 완료 확인을 중복 시작하지 않는다.
+                    return;
+                }
                 if (!currentResult() || result.uid !== authUser.uid || !result.membershipClaims) return;
                 const ready = await refreshMembershipClaims(authUser, result);
                 if (!currentResult()) return;
@@ -6003,10 +6033,16 @@ async function requestApi(action, params = {}, postData = null) {
                 setInventorySyncStatus(UserStore.inventorySyncStatus);
             },
             onFailure() {
-                if (currentResult()) showToast('인증 결과의 작업 기록을 확인하지 못했습니다. 다시 확인해 주세요.', 'toast-warn');
+                if (currentResult()) showToast(loginResultStream
+                    ? '회원 정보의 권한 동기화 결과를 확인하지 못했습니다. 다시 확인해 주세요.'
+                    : '인증 결과의 작업 기록을 확인하지 못했습니다. 다시 확인해 주세요.', 'toast-warn');
             }
         }) : response.json();
         const res = await (loginTiming ? loginTiming.measure('response_json', parse) : parse());
+        if (resultStream && loginResultStream) {
+            const data = res?.initialData || res;
+            if (data?.membershipClaims) data.membershipClaims.tokenRefreshDeferred = true;
+        }
 
         if (res && res.debug && res.debug.serverTime) {
             // [로그 삭제] 서버 실행 시간 로그 제거
@@ -6026,6 +6062,7 @@ async function requestApi(action, params = {}, postData = null) {
 let _lastPublicRefreshAt = 0;
 let _publicRefreshPromise = null;
 async function refreshPublicDataQuietly() {
+    if (globalThis.AppBackend && !globalThis.AppBackend.capabilities.publicRefresh) return;
     if (!UserStore.isInitialSyncDone || document.hidden) return;
     if (_publicRefreshPromise) return _publicRefreshPromise;
     if (Date.now() - _lastPublicRefreshAt < 60000) return;
@@ -6043,6 +6080,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 async function refreshInitialData(forceSync = false) {
+    if (globalThis.AppBackend) return globalThis.AppBackend.refreshInitialData();
     showLoading(true, "공통 데이터 동기화 중...");
     try {
         const lastSync = parseInt(localStorage.getItem('masterSyncUpdatedAt')) || 0;
@@ -6879,6 +6917,23 @@ async function performUserDataSync(initialData, options, task) {
         if (!current()) return;
         const applyClaimsResult = async value => {
         if (value?.membershipClaims) {
+            if (value.membershipClaims.status === 'synced' && value.membershipClaims.tokenRefreshDeferred === true) {
+                // 회원 여부는 서버의 현재 원본으로 확정됐다. 토큰 복사본 갱신은
+                // 화면/전체 보유 정보 반영을 막지 않고 현재 계정/revision에 한정해 회수한다.
+                UserStore.claimsSyncStatus = 'checking';
+                Promise.resolve().then(() => current() && refreshMembershipClaims(task.owner, value)).then(ready => {
+                    if (!current()) return;
+                    UserStore.claimsSyncStatus = ready ? 'ready' : 'pending';
+                    if (!ready) followMembershipClaims(task.owner);
+                    setInventorySyncStatus(UserStore.inventorySyncStatus);
+                }).catch(() => {
+                    if (!current()) return;
+                    UserStore.claimsSyncStatus = 'pending';
+                    followMembershipClaims(task.owner);
+                    setInventorySyncStatus(UserStore.inventorySyncStatus);
+                });
+                return;
+            }
             const refreshClaims = () => refreshMembershipClaims(UserStore.user, value);
             const tokenReady = await (loginTiming ? loginTiming.measure('claims_token', refreshClaims) : refreshClaims());
             if (!current()) return;
@@ -7089,12 +7144,18 @@ function applyUserData(res, { includeSettings = true } = {}) {
     }
 
     // 1. 인벤토리 목록 저장
-    if (!unchanged && res.allCards) {
+    const batched = !unchanged && res.allCards && typeof cardCacheInstance.setInventorySnapshot === 'function';
+    if (batched) {
+        const summary = res.inventoryDisplaySummary;
+        if (summary?.version === 1) {
+            cardCacheInstance.setInventorySnapshot(res.allCards, summary.amount, summary.locations, summary.rarities, { summaryComplete: true });
+        } else cardCacheInstance.setInventorySnapshot(res.allCards, res.amount, res.locations, res.rarities);
+    } else if (!unchanged && res.allCards) {
         cardCacheInstance.setInventory(res.allCards);
     }
 
     // 2. 통계 및 매핑 저장 (초기 로딩 및 로컬 데이터를 바탕으로 통계 강제 동기화 보정)
-    if (!unchanged) {
+    if (!unchanged && !batched) {
         cardCacheInstance.setSummary(res.amount, res.locations, res.rarities);
         cardCacheInstance.rebuildSummaryFromInventory();
     }
@@ -7331,7 +7392,7 @@ function checkAndHideInitialLoading() {
 
     if (!window.isAuthInitialized) {
         // 마스터 동기화는 완료되었으나, 아직 Firebase Auth 검증 진행 중인 경우
-        showLoading(true, "로그인 중...");
+        showLoading(true, "로그인 상태 확인 중...");
     } else {
         // Firebase Auth 검증까지 완전히 종료된 경우
         if (!UserStore.user) {
@@ -7347,7 +7408,9 @@ function showLoading(show, html) {
     // 인증 팝업 완료와 서비스 로그인 완료는 다르다. 확인 중에는 다른 작업도 로딩을 닫지 못한다.
     if (typeof serviceLoginPending !== 'undefined' && serviceLoginPending) {
         show = true;
-        html = '로그인 중...';
+        // Firebase 인증 후 통합 계정·보유 조회 대기를 실제 로그인과 구분한다.
+        html = typeof registrationCheckPending !== 'undefined' && registrationCheckPending
+            ? '내 인벤토리 로딩 중...' : '로그인 중...';
     } else if (typeof UserStore !== 'undefined' && UserStore.user && UserStore.inventorySyncStatus === 'loading') {
         // 공통 데이터 등 다른 작업의 종료가 사용자 데이터 동기화 화면을 닫지 못한다.
         show = true;
@@ -7799,57 +7862,88 @@ function positionDropdown(localDropdown, wrapper) {
     }
 }
 
+const inputAutoWidthMinimums = { rare: 70, illust: 80, loc: 120, to: 120 };
+const pendingPackInputWidths = new Set();
+let packInputWidthFrame = 0;
+
+function createInputWidthTester() {
+    const span = document.createElement('span');
+    span.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;height:0;overflow:hidden';
+    return span;
+}
+
+function readInputWidth(input, wrapper) {
+    const styles = window.getComputedStyle(input);
+    const arrow = wrapper.querySelector('.arrow-icon');
+    const hasArrow = arrow && window.getComputedStyle(arrow).display !== 'none';
+    const paddingLeft = parseFloat(styles.paddingLeft) || 0;
+    const paddingRight = parseFloat(styles.paddingRight) || 0;
+    return {
+        wrapper,
+        text: input.value || input.placeholder || '',
+        font: [styles.fontSize, styles.fontFamily, styles.fontWeight, styles.letterSpacing],
+        extraSpace: paddingLeft + paddingRight + (hasArrow ? 15 : 8),
+        minWidth: inputAutoWidthMinimums[input.dataset.field]
+    };
+}
+
+function setInputWidthTester(span, { text, font }) {
+    [span.style.fontSize, span.style.fontFamily, span.style.fontWeight, span.style.letterSpacing] = font;
+    span.textContent = text;
+}
+
+function applyInputWidth({ wrapper, extraSpace, minWidth }, textWidth) {
+    wrapper.style.width = Math.max(textWidth + extraSpace + 10, minWidth) + 'px';
+    wrapper.style.flex = 'none';
+}
+
+function flushPackInputWidths() {
+    const fragment = document.createDocumentFragment();
+    const testers = new Map();
+    const measurements = [];
+    // 스타일을 모두 읽고, 같은 글꼴과 텍스트는 프레임당 한 번만 측정한다.
+    for (const input of pendingPackInputWidths) {
+        const wrapper = input.closest('#desktop-cards-list-pack .custom-select-wrapper');
+        if (!input.isConnected || !wrapper) continue;
+        const data = readInputWidth(input, wrapper);
+        const key = JSON.stringify([data.text, ...data.font]);
+        if (!testers.has(key)) {
+            const span = createInputWidthTester();
+            setInputWidthTester(span, data);
+            fragment.append(span);
+            testers.set(key, span);
+        }
+        measurements.push({ data, key });
+    }
+    pendingPackInputWidths.clear();
+    document.body.appendChild(fragment);
+    const widths = new Map();
+    for (const [key, span] of testers) widths.set(key, span.getBoundingClientRect().width);
+    for (const { data, key } of measurements) applyInputWidth(data, widths.get(key));
+    for (const span of testers.values()) span.remove();
+    packInputWidthFrame = 0;
+}
+
 function updateInputAutoWidth(inputEl) {
-    if (!inputEl) return;
-    const field = inputEl.dataset.field;
-    if (field !== 'rare' && field !== 'loc' && field !== 'to' && field !== 'illust') return;
-    if (!inputEl.classList.contains('desktop-card-input')) return;
+    if (!inputEl?.classList.contains('desktop-card-input') ||
+        !Object.hasOwn(inputAutoWidthMinimums, inputEl.dataset.field)) return;
     const wrapper = inputEl.closest('.custom-select-wrapper');
     if (!wrapper) return;
+    if (wrapper.closest('#desktop-cards-list-pack')) {
+        pendingPackInputWidths.add(inputEl);
+        if (!packInputWidthFrame) packInputWidthFrame = requestAnimationFrame(flushPackInputWidths);
+        return;
+    }
 
     let span = document.getElementById('input-width-tester');
     if (!span) {
-        span = document.createElement('span');
+        span = createInputWidthTester();
         span.id = 'input-width-tester';
-        span.style.position = 'absolute';
-        span.style.visibility = 'hidden';
-        span.style.whiteSpace = 'pre';
-        span.style.height = '0';
-        span.style.overflow = 'hidden';
         document.body.appendChild(span);
     }
-
-    const styles = window.getComputedStyle(inputEl);
-    span.style.fontSize = styles.fontSize;
-    span.style.fontFamily = styles.fontFamily;
-    span.style.fontWeight = styles.fontWeight;
-    span.style.letterSpacing = styles.letterSpacing;
-
-    const textVal = inputEl.value || inputEl.placeholder || '';
-    span.textContent = textVal;
-
-    const paddingLeft = parseFloat(styles.paddingLeft) || 0;
-    const paddingRight = parseFloat(styles.paddingRight) || 0;
-
-    let extraSpace = paddingLeft + paddingRight;
-    const arrow = wrapper.querySelector('.arrow-icon');
-    const hasArrow = arrow && window.getComputedStyle(arrow).display !== 'none';
-    if (hasArrow) {
-        extraSpace += 15;
-    } else {
-        extraSpace += 8;
-    }
-
-    const textWidth = span.getBoundingClientRect().width;
-    let minWidth = 50;
-    if (field === 'rare') minWidth = 70;
-    else if (field === 'illust') minWidth = 80;
-    else if (field === 'loc' || field === 'to') minWidth = 120;
-
-    const finalWidth = Math.max(textWidth + extraSpace + 10, minWidth);
-
-    wrapper.style.width = finalWidth + 'px';
-    wrapper.style.flex = 'none';
+    const data = readInputWidth(inputEl, wrapper);
+    setInputWidthTester(span, data);
+    applyInputWidth(data, span.getBoundingClientRect().width);
 }
 
 function getQueryTarget(row) {
@@ -8093,6 +8187,8 @@ function prepareCardIllustrations(container, cid, ids = []) {
     container.dataset.illustrationCid = String(cid);
     const row = getRowFromInput(container);
     if (row) row.dataset.illustrationCid = String(cid);
+    // 팩 등록표의 이미지는 일러스트 선택창에서 필요한 항목만 불러온다.
+    if ((row || container).closest('#desktop-cards-list-pack, #mobile-cards-list-pack')) return;
     void IllustrationImages.preloadCard(String(cid), ids);
 }
 
@@ -8163,6 +8259,10 @@ function setupIllustrationField(wrapper, changeCallback) {
 }
 
 function setupCustomDropdown(wrapper, changeCallback) {
+    if (globalThis.AppBackend) {
+        const original = changeCallback;
+        changeCallback = input => { original?.(input); globalThis.AppBackend.onSelectionChange(input); };
+    }
     if (wrapper.querySelector('[data-field="no"]')) {
         setupCardNoAutocomplete(wrapper);
         return;
@@ -9030,7 +9130,7 @@ async function submitBulkMoveEntries() {
     const moves = [];
     for (const row of cardCacheInstance._inventory || []) {
         if (row[4] !== fromLoc || row[3] <= 0) continue;
-        moves.push({ cid: row[6] || findCidByNameOrNo(row[0], row[1]), cardNo: row[1], cardName: row[0] || 'Unknown', rarity: row[2] || '',
+        moves.push({ itemId: row[7], printingId: row[8], variantId: row[9], locationId: row[10], cid: row[6] || findCidByNameOrNo(row[0], row[1]), cardNo: row[1], cardName: row[0] || 'Unknown', rarity: row[2] || '',
             illustration: row[5] || '', currentLoc: fromLoc, targetLoc: toLoc,
             moveQty: row[3], maxQty: row[3], status: 'pending' });
     }
@@ -9265,6 +9365,7 @@ function setupPackNameAutocomplete(wrapper) {
     let currentFocusIdx = -1;
     let pendingBlurFn = null;
     let activeDropdownInput = null;
+    let suggestionRequest;
 
     let localDropdown = wrapper._dropdown;
     if (!localDropdown) {
@@ -9275,6 +9376,8 @@ function setupPackNameAutocomplete(wrapper) {
     }
 
     const closeDropdown = () => {
+        fetchSuggestions.cancel();
+        suggestionRequest?.abort();
         wrapper.classList.remove('active');
         input.classList.remove('active');
         localDropdown.classList.remove('active');
@@ -9284,7 +9387,8 @@ function setupPackNameAutocomplete(wrapper) {
         }
     };
 
-    const renderDropdown = (filtered) => {
+    const renderDropdown = (filtered, emptyMessage = '팩 이름 확인') => {
+        currentFocusIdx = -1;
         wrapper.classList.add('active');
         input.classList.add('active');
         localDropdown.classList.add('active');
@@ -9293,10 +9397,10 @@ function setupPackNameAutocomplete(wrapper) {
         if (filtered.length === 0) {
             const li = document.createElement('li');
             li.className = 'custom-option item-no-match';
-            li.innerText = '팩 이름 확인';
+            li.innerText = emptyMessage;
             localDropdown.appendChild(li);
         } else {
-            filtered.forEach(name => {
+            filtered.slice(0, 5).forEach(name => {
                 const li = document.createElement('li');
                 li.className = 'custom-option';
                 li.innerText = name;
@@ -9320,8 +9424,25 @@ function setupPackNameAutocomplete(wrapper) {
         localDropdown.classList.add('active');
     };
 
+    const fetchSuggestions = debounce(async value => {
+        const request = new AbortController();
+        suggestionRequest = request;
+        const isCurrent = () => !request.signal.aborted && document.activeElement === input && input.value === value;
+        try {
+            const names = await AppBackend.packSuggestions(value, request.signal);
+            if (isCurrent()) renderDropdown(names);
+        } catch (_) {
+            if (isCurrent()) renderDropdown([], '팩 추천을 불러오지 못했습니다.');
+        }
+    }, 150);
+
     input.addEventListener('input', () => {
         activeDropdownInput = input;
+        if (globalThis.AppBackend?.packSuggestions) {
+            closeDropdown();
+            if (input.value.trim()) fetchSuggestions(input.value);
+            return;
+        }
         const query = input.value.replace(/\s+/g, '').toLowerCase();
         if (!query) {
             closeDropdown();
@@ -9329,17 +9450,20 @@ function setupPackNameAutocomplete(wrapper) {
         }
 
         const allPackNames = getAllPackNames();
-        let matches = allPackNames.filter(name => {
+        const matches = allPackNames.filter(name => {
             if (!name || typeof name !== 'string') return false;
             return Hangul.search(name.replace(/\s+/g, '').toLowerCase(), query) !== -1;
         });
 
-        matches = matches.slice(0, 10);
         renderDropdown(matches);
     });
 
     input.addEventListener('focus', () => {
         activeDropdownInput = input;
+        if (globalThis.AppBackend?.packSuggestions) {
+            fetchSuggestions(input.value);
+            return;
+        }
         if (pendingBlurFn && activeDropdownInput === input) { clearTimeout(pendingBlurFn); pendingBlurFn = null; }
         const allPackNames = getAllPackNames();
 
@@ -9353,12 +9477,15 @@ function setupPackNameAutocomplete(wrapper) {
         } else {
             matches = allPackNames;
         }
-        matches = matches.slice(0, 10);
         renderDropdown(matches);
     });
 
     input.addEventListener('blur', () => { closeDropdown(); });
     input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeDropdown();
+            return;
+        }
         if (!localDropdown.classList.contains('active')) return;
 
         const items = localDropdown.querySelectorAll('li');
@@ -9382,8 +9509,6 @@ function setupPackNameAutocomplete(wrapper) {
             } else {
                 input.blur();
             }
-        } else if (e.key === 'Escape') {
-            closeDropdown();
         } else if (e.key === 'Tab') {
             if (e.isComposing) return;
             let selectedVal = null;
@@ -9425,7 +9550,12 @@ function initPackSearch() {
     if (input && btn && !input._isInputBound) {
         input._isInputBound = true;
         input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') handlePackSearch(false);
+            if (e.key === 'Enter' && !e.isComposing) {
+                const dropdown = input.closest('#pack-search-content')?._dropdown;
+                if (!dropdown?.matches('.active') || !dropdown.querySelector('.custom-option:not(.item-no-match)')) {
+                    handlePackSearch(false);
+                }
+            }
             if (e.key === 'Escape') resetPackMode(true);
         });
         input.addEventListener('input', () => {
@@ -9494,6 +9624,9 @@ function togglePackTable() {
                 }
             } else {
                 generatePackRowsNew(PackDeckStore.currentPackInfo.totalCards, PackDeckStore.currentPackInfo.packName, PackDeckStore.currentPackInfo.packId);
+                if (!PackDeckStore.isPackCrawlDone && !_packCrawlNewRunning) {
+                    startPackCrawlNew(PackDeckStore.currentPackInfo.packId, PackDeckStore.currentPackInfo.validLocale);
+                }
             }
         } else {
             handlePackSearch();
@@ -9502,6 +9635,7 @@ function togglePackTable() {
 }
 
 function resetDeckMode(clearInput = false) {
+    deckSearchRevision++;
     const wasTableVisible = PackDeckStore.isDeckTableGenerated;
     PackDeckStore.isDeckTableGenerated = false;
 
@@ -9519,6 +9653,7 @@ function resetDeckMode(clearInput = false) {
 
         PackDeckStore.currentDeckName = "";
         PackDeckStore.currentDeckDetailUrl = null;
+        deckCardsPromise = null;
     }
 
     // 검색 박스 복구
@@ -9592,6 +9727,7 @@ function resetDeckMode(clearInput = false) {
 
     // 애니메이션 완료 시점에 맞춰 데이터 및 테이블 영역 비우기 (CSS Grid 애니메이션 0.4초 대기)
     setTimeout(() => {
+        if (PackDeckStore.isDeckTableGenerated) return;
         const tableArea = document.getElementById('deck-table-area');
         if (tableArea) tableArea.style.display = 'none';
     }, 400);
@@ -9602,6 +9738,11 @@ function handleDeckSearch() {
     const code = input ? input.value.trim() : "";
     const genBtn = document.getElementById('manage-gen-btn');
     const statusMsg = document.getElementById('deck-status-msg');
+    const revision = ++deckSearchRevision;
+    const current = () => revision === deckSearchRevision && input?.value.trim() === code;
+    deckCardsPromise = null;
+    PackDeckStore.currentDeckDetailUrl = null;
+    PackDeckStore.currentDeckName = '';
 
     if (!code) {
         if (statusMsg) {
@@ -9629,6 +9770,7 @@ function handleDeckSearch() {
 
 
     callApi('searchDeck', { deckCode: code, locale: UIStore.currentRegion }).then(res => {
+        if (!current()) return;
         if (statusMsg) statusMsg.classList.remove('status-error', 'status-success');
 
         if (!res || res.isError) {
@@ -9652,6 +9794,7 @@ function handleDeckSearch() {
 
             // 미리 상세 데이터 크롤링을 백그라운드로 실행
             deckCardsPromise = callApi('getDeckCards', { url: res.detailUrl });
+            deckCardsPromise.catch(() => {});
 
             // 보관위치 자동입력
             if (PackDeckStore.currentDeckName) {
@@ -9679,6 +9822,7 @@ function handleDeckSearch() {
         }
 
     }).catch(() => {
+        if (!current()) return;
         if (statusMsg) {
             statusMsg.classList.remove('status-error', 'status-success');
             statusMsg.classList.add('status-error');
@@ -9703,6 +9847,7 @@ function toggleDeckTable() {
 async function generateDeckRowsNew() {
     const code = document.getElementById('deck-code-input').value.trim();
     if (!code) return;
+    const revision = deckSearchRevision;
 
     showLoading(true, "덱 목록을 생성하는 중...");
 
@@ -9746,8 +9891,12 @@ async function generateDeckRowsNew() {
         // 상세 데이터 불러오기
         try {
             const res = deckCardsPromise ? await deckCardsPromise : await callApi('getDeckCards', { url: PackDeckStore.currentDeckDetailUrl });
+            if (revision !== deckSearchRevision) return;
             if (res && res.success && res.cards) {
                 const cards = res.cards;
+                const resolvedCids = await globalThis.AppBackend?.resolveDeckCardIds?.(cards.map(card => card.name))
+                    .catch(() => undefined);
+                if (revision !== deckSearchRevision) return;
                 const promises = [];
                 cards.forEach(card => {
                     const row = manageAddEntry(null, null, 'deck');
@@ -9755,7 +9904,8 @@ async function generateDeckRowsNew() {
                     if (nameInput) {
                         nameInput.value = card.name;
                         if (typeof fetchCardByName === 'function') {
-                            promises.push(fetchCardByName(nameInput, true));
+                            const cid = resolvedCids?.get(nameInput.value.normalize('NFC').trim());
+                            promises.push(fetchCardByName(nameInput, true, cid, Boolean(resolvedCids && !cid)));
                         }
                     }
                     const qtyInput = row.querySelector('[data-field="qty"], .page-card-qty, .desktop-card-qty');
@@ -9767,16 +9917,20 @@ async function generateDeckRowsNew() {
                 if (promises.length > 0) {
                     await Promise.all(promises);
                 }
+                if (revision !== deckSearchRevision) return;
             } else {
                 addMultipleRows(null); // 실패 시 1개 빈 카드 슬롯
                 showToast("덱 상세 정보를 불러오지 못했습니다.", "rounded red");
             }
         } catch (e) {
+            if (revision !== deckSearchRevision) return;
             addMultipleRows(null); // 실패 시 1개 빈 카드 슬롯
             showToast("덱 상세 정보를 불러오지 못했습니다.", "rounded red");
         } finally {
-            if (genBtn) genBtn.classList.remove('disabled');
-            showLoading(false);
+            if (revision === deckSearchRevision) {
+                if (genBtn) genBtn.classList.remove('disabled');
+                showLoading(false);
+            }
         }
     }
 
@@ -9890,6 +10044,7 @@ function resetPackMode(clearInput = false) {
     updatePackUrl();
 
     setTimeout(() => {
+        if (PackDeckStore.isPackTableGenerated) return;
         const isMobile = document.documentElement.classList.contains('is-mobile-device');
         const containerId = isMobile ? 'mobile-cards-list-pack' : 'desktop-cards-list-pack';
         const container = document.getElementById(containerId);
@@ -9964,7 +10119,7 @@ async function handlePackSearch(isInstant = false, targetName = null, targetLoca
 
     let res;
     try {
-        if (cachedPacks.length > 0) {
+        if (!globalThis.AppBackend && cachedPacks.length > 0) {
             if (cachedPacks.length === 1) {
                 res = {
                     success: true,
@@ -9991,7 +10146,7 @@ async function handlePackSearch(isInstant = false, targetName = null, targetLoca
                 };
             }
         } else {
-            res = await callApi('searchPack', { packName: query });
+            res = await callApi('searchPack', { packName: query, ...(globalThis.AppBackend && targetLocale ? { locale: targetLocale } : {}) });
         }
 
         PackDeckStore.isSearching = false; // 검색 완료
@@ -10270,6 +10425,9 @@ let _silentCrawls = {}; // 조용한 백그라운드 프리크롤링 추적 객�
  * 다국어 파라미터(locale)를 함께 전달합니다.
  */
 async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam = null) {
+    packPageController?.abort();
+    packPageController = null;
+    const revision = ++packCrawlRevision;
     const key = packId + "_" + locale;
     if (_silentCrawls[key]) _silentCrawls[key] = false;
 
@@ -10290,11 +10448,26 @@ async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam 
     _packCrawlNewRunning = true;
     PackDeckStore.isPackCrawlDone = false;
 
+    const pageSize = 20;
+    const fetchPage = globalThis.AppBackend?.fetchPackPage;
+    const controller = fetchPage ? new AbortController() : null;
+    packPageController = controller;
+    const pendingPages = new Map();
+    const queuePage = pageOffset => {
+        if (pageOffset >= total || pendingPages.has(pageOffset)) return;
+        pendingPages.set(pageOffset, fetchPage(packId, locale || 'ko', pageOffset, controller.signal)
+            .then(page => ({ page }), error => ({ error })));
+    };
+
     // 팩 목록은 운영 API에서 읽고, 실제 카드 수집/저장은 로컬 함수가 담당합니다.
     // 운영 Storage에만 존재하는 팩 ID를 로컬 함수가 다시 해석하지 않도록 CID를 명시적으로 전달합니다.
     let packCids;
     try {
-        const cidResult = await callApi('getPackCids', { packId, locale });
+        const cidRequest = callApi('getPackCids', { packId, locale });
+        // 첫 상세는 미리 받되, 수록 요약을 확인한 뒤에만 적용한다.
+        if (controller) queuePage(startOffset);
+        const cidResult = await cidRequest;
+        if (revision !== packCrawlRevision) return;
         if (cidResult?.isError || !Array.isArray(cidResult?.cids)) {
             throw new Error(cidResult?.message || '팩 CID 목록을 가져오지 못했습니다.');
         }
@@ -10302,6 +10475,9 @@ async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam 
         total = packCids.length;
         if (PackDeckStore.currentPackInfo) PackDeckStore.currentPackInfo.totalCards = total;
     } catch (error) {
+        if (revision !== packCrawlRevision) return;
+        controller?.abort();
+        packPageController = null;
         _packCrawlNewRunning = false;
         PackDeckStore.isPackCrawlDone = false;
         showLoading(false);
@@ -10314,7 +10490,7 @@ async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam 
     if (!CardDataStore.crawledPacksCache[key]) CardDataStore.crawledPacksCache[key] = { cards: [], isDone: false };
 
     let retryCount = 0;
-    while (_packCrawlNewRunning) {
+    while (_packCrawlNewRunning && revision === packCrawlRevision) {
         if (total > 0 && offset >= total) {
             PackDeckStore.isPackCrawlDone = true;
             if (CardDataStore.crawledPacksCache[key]) CardDataStore.crawledPacksCache[key].isDone = true;
@@ -10323,9 +10499,23 @@ async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam 
         }
 
         try {
-            const cids = packCids.slice(offset, offset + 20);
-            const res = await callApi('crawlPackCardsBatch', { packId, locale, offset, packName }, { cids });
-            if (!_packCrawlNewRunning) break;
+            const cids = packCids.slice(offset, offset + pageSize);
+            let packPage;
+            if (controller) {
+                queuePage(offset);
+                queuePage(offset + pageSize);
+                const received = await pendingPages.get(offset);
+                if (!_packCrawlNewRunning || revision !== packCrawlRevision) break;
+                if (received.error) throw received.error;
+                packPage = received.page;
+                if (packPage.total !== total || packPage.cards.length !== cids.length
+                    || packPage.cards.some((card, index) => String(card.cid) !== String(cids[index]))) {
+                    throw new Error('팩 수록 목록이 변경되었습니다.');
+                }
+            }
+            const res = await callApi('crawlPackCardsBatch', { packId, locale, offset, packName },
+                controller ? { cids, packPage, signal: controller.signal } : { cids });
+            if (!_packCrawlNewRunning || revision !== packCrawlRevision) break;
 
             if (res.isQuotaError) {
                 console.warn(`[Pack Crawl] 구글 서버 할당량 초과. 7초 후 재시도합니다... (offset: ${offset})`);
@@ -10355,6 +10545,12 @@ async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam 
             // 성공 시 재시도 횟수 초기화
             retryCount = 0;
 
+            if (controller) {
+                // 재시도에는 받은 페이지를 재사용하고, 성공하면 화면 적용 전에 빈 요청 자리를 채운다.
+                pendingPages.delete(offset);
+                queuePage(offset + 2 * pageSize);
+            }
+
             if (res.cards && res.cards.length > 0) {
                 res.cards.forEach(c => {
                     PackDeckStore.packCardResults[c.index] = c;
@@ -10366,6 +10562,7 @@ async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam 
                     const targetCount = PackDeckStore.packCardResults.filter(c => c).length;
                     updateSmoothCrawlCount(targetCount, total);
                     await applyPackCardResults(res.cards);
+                    if (revision !== packCrawlRevision) break;
                 }
             }
 
@@ -10377,21 +10574,29 @@ async function startPackCrawlNew(packId, locale, startOffset = 0, packNameParam 
             }
 
             offset = res.nextOffset;
-            await new Promise(r => setTimeout(r, 50));
+            if (globalThis.AppBackend?.id !== 'supabase') {
+                await new Promise(r => setTimeout(r, 50));
+            }
         } catch (err) {
+            if (revision !== packCrawlRevision) break;
             console.warn('[Pack Crawl New] 통신 오류:', err);
             showLoading(false);
             resetPackMode();
             break;
         }
     }
-    _packCrawlNewRunning = false;
+    controller?.abort();
+    if (packPageController === controller) packPageController = null;
+    if (revision === packCrawlRevision) _packCrawlNewRunning = false;
 }
 
 /**
  * 배경 크롤링 중단
  */
 function stopPackCrawlNew() {
+    packCrawlRevision++;
+    packPageController?.abort();
+    packPageController = null;
     _packCrawlNewRunning = false;
 }
 
@@ -10579,15 +10784,7 @@ async function handleFirebaseAuthState(user) {
         } else {
             loginTiming?.finish('signup_required');
             applyServiceAuthState(null);
-            pendingRegistrationUser = user;
-            pendingConsentVersions = status.consentVersions;
-            document.getElementById('terms-agree-cb').checked = false;
-            document.getElementById('privacy-agree-cb').checked = false;
-            const message = document.getElementById('signup-status');
-            message.textContent = '';
-            message.hidden = true;
-            setRegistrationSaving(false);
-            getAppModal(document.getElementById('signup-modal')).open();
+            openServiceRegistration(user, status.consentVersions);
         }
     } catch (error) {
         if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return;
@@ -10601,7 +10798,8 @@ async function handleFirebaseAuthState(user) {
             });
         } else {
             pendingServiceAuthUser = user;
-            serviceLoginFailureCode = error.code === 'APPCHECK_CONFIGURATION_REJECTED' ? error.code : null;
+            serviceLoginFailureCode = error.reason === 'throttled' ? 'APPCHECK_THROTTLED'
+                : ['APPCHECK_CONFIGURATION_REJECTED', 'APPCHECK_UNAVAILABLE', 'SERVICE_CHECK_TIMEOUT'].includes(error.code) ? error.code : null;
             toggleAuthModal(true);
         }
     } finally {
@@ -10610,6 +10808,27 @@ async function handleFirebaseAuthState(user) {
             toggleLoginBtn();
         }
     }
+}
+
+function openServiceRegistration(user, versions) {
+    pendingRegistrationUser = user;
+    pendingConsentVersions = versions;
+    document.getElementById('terms-agree-cb').checked = false;
+    document.getElementById('privacy-agree-cb').checked = false;
+    const message = document.getElementById('signup-status');
+    message.textContent = '';
+    message.hidden = true;
+    setRegistrationSaving(false);
+    getAppModal(document.getElementById('signup-modal')).open();
+}
+
+function clearServiceRegistration() {
+    ++authStateRevision;
+    if (!pendingRegistrationUser) return;
+    pendingRegistrationUser = null;
+    pendingConsentVersions = null;
+    setRegistrationSaving(false);
+    M.Modal.getInstance(document.getElementById('signup-modal'))?.close();
 }
 
 function toggleRegistrationButton() {
@@ -10644,11 +10863,14 @@ async function completeServiceRegistration() {
         });
         if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return;
         if (!result?.success || result.registered !== true) throw new Error('가입 완료 실패');
+        const finishRegistration = globalThis.AppBackend?.finishRegistration;
+        if (finishRegistration) await finishRegistration(user);
+        if (revision !== authStateRevision || firebase.auth().currentUser?.uid !== user.uid) return;
         pendingRegistrationUser = null;
         pendingConsentVersions = null;
         setRegistrationSaving(false);
         M.Modal.getInstance(document.getElementById('signup-modal'))?.close();
-        applyServiceAuthState(user);
+        if (!finishRegistration) applyServiceAuthState(user);
     } catch (error) {
         if (revision !== authStateRevision) return;
         if (error.code === 'CONSENT_VERSION_CHANGED') {
@@ -10678,6 +10900,7 @@ function cancelServiceRegistration() {
 }
 
 function initFirebaseAuth() {
+    if (globalThis.AppBackend) return globalThis.AppBackend.initAuth();
     if (serviceAuthStarted) return;
     if (typeof firebase === 'undefined' || !firebase.auth) {
         setTimeout(initFirebaseAuth, 200); // SDK 로드 대기
@@ -10749,6 +10972,7 @@ function applyServiceAuthState(user, initialData, initialAccount) {
     window.isAuthInitialized = true;
     const previousOwner = UserStore.user?.uid || null;
     UserStore.user = user;
+    if (typeof OnboardingManager !== 'undefined') OnboardingManager.authChanged();
     loadUserTheme(undefined, true);
     if (previousOwner !== (user?.uid || null)) {
         userDataSyncSerial++;
@@ -11078,6 +11302,7 @@ function prepareMembershipEntry() {
         || typeof discordMembershipStarting !== 'undefined' && discordMembershipStarting
         || youtubeMembershipVerificationPending
         || typeof discordMembershipHeaderState !== 'undefined' && discordMembershipHeaderState?.phase === 'pending') return;
+    if (globalThis.AppBackend?.prepareMembershipEntry) return globalThis.AppBackend.prepareMembershipEntry();
     beginMembershipPreparation('youtube');
     beginMembershipPreparation('discord');
     beginMembershipWorkerPreparation();
@@ -11085,6 +11310,7 @@ function prepareMembershipEntry() {
 }
 
 async function startYoutubeMembershipVerify() {
+    if (globalThis.AppBackend && !globalThis.AppBackend.membershipEnabled('youtube')) return globalThis.AppBackend.notifyUnavailable();
     if (!requireInventoryReady()) return;
     const user = UserStore.user;
     if (!user) {
@@ -11103,11 +11329,9 @@ async function startYoutubeMembershipVerify() {
     try {
         // 팝업은 클릭 직후 실행한다. 시작 요청을 먼저 기다리면 Safari에서 차단될 수 있다.
         const popup = getYoutubeAccessTokenViaSecondaryApp();
-        const preparation = beginMembershipPreparation('youtube');
-        const [accessToken, challenge] = await Promise.all([
-            popup,
-            callApi('startYoutubeMembershipVerification', {}, {})
-        ]);
+        const challengeRequest = callApi('startYoutubeMembershipVerification', {}, {});
+        const preparation = globalThis.AppBackend ? null : beginMembershipPreparation('youtube');
+        const [accessToken, challenge] = await Promise.all([popup, challengeRequest]);
         if (!current()) throw Object.assign(new Error(), { code: 'YOUTUBE_SESSION_CHANGED' });
         if (!accessToken || !challenge?.success || challenge.uid !== user.uid || !challenge.verificationId) {
             throw Object.assign(new Error(), { code: 'YOUTUBE_PROOF_REQUIRED' });
@@ -11144,7 +11368,7 @@ async function startYoutubeMembershipVerify() {
                 setInventorySyncStatus('ready');
             }
         } else {
-            await preparation.wait('getUserData');
+            if (preparation) await preparation.wait('getUserData');
             if (!current()) throw Object.assign(new Error(), { code: 'YOUTUBE_SESSION_CHANGED' });
             // 인벤토리가 없거나 실패/로딩 상태면 기존 전체 동기화와 화면 가림을 유지한다.
             if (typeof loadUserData === 'function'
@@ -11447,21 +11671,32 @@ function toggleAuthModal(showGuide = false) {
 
     const guide = document.getElementById('login-guide-msg');
     const introduction = document.getElementById('login-sub-msg');
+    const failed = !!pendingServiceAuthUser || !!serviceLoginFailureCode;
     if (guide) {
-        guide.hidden = !showGuide && !pendingServiceAuthUser;
-        guide.textContent = pendingServiceAuthUser
-            ? (serviceLoginFailureCode === 'APPCHECK_CONFIGURATION_REJECTED'
-                ? (IS_LOCAL_DEV ? '로컬 앱 인증 설정이 거부되었습니다. 현재 브라우저의 디버그 토큰 등록을 확인해 주세요.' : '앱 인증 설정을 확인하지 못했습니다. 관리자에게 문의해 주세요.')
-                : '로그인을 완료하지 못했습니다. 다시 시도해 주세요.')
-            : '로그인 후 이용 가능합니다.';
+        const messages = {
+            APPCHECK_CONFIGURATION_REJECTED: IS_LOCAL_DEV
+                ? '로컬 앱 인증 설정이 거부되었습니다. 현재 브라우저의 디버그 토큰 등록을 확인해 주세요.'
+                : '앱 인증 설정을 확인하지 못했습니다. 관리자에게 문의해 주세요.',
+            APPCHECK_THROTTLED: '앱 인증 요청이 제한되었습니다. 시간을 두고 다시 시도해 주세요. 계속되면 관리자에게 문의해 주세요.',
+            APPCHECK_UNAVAILABLE: '앱 인증을 준비하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.',
+            SERVICE_CHECK_TIMEOUT: '서비스 연결 확인 시간이 초과됐습니다. 다시 시도해 주세요.',
+            AUTH_PREPARATION_FAILED: '로그인 도구를 준비하지 못했습니다. 연결 상태를 확인한 뒤 로그인 방법을 다시 선택해 주세요.',
+            AUTH_INVALID: '로그인 정보가 만료되었거나 유효하지 않습니다. 다시 로그인해 주세요.',
+            PROVIDER_SIGN_IN_FAILED: '인증을 완료하지 못했습니다. 로그인 방법을 다시 선택해 주세요.',
+            SERVICE_CONNECTION_FAILED: '서비스 계정을 연결하지 못했습니다. 다시 시도해 주세요.',
+        };
+        guide.hidden = !showGuide && !failed;
+        guide.textContent = messages[serviceLoginFailureCode] || (pendingServiceAuthUser
+            ? '로그인을 완료하지 못했습니다. 다시 시도해 주세요.' : '로그인 후 이용 가능합니다.');
     }
-    if (introduction) introduction.hidden = showGuide || !!pendingServiceAuthUser;
+    if (introduction) introduction.hidden = showGuide || failed;
     if (pendingRegistrationUser) {
         getAppModal(document.getElementById('signup-modal')).open();
         return;
     }
     toggleLoginBtn();
     getAppModal(modalElem).open();
+    if (!failed) globalThis.AppBackend?.prepareSignIn?.();
 }
 
 function toggleLoginBtn() {
@@ -11481,6 +11716,7 @@ function toggleLoginBtn() {
 }
 
 async function retryServiceLoginConfirmation() {
+    if (globalThis.AppBackend) return globalThis.AppBackend.retrySignIn();
     if (loginInProgress || registrationCheckPending || typeof firebase === 'undefined' || !firebase.auth) return;
     const current = firebase.auth().currentUser;
     if (!current || pendingServiceAuthUser?.uid !== current.uid) {
@@ -11506,6 +11742,7 @@ function getServiceSignInMode(providerName) {
 }
 
 async function signInWithProvider(providerName) {
+    if (globalThis.AppBackend) return globalThis.AppBackend.signIn(providerName);
     if (pendingServiceAuthUser) return retryServiceLoginConfirmation();
     const btn = document.getElementById(providerName === 'google' ? 'google-login-btn' : 'twitter-login-btn');
     if (!btn || btn.disabled || typeof firebase === 'undefined' || !firebase.auth) return;
@@ -11582,6 +11819,7 @@ const discordStartClock = () => globalThis.performance?.now?.() ?? Date.now();
 // 권한 결과가 아닌 짧은 일회용 OAuth 시작 상태만 메모리에서 공유한다.
 // 모달 재열기/빠른 클릭은 같은 요청을 사용하며 저장소·로그에는 주소를 남기지 않는다.
 function prepareDiscordMembershipStart() {
+    if (globalThis.AppBackend && !globalThis.AppBackend.membershipEnabled('discord')) return null;
     const uid = UserStore.user?.uid, revision = authStateRevision, redirectUri = location.origin + '/';
     if (!uid || firebase.auth().currentUser?.uid !== uid) return null;
     const previous = discordMembershipStartPreparation;
@@ -11607,7 +11845,7 @@ function prepareDiscordMembershipStart() {
     })();
     // 모달을 닫거나 YouTube를 선택해도 실패한 선행 요청을 반드시 회수한다.
     prepared.promise.catch(() => { prepared.failed = true; });
-    beginMembershipPreparation('discord');
+    if (!globalThis.AppBackend) beginMembershipPreparation('discord');
     return prepared;
 }
 // 전역 계정 버튼의 대기/완료 표시는 YouTube와 Discord가 함께 사용한다.
@@ -11670,7 +11908,7 @@ function setDiscordMembershipHeader(phase, uid) {
 function renderDiscordMembershipHeader() {
     const state = discordMembershipHeaderState;
     if (!state) return;
-    const currentUid = UserStore.user?.uid || firebase.auth().currentUser?.uid;
+    const currentUid = UserStore.user?.uid || globalThis.firebase?.auth?.().currentUser?.uid;
     if (currentUid && currentUid !== state.uid || state.phase === 'complete' && UserStore.user?.uid !== state.uid
         || !currentUid && window.isAuthInitialized && !registrationCheckPending) {
         setDiscordMembershipHeader('idle');
@@ -11696,6 +11934,7 @@ function renderDiscordMembershipHeader() {
 }
 
 async function startDiscordMembershipVerify() {
+    if (globalThis.AppBackend && !globalThis.AppBackend.membershipEnabled('discord')) return globalThis.AppBackend.notifyUnavailable();
     if (!requireInventoryReady()) return;
     const user = UserStore.user;
     if (!user) { showToast('로그인이 필요합니다.', 'toast-warn'); return; }
@@ -11744,29 +11983,41 @@ async function startDiscordMembershipVerify() {
     finally { popup?.cancel(); if (!navigating) discordMembershipStarting = false; }
 }
 
-// Firebase 초기화뿐 아니라 서비스 가입 확인까지 완료된 계정만 사용한다.
-async function waitForDiscordServiceUser(uid, expiresAt) {
+// Firebase 초기화와 같은 계정의 서비스 복원 상태를 확인한다.
+async function waitForDiscordServiceUser(uid, expiresAt, prepareReturn) {
     // 복원 재시도보다 먼저 포기하지 않는다. 기존 nonce 만료 안에서만 기다린다.
     const deadline = Math.min(Number.isFinite(expiresAt) ? expiresAt : 0, Date.now() + 300000);
     while (Date.now() < deadline) {
-        const user = firebase.auth().currentUser;
+        const user = globalThis.firebase?.auth?.().currentUser;
         if (user && user.uid !== uid || UserStore.user && UserStore.user.uid !== uid) {
             throw Object.assign(new Error(), { code: 'DISCORD_SESSION_CHANGED' });
         }
-        if (!registrationCheckPending && UserStore.user?.uid === uid && user?.uid === uid
+        if (prepareReturn) {
+            const session = prepareReturn(user);
+            if (session) return session;
+        } else if (!registrationCheckPending && UserStore.user?.uid === uid && user?.uid === uid
             && UserStore.inventorySyncStatus === 'ready') return user;
         if (window.isAuthInitialized && !registrationCheckPending
             && (!UserStore.user || UserStore.inventorySyncStatus === 'error')) {
             throw Object.assign(new Error(), { code: 'DISCORD_RESTORE_FAILED' });
         }
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => {
+            if (!prepareReturn || !document.addEventListener) { setTimeout(resolve, 50); return; }
+            const finish = () => {
+                clearTimeout(timer);
+                document.removeEventListener('ygo:discord-session', finish);
+                resolve();
+            };
+            const timer = setTimeout(finish, 50);
+            document.addEventListener('ygo:discord-session', finish, { once: true });
+        });
     }
     throw Object.assign(new Error(), { code: 'DISCORD_VERIFICATION_EXPIRED' });
 }
 
 async function handleDiscordOAuthCallback(popupProof) {
     const popup = popupProof?.popup === true;
-    let authenticationDisplayed = false;
+    let authenticationDisplayed = false, restoreResult;
     let raw, code, state;
     if (popup) {
         raw = JSON.stringify(popupProof.pending); code = popupProof.code; state = popupProof.state;
@@ -11791,7 +12042,10 @@ async function handleDiscordOAuthCallback(popupProof) {
         }
         if (!code) { trace?.finish('cancelled'); showToast('Discord 인증을 취소했습니다.', 'toast-info'); return; }
         setDiscordMembershipHeader('pending', pending.uid);
-        const user = popup ? UserStore.user : await measure('restore_wait', () => waitForDiscordServiceUser(pending.uid, pending.expiresAt));
+        const prepareReturn = !popup && globalThis.AppBackend?.discordReturnSession;
+        const sessionOrUser = popup ? UserStore.user : await measure('restore_wait', () => waitForDiscordServiceUser(pending.uid, pending.expiresAt, prepareReturn));
+        const returnSession = prepareReturn ? sessionOrUser : null;
+        const user = returnSession?.user || sessionOrUser;
         if (!user || user.uid !== pending.uid || firebase.auth().currentUser?.uid !== pending.uid) throw Object.assign(new Error(), { code: 'DISCORD_SESSION_CHANGED' });
         const revision = authStateRevision;
         let startTiming;
@@ -11804,14 +12058,29 @@ async function handleDiscordOAuthCallback(popupProof) {
         const timingParams = popup ? popupProof.timingParams : startTiming?.version === 1 && typeof startTiming.prepared === 'boolean'
             && Number.isFinite(startTiming.navigationMs) && startTiming.navigationMs >= 0 && startTiming.navigationMs <= 300000
             ? { discordStartPrepared: String(startTiming.prepared), discordNavigationMs: String(startTiming.navigationMs) } : {};
-        const res = await measure('membership_request', () => callApi('verifyDiscordMembership', timingParams, { code, verificationId: state }));
-        if (revision !== authStateRevision || UserStore.user?.uid !== user.uid || firebase.auth().currentUser?.uid !== user.uid) throw Object.assign(new Error(), { code: 'DISCORD_SESSION_CHANGED' });
+        const proof = { code, verificationId: state };
+        const res = await measure('membership_request', () => returnSession ? returnSession.verify(proof) : callApi('verifyDiscordMembership', timingParams, proof));
         if (!res?.success || res.uid !== user.uid) throw new Error();
+        if (returnSession?.isRestoring?.()) {
+            restoreResult = document.getElementById('discord-restore-membership-result');
+            if (restoreResult) {
+                const level = res.membership?.status === 'active' ? res.membership.levelName : '활성 멤버십 없음';
+                restoreResult.textContent = level ? `멤버십 인증 완료 · ${level}` : '멤버십 인증 완료';
+                restoreResult.hidden = false;
+                globalThis.YgoAuthenticationResult?.displayed?.('discord');
+            }
+        }
+        if (returnSession) await measure('inventory_restore_wait', returnSession.waitForInventory);
+        const current = () => revision === authStateRevision && UserStore.user?.uid === user.uid && firebase.auth().currentUser?.uid === user.uid;
+        if (!current()) throw Object.assign(new Error(), { code: 'DISCORD_SESSION_CHANGED' });
         if (!UserStore.settings) UserStore.settings = {};
         measure('render', () => {
-            UserStore.sourceMembership = res.sourceMembership || null;
-            UserStore.settings.membership = res.membership;
-            applyMembershipStatus(res.membership);
+            if (returnSession) returnSession.apply(res);
+            else {
+                UserStore.sourceMembership = res.sourceMembership || null;
+                UserStore.settings.membership = res.membership;
+                applyMembershipStatus(res.membership);
+            }
             const dialog = document.getElementById?.('membership-auth-modal');
             if (dialog && typeof M !== 'undefined') {
                 M.Modal.getInstance(dialog)?.close();
@@ -11819,12 +12088,12 @@ async function handleDiscordOAuthCallback(popupProof) {
             }
             setDiscordMembershipHeader('complete', user.uid);
             authenticationDisplayed = true;
-            globalThis.YgoAuthenticationResult?.displayed?.('discord');
+            if (!restoreResult) globalThis.YgoAuthenticationResult?.displayed?.('discord');
         });
         let claimsReady;
         if (res.membershipClaims) {
             claimsReady = await measure('claims_sync', () => refreshMembershipClaims(user, res));
-            if (revision !== authStateRevision || UserStore.user?.uid !== user.uid || firebase.auth().currentUser?.uid !== user.uid) { trace?.finish('superseded'); return; }
+            if (!current()) { trace?.finish('superseded'); return; }
         }
         // 복귀 시 가입 확인이 이미 동기화한 목록은 멤버십 변경만으로 무효화되지 않는다.
         // 다른 작업으로 동기화가 필요해진 경우에는 기존 단일 동기화와 전체 로딩을 유지한다.
@@ -11837,7 +12106,7 @@ async function handleDiscordOAuthCallback(popupProof) {
                 setInventorySyncStatus('ready');
             }
         });
-        if (revision !== authStateRevision || UserStore.user?.uid !== user.uid || firebase.auth().currentUser?.uid !== user.uid) { trace?.finish('superseded'); return; }
+        if (!current()) { trace?.finish('superseded'); return; }
         trace?.finish('ready');
     } catch (error) {
         if (!authenticationDisplayed) setDiscordMembershipHeader('idle');
@@ -11847,6 +12116,11 @@ async function handleDiscordOAuthCallback(popupProof) {
         showToast(restoreFailed ? '서비스 로그인을 복원하지 못했습니다. 로그인 상태를 확인한 뒤 다시 인증해 주세요.'
             : appFailed ? '앱 인증을 준비하지 못했습니다. 잠시 후 다시 인증해 주세요.'
                 : 'Discord 인증이 만료되었거나 계정이 변경되었습니다. 다시 인증해 주세요.', 'toast-error');
+    } finally {
+        if (restoreResult) {
+            restoreResult.hidden = true;
+            restoreResult.textContent = '';
+        }
     }
 }
 
@@ -11888,7 +12162,11 @@ function resetMembershipVerifyModal() {
 }
 
 function toggleProviderLink(providerName) {
-    if (!UserStore.user) return;
+    const user = UserStore.user;
+    if (!user) return;
+    if (globalThis.AppBackend && user !== globalThis.firebase?.auth?.().currentUser) {
+        return globalThis.AppBackend.notifyUnavailable();
+    }
 
     const providerId = providerName === 'google' ? 'google.com' : 'twitter.com';
     const activeProviders = UserStore.user.providerData.map(p => p.providerId);
@@ -11898,7 +12176,8 @@ function toggleProviderLink(providerName) {
         if (activeProviders.length <= 1) {
             return;
         }
-        UserStore.user.unlink(providerId).then((result) => {
+        user.unlink(providerId).then(() => {
+            if (UserStore.user !== user || firebase.auth().currentUser?.uid !== user.uid) return;
             // UserCredential에서 최신 정보를 받거나 UserStore.user 자체 사용 (V8/Compat에서는 UserStore.user가 자동 갱신됨)
             UserStore.user = firebase.auth().currentUser;
             renderLinkedAccounts(UserStore.user);
@@ -11910,7 +12189,8 @@ function toggleProviderLink(providerName) {
     } else {
         // 연결 안됨 -> 신규 연결
         const provider = getProviderInstance(providerName);
-        UserStore.user.linkWithPopup(provider).then((result) => {
+        user.linkWithPopup(provider).then((result) => {
+            if (UserStore.user !== user || firebase.auth().currentUser?.uid !== user.uid) return;
             // 인증 객체 교체: result.user 에는 추가된 providerData가 포함됨
             UserStore.user = result.user;
             renderLinkedAccounts(UserStore.user);
@@ -11927,11 +12207,17 @@ function toggleProviderLink(providerName) {
 }
 
 function deleteAccount() {
-    if (!UserStore.user) return;
+    const user = UserStore.user;
+    if (!user) return;
+    if (globalThis.AppBackend && (!globalThis.AppBackend.capabilities.accountDeletion
+        || user !== globalThis.firebase?.auth?.().currentUser)) {
+        return globalThis.AppBackend.notifyUnavailable();
+    }
 
     // 계정 삭제 전용 모달이 있으므로 데이터 삭제와 구분하여 처리 (기존 confirm 유지 혹은 모달 통합 가능)
     if (confirm("정말로 계정을 삭제하시겠습니까?\n모든 데이터와 연동 정보가 영구 삭제됩니다.")) {
-        UserStore.user.delete().then(() => {
+        user.delete().then(() => {
+            if (firebase.auth().currentUser && firebase.auth().currentUser.uid !== user.uid) return;
             switchToMode('home');
             window.location.reload(); // 상태 완전 초기화
         }).catch(err => {
@@ -11995,6 +12281,7 @@ async function executeDataClear() {
 }
 
 function signOutCurrentUser() {
+    if (globalThis.AppBackend) return globalThis.AppBackend.signOut();
     AutoLogoutManager.stop();
     if (typeof firebase !== 'undefined' && firebase.auth) {
         firebase.auth().signOut().then(() => {
@@ -12023,6 +12310,7 @@ function signOutCurrentUser() {
 
 let notices = []; // Storage(notices.json)에서 로드된 공지사항 데이터
 const READ_NOTICES_KEY = 'ygo_synapse_read_notices';
+let noticeLoadState = 'idle';
 const NOTICE_STORAGE_URL = 'https://storage.googleapis.com/ygo-synapse.firebasestorage.app/public/notices.json';
 
 function applyNotices(nextNotices) {
@@ -12045,7 +12333,18 @@ function applyNotices(nextNotices) {
  * JSON 파일은 이미 정렬된 상태로 저장되어 있으므로 별도 정렬 불필요.
  */
 async function fetchNotices() {
+    if (globalThis.AppBackend && !globalThis.AppBackend.capabilities.notices) return;
+    if (noticeLoadState === 'loading') return;
+    noticeLoadState = 'loading';
+    refreshNoticeReadState();
     try {
+        if (globalThis.AppBackend?.fetchNotices) {
+            const data = await globalThis.AppBackend.fetchNotices();
+            if (!Array.isArray(data.notices)) throw Error('NOTICE_UNAVAILABLE');
+            applyNotices(data.notices);
+            noticeLoadState = 'ready';
+            return;
+        }
         // 캐시된 본문이 있어도 ETag를 재검증하여 최신 공지만 적용합니다.
         const res = await fetch(NOTICE_STORAGE_URL, { cache: 'no-cache' });
         if (!res.ok) {
@@ -12055,20 +12354,33 @@ async function fetchNotices() {
         }
         const data = await res.json();
         applyNotices(data.notices);
-    } catch (error) {
-        applyNotices([]);
-        console.warn("Notice file fetch failed or empty notices:", error.message || error);
+    } catch (_) {
+        noticeLoadState = 'error';
+    } finally {
+        if (noticeLoadState === 'loading') noticeLoadState = 'ready';
+        refreshNoticeReadState();
     }
+}
+
+function refreshNoticeReadState() {
+    updateNotiBadge();
+    const popup = document.getElementById('noti-popup');
+    if (popup?.classList.contains('active') || popup && isManagedSheetOpen(popup)) renderNotiPopup();
 }
 
 function getTop8NoticeIds() {
     return notices.slice(0, 8).map(n => n.id);
 }
 
+function getReadNoticesStorageKey() {
+    return globalThis.AppBackend?.readNoticesStorageKey?.() || READ_NOTICES_KEY;
+}
+
+
 /** 기존 날짜-제목 기록과 과도기 ID도 읽되, 저장은 현재 공지 ID로 한다. */
 function getReadNoticeIds() {
     let stored;
-    try { stored = JSON.parse(localStorage.getItem(READ_NOTICES_KEY) || '[]'); }
+    try { stored = JSON.parse(localStorage.getItem(getReadNoticesStorageKey()) || '[]'); }
     catch { return []; }
     if (!Array.isArray(stored)) return [];
     const readKeys = new Set(stored.filter(key => typeof key === 'string').map(key =>
@@ -12088,7 +12400,7 @@ function markNoticeAsRead(id) {
     const readIds = getReadNoticeIds();
     if (readIds.includes(id)) return;
     const updatedReadList = [...new Set([...readIds, id])].filter(key => top8Ids.includes(key));
-    localStorage.setItem(READ_NOTICES_KEY, JSON.stringify(updatedReadList));
+    localStorage.setItem(getReadNoticesStorageKey(), JSON.stringify(updatedReadList));
     updateNotiBadge();
     if (typeof saveUserSetting === 'function') saveUserSetting('readNotices', updatedReadList);
     const popup = document.getElementById('noti-popup');
@@ -12119,6 +12431,7 @@ function toggleNotiPopup(event) {
     popup.classList.toggle('shape-rounded003', !mobile);
     popup.classList.toggle('shadow-mobile-sheet', mobile);
     popup.classList.toggle('shadow-medium', !mobile);
+    if (noticeLoadState === 'idle' || noticeLoadState === 'error') fetchNotices();
     renderNotiPopup();
     const trigger = document.getElementById('noti-btn');
     trigger?.setAttribute('aria-expanded', 'true');
@@ -12156,17 +12469,21 @@ function renderNotiPopup() {
     let htmlStr = '';
     displayNotices.forEach(noti => {
         const isNew = isNoticeNew(noti);
-        const pinIcon = noti.isPinned > 0 ? '<i class="material-icons pin-icon">push_pin</i>' : '';
+        const isPinned = noti.isPinned > 0;
+        const pinIcon = isPinned ? '<i class="material-icons pin-icon color-text-theme" aria-hidden="true">push_pin</i>' : '';
         htmlStr += `
-            <div class="noti-item ${noti.isPinned > 0 ? 'is-pinned' : ''} ${isNew ? 'is-new' : ''}" data-notice-id="${escapeHTML(noti.id)}">
-                <div class="noti-item-title">${pinIcon}${escapeHTML(noti.title)}</div>
-                <div class="noti-item-date">${noti.date}</div>
-            </div>
+            <button type="button" class="noti-item ui-button shape-rounded003 ${isPinned ? 'color-type002 is-pinned' : 'color-type004'} ${isNew ? 'is-new' : ''}" data-notice-id="${escapeHTML(noti.id)}">
+                <span class="noti-item__heading"><span class="noti-item-title color-text-000">${pinIcon}${escapeHTML(noti.title)}</span><span class="noti-item__unread color-text-red" aria-hidden="true"></span></span>
+                <time class="noti-item-date color-text-001" datetime="${escapeHTML(noti.date.replaceAll('.', '-'))}">${escapeHTML(noti.date)}</time>
+                <span class="visually-hidden">${isPinned ? '고정 공지. ' : ''}${isNew ? '새 공지' : '읽은 공지'}</span>
+            </button>
         `;
     });
 
-    if (notices.length === 0) {
-        htmlStr += `<div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 0.9rem;">공지사항이 없습니다.</div>`;
+    if (notices.length === 0 || noticeLoadState === 'error') {
+        const message = noticeLoadState === 'loading' ? '공지사항을 불러오는 중입니다.'
+            : noticeLoadState === 'error' ? '공지사항을 불러오지 못했습니다. 창을 다시 열어 재시도해 주세요.' : '공지사항이 없습니다.';
+        htmlStr += `<p class="noti-state ${noticeLoadState === 'error' ? 'color-text-red' : 'color-text-001'}" role="status" aria-live="polite">${message}</p>`;
     }
 
     listContainer.innerHTML = htmlStr;
@@ -12534,6 +12851,7 @@ async function executeMigration() {
         if (!window.YgoImportAttempt) throw new Error('가져오기 도구를 준비하지 못했습니다. 페이지를 새로고침해 주세요.');
         const action = fileMode ? 'migrateFromData' : 'migrateFromSheet';
         result = await window.YgoImportAttempt.execute({ uid: user.uid, source: fileMode ? 'file' : 'sheet', payload,
+            bindGeneration: globalThis.AppBackend?.id === 'supabase',
             send: (query, body) => callApi(action, query, body), isCurrent: () => UserStore.user === user });
         if (UserStore.user === user && !result?.success) throw new Error(result?.message || '가져오기에 실패했습니다.');
     } catch (error) {
@@ -12843,7 +13161,7 @@ function openPhotoRegistration() {
     PhotoCardSearch.openRegistrationSheet(addSubMode || 'general');
 }
 
-function handleManageUI(mode) {
+function handleManageUI(mode, preserveInputNodes = false) {
     const radioEl = document.getElementById('tab-mode-' + mode);
     if (radioEl) radioEl.checked = true;
 
@@ -12902,6 +13220,9 @@ function handleManageUI(mode) {
     updateManageFooter(mode);
 
     if (typeof resizeGrid === 'function') resizeGrid();
+
+    // 검색에서 돌아올 때는 공백·원시 값·선택 상태까지 작성 중인 노드를 유지한다.
+    if (preserveInputNodes) return;
 
     // 관리 페이지 진입 및 탭 전환 시 신버전 카드 렌더링 및 올바른 모드로 바인딩
     if (document.documentElement.classList.contains('is-mobile-device')) {
@@ -13335,7 +13656,7 @@ function getMobileCardHtml(idx, nextNum, data) {
                 <!-- 카드 이름 -->
                 <div class="sheet-form-field">
                     <label>카드 이름</label>
-                    <div class="custom-select-wrapper sheet-input-box no-arrow" style="position:relative;" onclick="openSheetOverlay('name')">
+                    <div class="custom-select-wrapper sheet-input-box no-arrow" style="position:relative;" onclick="openSheetOverlay('name', event)">
                         <input type="text" class="custom-input ${nameClass}" data-field="name" value="${escapeHTML(data.name || '')}" placeholder="카드 이름 입력" oninput="handleCardNameInput(this)" onblur="fetchCardByName(this)" onkeydown="if(event.isComposing && (event.key==='Enter' || event.key==='Tab')) { event.preventDefault(); return; } if(this.hasAttribute('readonly') && (event.key==='Escape' || event.key==='Backspace' || event.key==='Delete')) { clearPageNameAndNo(this); event.preventDefault(); return; } if(event.key==='Enter') { this.blur(); }" autocomplete="off" readonly>
                         <i class="material-icons clear-name-btn clear-btn" onclick="clearBottomSheetField('name', event)" style="display:none; position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.25rem; color:var(--text-muted);">cancel</i>
                     </div>
@@ -14309,8 +14630,13 @@ function navigateSheetCard(direction) {
 }
 
 // 7. 입력 오버레이 제어
-function openSheetOverlay(type) {
+function openSheetOverlay(type, event) {
     if (!currentEditingRow) return;
+    const linkedName = type === 'name' ? document.getElementById('sheet-card-name') : null;
+    if (linkedName?.readOnly && linkedName.classList.contains('hyperlink-style') && linkedName.onclick) {
+        linkedName.onclick(event);
+        return;
+    }
     if (type === 'no') {
         const sheetNo = document.getElementById('sheet-card-no');
         if (sheetNo && sheetNo.dataset.lockedForName === 'true') {
@@ -14459,7 +14785,7 @@ function showOverlaySuggestions(query) {
         matches.forEach(name => {
             const li = document.createElement('li');
             li.innerText = name;
-            li.setAttribute('role', 'button');
+            li.className = 'ui-button color-type004 text-suggest';            li.setAttribute('role', 'button');
             li.tabIndex = 0;
             li.onclick = () => selectOverlayItem(name);
             list.appendChild(li);
@@ -14471,7 +14797,7 @@ function showOverlaySuggestions(query) {
         const sheetNoEl = document.getElementById('sheet-card-no');
         if (sheetNoEl && sheetNoEl.dataset.lockedForName === 'true') {
             const li = document.createElement('li');
-            li.className = 'item-no-match';
+            li.className = 'item-no-match color-text-001 no-result-item';            li.setAttribute('role', 'status');
             li.innerText = '검색 중...';
             list.appendChild(li);
             return;
@@ -14549,7 +14875,7 @@ function showOverlaySuggestions(query) {
         matches.forEach(no => {
             const li = document.createElement('li');
             li.innerText = no;
-            li.setAttribute('role', 'button');
+            li.className = 'ui-button color-type004 text-suggest';            li.setAttribute('role', 'button');
             li.tabIndex = 0;
             li.onclick = () => selectOverlayItem(no);
             list.appendChild(li);
@@ -14583,14 +14909,14 @@ function showOverlaySuggestions(query) {
                     const text = typeof opt === 'object' ? opt.text : opt;
                     const li = document.createElement('li');
                     li.innerText = text;
-                    li.setAttribute('role', 'button');
+                    li.className = 'ui-button color-type004 text-suggest';                    li.setAttribute('role', 'button');
                     li.tabIndex = 0;
                     li.onclick = () => selectOverlayItem(val);
                     list.appendChild(li);
                 });
             } else {
                 const li = document.createElement('li');
-                li.className = 'item-no-match';
+                li.className = 'item-no-match color-text-001 no-result-item';                li.setAttribute('role', 'status');
                 li.innerText = '선택 가능한 보관위치 없음';
                 list.appendChild(li);
             }
@@ -14614,7 +14940,7 @@ function showOverlaySuggestions(query) {
             matches.forEach(loc => {
                 const li = document.createElement('li');
                 li.innerText = loc;
-                li.setAttribute('role', 'button');
+                li.className = 'ui-button color-type004 text-suggest';                li.setAttribute('role', 'button');
                 li.tabIndex = 0;
                 li.onclick = () => selectOverlayItem(loc);
                 list.appendChild(li);

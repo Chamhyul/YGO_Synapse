@@ -293,7 +293,7 @@ html.modal-open .app-mobile-dock {
 }
 
 /* 기존 광고는 검색 오버레이 뒤에 있었다. 공통 셸 안에서도 검색을 가리지 않는다. */
-html:has(.mobile-search.active) .mobile-ad-anchor {
+html:has(#mobile-search-overlay.active) .mobile-ad-anchor {
   display: none;
 }
 
@@ -543,19 +543,18 @@ html.is-mobile-device #auth-capsule-btn:not(.is-logged-in) .auth-text {
   flex-shrink: 0;
 }
 
-/* 테마 토글: 문구 대신 현재 테마 아이콘 표시 */
-.theme-switch-wrapper::before {
-  font-family: 'Material Icons';
-  content: 'light_mode';
-  font-size: 1.1rem;
-  color: inherit;
-  display: flex;
-  align-items: center;
-  line-height: 1;
+/* 테마 전환은 다음 모드를 나타내는 아이콘 하나만 표시한다. */
+.theme-toggle {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
-.dark-mode .theme-switch-wrapper::before {
-  content: 'dark_mode';
+.theme-toggle .material-icons {
+  font-size: 18px;
+  line-height: 1;
 }
 
 .theme-switch {

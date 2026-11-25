@@ -37,7 +37,7 @@
         function commit(state, options = {}) {
             recordPosition();
             const entry = { id: `${session}-${++serial}`, order: serial, state, hash: hashFor(state),
-                backId: options.backId || null, position: null, focusHref: null };
+                backId: options.backId || null, position: null };
             const replace = options.instant || !!history.state?.mobileSearchOpen || location.hash === entry.hash && !current;
             entries.set(entry.id, entry);
             current = entry;
@@ -62,19 +62,6 @@
             if (page) { page.scrollTop = entry.position.top; page.scrollLeft = entry.position.left; }
             env.window.scrollTo(entry.position.windowX, entry.position.windowY);
         }
-        function focusView(entry, restoring) {
-            if (current !== entry || env.mode() !== 'search') return;
-            if (restoring && entry.focusHref) {
-                const link = [...pane.querySelectorAll('.catalog-search-row')].find(el => el.getAttribute('href') === entry.focusHref);
-                if (link) { link.focus({ preventScroll: true }); return; }
-            }
-            const heading = pane.querySelector('h2, h1');
-            if (heading) {
-                heading.tabIndex = -1;
-                heading.classList.add('search-results__focus-target');
-                heading.focus({ preventScroll: true });
-            }
-        }
         function addBack(entry) {
             const previous = entries.get(entry.backId);
             if (!previous || !pane || entry.state.type !== 'target') return;
@@ -94,7 +81,7 @@
             if (header) header.prepend(back);
             else pane.prepend(back);
         }
-        function display(entry, render, direction, { instant = false, restoring = false, focus = true } = {}) {
+        function display(entry, render, direction, { instant = false, restoring = false } = {}) {
             env.closeEditor();
             cancelTransition();
             const result = area();
@@ -119,17 +106,16 @@
             if (rendering?.catch) rendering.catch(error => env.report(error));
             addBack(entry);
             result.dataset.transition = direction;
-            const finishFocus = () => {
+            const finishPosition = () => {
                 if (restoring) restorePosition(entry);
                 else if (!instant) {
                     const page = scroller();
                     if (page) page.scrollTop = 0;
                 }
-                if (focus && !instant) focusView(entry, restoring);
             };
             if (instant || !old || !next.animate || env.window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
                 old?.remove();
-                finishFocus();
+                finishPosition();
                 return next;
             }
             const duration = 300, easing = 'cubic-bezier(0.4, 0, 0.2, 1)';
@@ -166,7 +152,7 @@
             Promise.all(animations.slice(0, 2).map(animation => animation.finished.catch(() => {}))).then(() => {
                 if (activeTransition !== transition) return;
                 cancelTransition();
-                finishFocus();
+                finishPosition();
             });
             return next;
         }
@@ -197,7 +183,6 @@
         function openCard(card, state, trigger) {
             if (current?.state !== state) return;
             recordPosition();
-            current.focusHref = trigger?.getAttribute('href') || cardHref(card);
             const backId = current.id;
             env.setQuery(card.number || card.name);
             env.remember(card.number || card.name, card.number ? 'number' : 'name');

@@ -1,0 +1,17 @@
+**
+!transition/
+!transition/api/
+!transition/api/**
+!transition/runtime/
+!transition/runtime/functions/
+!transition/runtime/functions/**
+!transition/prepare-parser.cjs
+!transition/supabase/
+!transition/supabase/migrations/
+!transition/supabase/migrations/20261030071800_link_existing_images_only.sql
+!public/
+!public/card-name-autocomplete.js
+**/node_modules/
+**/.env*
+**/.secret*
+**/supabase-ca.crt

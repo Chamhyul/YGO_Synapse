@@ -1,0 +1,46 @@
+/* 카드 관리 일러스트 선택기: 색상·곡률·버튼 상태는 공통 조합에서 받는다. */
+.illustration-picker-root {
+  position: fixed;
+  inset: 0;
+  z-index: 120001;
+  pointer-events: none;
+}
+
+.illustration-picker-root.is-sheet,
+.illustration-picker-panel { pointer-events: auto; }
+
+.illustration-picker-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.illustration-picker-option {
+  flex-direction: column;
+  min-width: 0;
+  padding: 4px;
+}
+
+.illustration-picker-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.illustration-picker-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.illustration-picker-caption {
+  width: 100%;
+  text-align: center;
+  padding: 6px 0 3px;
+  font-size: 13px;
+  font-weight: 600;
+}

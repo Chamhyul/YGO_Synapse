@@ -321,6 +321,10 @@ html.nav-hidden .mobile-search {
   bottom: 0;
 }
 
+/* 카드 정보 입력은 관리 시트 위를 채우며 검색 실행 아이콘을 두지 않는다. */
+#mobile-sheet-input-overlay.mobile-search { bottom: 0; }
+#mobile-sheet-input-overlay .search-input--mobile { --search-input-padding-start: 1.14rem; }
+
 /* 배경과 콘텐츠의 위치는 유지하고 상단 입력 영역만 내려온다. */
 .mobile-search__panel {
   display: flex;

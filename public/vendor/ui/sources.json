@@ -1,0 +1,8 @@
+{
+  "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css": "aba72a1d60bf725f6cabcd9bc940ea546707378936e5f1a3b4b1f7d4885d1854.css",
+  "https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css": "c8dc98a6aff552aa5348aade3e19a65c50d59873fb304b06aafb5fa64a825908.css",
+  "https://fonts.googleapis.com/icon?family=Material+Icons": "65db03ecf48e2c4b24c7020615d9d3c96dd1540536df57301ac7ea84eaed8b74.css",
+  "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.2.0/css/all.min.css": "452b88e08deeba5cb9bb31c2cee114561c7120f4a9ccc2eb65c8b602cd4b63eb.css",
+  "https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js": "11d9ccbb8da3c7bb4052a9dd9a60bd1109345bc760994ffe66ad6ce192cf658c.js",
+  "https://unpkg.com/hangul-js": "1c892e8a26f8b37e51cd118e4cc61d864de6e4fc1f1df5d3386bdfe5277a0b7f.js"
+}

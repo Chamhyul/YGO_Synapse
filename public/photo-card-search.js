@@ -591,10 +591,18 @@
                 if (!Array.isArray(response.regions)) throw new Error('사진 검색 서버 응답을 확인해주세요.');
                 analyzedRegions.push(...response.regions);
             }
+            const names = state.purpose === 'register'
+                ? await root.AppBackend?.lookupPhotoCardNames?.(
+                    analyzedRegions.flatMap(region => (region?.matches || []).slice(0, 5).map(candidate => candidate.cid).filter(Boolean))
+                ).catch(() => undefined)
+                : undefined;
+            if (revision !== state.revision) return;
             for (let regionIndex = 0; regionIndex < state.regions.length; regionIndex++) {
                 const candidates = (analyzedRegions[regionIndex]?.matches || []).slice(0, 5);
                 await Promise.all(candidates.map(async candidate => {
-                    if (candidate.cid) candidate.cardName = await candidateName(candidate.cid);
+                    if (!candidate.cid) return;
+                    candidate.cardName = names ? names.get(String(candidate.cid)) || `CID ${candidate.cid}`
+                        : await candidateName(candidate.cid);
                 }));
                 if (revision !== state.revision) return;
                 state.regions[regionIndex].candidates = candidates;
@@ -809,11 +817,14 @@
         closeRegistrationSheet();
         await Promise.allSettled(prepared.map(async ({ item, row, nameInput }) => {
             if (!row || !nameInput) return;
-            await fetchCardByName(nameInput, true);
+            await fetchCardByName(nameInput, true, item.cid);
             const illustration = row.querySelector('[data-field="illust"]');
             if (illustration && item.ciid) {
-                setIllustrationValue(illustration, String(item.ciid));
-                illustration.dataset.raw = String(item.ciid);
+                if (root.AppBackend?.applyPhotoIllustration) root.AppBackend.applyPhotoIllustration(illustration,item);
+                else {
+                    setIllustrationValue(illustration, String(item.ciid));
+                    illustration.dataset.raw = String(item.ciid);
+                }
             }
         }));
         if (mobile && typeof root.renderMobileCards === 'function') root.renderMobileCards();

@@ -1,8 +1,10 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" data-backend="supabase">
 
 <head>
     <meta charset="UTF-8">
+    <script src="backend/inventory-state.js?v=1-login-view" defer></script>
+    <script src="backend/supabase.js?v=43-membership-return" defer></script>
     <!-- 기존 OAuth 복귀 주소는 유지하고, 팝업만 일반 앱 부팅 전에 분리한다. -->
     <script>
         (function () {
@@ -16,13 +18,26 @@
                 var result = new URLSearchParams();
                 ['code', 'state', 'error'].forEach(function (key) { query.getAll(key).forEach(function (value) { result.append(key, value); }); });
                 history.replaceState({}, '', location.pathname);
+                var code = result.get('code'), error = result.get('error');
+                if (marker.expiresAt > Date.now() && window.opener && !window.opener.closed &&
+                    result.getAll('code').length <= 1 && result.getAll('error').length <= 1 &&
+                    Boolean(code) !== Boolean(error) && (!code || code.length <= 4096)) {
+                    try {
+                        window.opener.postMessage(Object.assign({ type: 'ygo.discord.oauth.result', version: 1, state: marker.state },
+                            code ? { code: code } : { error: error === 'access_denied' ? 'cancelled' : 'failed' }), location.origin);
+                        try { sessionStorage.removeItem('ygo_discord_popup_callback'); } catch (_) {}
+                        return;
+                    } catch (_) { /* 기존 전달 문서에서 결과나 오류를 처리한다. */ }
+                }
                 location.replace('/discord-popup.html#' + result.toString());
             } catch (_) { /* 일반 페이지의 인증 초기화는 그대로 진행한다. */ }
         })();
     </script>
+    <link rel="preload" as="script" href="script.js?v=20261112-membership-selection" fetchpriority="high">
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
+    <template data-unconnected-service="auth-preconnect">
     <!-- 인증에 필요한 외부 연결만 미리 준비한다. 실제 요청과 인증 검사는 기존 SDK가 수행한다. -->
     <link rel="preconnect" href="https://accounts.google.com">
     <link rel="preconnect" href="https://apis.google.com">
@@ -31,6 +46,8 @@
     <link rel="dns-prefetch" href="https://apis.google.com">
     <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com">
 
+    </template>
+    <template data-unconnected-service="analytics">
     <!-- Google Tag Manager: GA4 태그·운영 호스트 조건은 컨테이너에서 관리한다. -->
     <script>
         (function (w, d, s, l, i) {
@@ -43,6 +60,7 @@
         })(window, document, 'script', 'dataLayer', 'GTM-5ZPPC8HH');
     </script>
 
+    </template>
     <script>
         /* 첫 화면은 이 기기에서 마지막으로 사용한 테마, 기록이 없으면 기기 테마. */
         (function () {
@@ -85,23 +103,27 @@
         })();
     </script>
 
+    <template data-unconnected-service="advertising">
     <!-- [Google AdSense] 자동 광고 및 라이브러리 스크립트 -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2358258042309830"
         crossorigin="anonymous"></script>
 
+    </template>
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
     <link rel="shortcut icon" href="/favicon.ico">
 
     <!-- 같은 기본 앱의 인증 준비는 일반 화면 라이브러리보다 먼저 시작한다. -->
-    <script src="login-timing.js?v=8-auth-recovery-end" defer></script>
+    <script src="login-timing.js?v=20261111-discord-return" defer></script>
+    <template data-unconnected-service="firebase-auth">
     <!-- Firebase SDK -->
     <script defer src="/__/firebase/13.0.0/firebase-app-compat.js"></script>
     <script defer src="/__/firebase/13.0.0/firebase-auth-compat.js"></script>
     <script defer src="/__/firebase/13.0.0/firebase-app-check-compat.js"></script>
     <script defer src="/__/firebase/init.js"></script>
-    <script src="auth-bootstrap.js?v=3-discord-popup" defer></script>
+    <script src="auth-bootstrap.js?v=3-discord-popup" defer></script>    </template>
+
 
     <title>YGO 시냅스 - 유희왕 카드 관리 시스템</title>
     <meta name="description"
@@ -113,27 +135,32 @@
     <meta property="og:url" content="https://ygo-synapse.web.app/">
 
     <link rel="stylesheet"
-        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.2.0/css/all.min.css">
-    <link rel="stylesheet" href="styles/tokens.css?v=177-danger-tokens">
+        href="/vendor/ui/aba72a1d60bf725f6cabcd9bc940ea546707378936e5f1a3b4b1f7d4885d1854.css" />
+    <link rel="stylesheet" href="/vendor/ui/c8dc98a6aff552aa5348aade3e19a65c50d59873fb304b06aafb5fa64a825908.css">
+    <link href="/vendor/ui/65db03ecf48e2c4b24c7020615d9d3c96dd1540536df57301ac7ea84eaed8b74.css" rel="stylesheet">
+    <link rel="stylesheet" href="/vendor/ui/452b88e08deeba5cb9bb31c2cee114561c7120f4a9ccc2eb65c8b602cd4b63eb.css">
+    <link rel="stylesheet" href="styles/tokens.css?v=20261105-onboarding-styles">
     <link rel="stylesheet" href="styles/base.css?v=142-common-ui">
     <link rel="stylesheet" href="styles/components.css?v=191-filter-alignment">
-    <link rel="stylesheet" href="style.css?v=190-overlay-cleanup">
+    <link rel="stylesheet" href="style.css?v=20261105-mobile-card-input">
     <link rel="stylesheet" href="styles/settings.css?v=154-ui-structure">
     <link rel="stylesheet" href="styles/dashboard.css?v=154-ui-structure">
-    <link rel="stylesheet" href="styles/search.css?v=166-style-cleanup">
-    <link rel="stylesheet" href="styles/search-results.css?v=196-chip-remove-padding">
+    <link rel="stylesheet" href="styles/search.css?v=20261105-mobile-card-input">
+    <link rel="stylesheet" href="styles/search-results.css?v=20261105-art-strip-center">
     <link rel="stylesheet" href="styles/home.css?v=154-ui-structure">
-    <link rel="stylesheet" href="styles/layout.css?v=20261021-discord-header-v38">
+    <link rel="stylesheet" href="styles/layout.css?v=20261105-mobile-card-input">
     <link rel="stylesheet" href="styles/overlays.css?v=190-overlay-cleanup">
+    <link rel="stylesheet" href="styles/notice-preview.css?v=20261105-notice-list-surface">
+    <link rel="stylesheet" href="styles/illustration-picker.css?v=20261104-picker-ui">
     <link rel="stylesheet" href="styles/documents.css?v=10-document-cleanup">
+    <link rel="stylesheet" href="styles/onboarding.css?v=20261105-onboarding-styles">
 </head>
 
 <body class="no-transition">
+    <template data-unconnected-service="analytics-noscript">
     <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5ZPPC8HH"
-        height="0" width="0" style="display:none;visibility:hidden" title="Google Tag Manager"></iframe></noscript>
+        height="0" width="0" style="display:none;visibility:hidden" title="Google Tag Manager"></iframe></noscript>    </template>
+
     <script>
         /* 초기 로드 시 1프레임 깜빡임 방지를 위한 레이아웃 사전 결정 로직 */
         (function () {
@@ -233,10 +260,7 @@
                 <span class="auth-text">멤버십<span class="membership-verify-suffix"> 인증</span></span>
             </button>
             <div class="theme-switch-wrapper color-text-002">
-                <label class="theme-switch" for="checkbox-theme">
-                    <input type="checkbox" id="checkbox-theme" aria-label="화면 테마 전환" onchange="toggleTheme()">
-                    <div class="theme-switch__track color-switch-theme shape-capsule"></div>
-                </label>
+                <button type="button" id="theme-toggle-btn" class="ui-button ui-button--text color-text-002 color-highlight-theme shape-capsule theme-toggle" aria-label="다크 모드로 전환" aria-pressed="false" onclick="toggleTheme()"><i class="material-icons" aria-hidden="true">dark_mode</i></button>
             </div>
 
             <div class="region-container dropdown-capsule" id="region-wrapper">
@@ -283,6 +307,7 @@
             </div>
             <p id="loading-text" style="margin-top: 20px; font-weight: bold; color: var(--text-000);">데이터 동기화 중...
             </p>
+            <strong id="discord-restore-membership-result" class="color-text-000" role="status" hidden></strong>
         </div>
     </div>
 
@@ -1578,7 +1603,7 @@
                                     placeholder="보관 위치 자동 입력" oninput="handleAutoLocInput(this)" autocomplete="off">
                                 <i id="auto-loc-clear-btn" class="material-icons clear-btn">cancel</i>
                                 <i class="material-icons arrow-icon">arrow_drop_down</i>
-                                <span class="tooltip-enter">엔터를 눌러주세요.</span>
+                                <span class="tooltip-enter color-danger shape-rounded001">엔터를 눌러주세요.</span>
                             </div>
                         </div>
                     </div>
@@ -2423,8 +2448,8 @@
         <footer class="ui-overlay__footer"><button type="button" class="ui-button color-theme shape-capsule modal-close">확인</button></footer>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js" defer></script>
-    <script src="https://unpkg.com/hangul-js" defer></script>
+    <script src="/vendor/ui/11d9ccbb8da3c7bb4052a9dd9a60bd1109345bc760994ffe66ad6ce192cf658c.js" defer></script>
+    <script src="/vendor/ui/1c892e8a26f8b37e51cd118e4cc61d864de6e4fc1f1df5d3386bdfe5277a0b7f.js" defer></script>
 
 
     <section id="noti-popup" class="noti-popup-layer ui-overlay ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium" role="dialog" aria-label="공지 미리보기" tabindex="-1" hidden>
@@ -2432,7 +2457,7 @@
             <h2 class="color-text-000">공지사항</h2>
             <button type="button" class="ui-button ui-button--text color-text-001" onclick="closeNotiPopup()" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button>
         </header>
-        <div id="noti-list-container" class="noti-list ui-overlay__body"></div>
+        <div id="noti-list-container" class="noti-list ui-overlay__body color-surface-000 shape-rounded003"></div>
         <footer class="ui-overlay__footer"><button type="button" class="ui-button ui-button--text color-highlight-theme" onclick="openNoticeModal()">더 보기</button></footer>
     </section>
     <div id="noti-popup-backdrop" class="ui-overlay__backdrop color-surface-black" style="display: none;" onclick="closeNotiPopup()" aria-hidden="true"></div>
@@ -2581,29 +2606,29 @@
         <footer class="ui-overlay__footer"><a href="licenses.html" target="_blank" rel="noopener" data-overlay-action="auxiliary" class="ui-button ui-button--text color-highlight-theme">자세히보기</a></footer>
     </section>
 
-    <script src="onboarding.js?v=3-faq-segments" defer></script>
-    <script src="illustration-images.js?v=3-private-storage" defer></script>
-    <script src="illustration-picker.js?v=166-overlay-exteriors" defer></script>
+    <script src="onboarding.js?v=20261105-onboarding-styles" defer></script>
+    <script src="illustration-images.js?v=20261104-supabase" defer></script>
+    <script src="illustration-picker.js?v=20261104-picker-ui" defer></script>
     <script src="photo-card-geometry.js?v=1" defer></script>
-    <script src="photo-card-search.js?v=166-overlay-exteriors" defer></script>
-    <script src="search-illustrations.js?v=166-overlay-exteriors" defer></script>
+    <script src="photo-card-search.js?v=167-registration" defer></script>
+    <script src="search-illustrations.js?v=20261104-art-region-surface" defer></script>
     <script src="catalog-filters.js?v=3-type-labels" defer></script>
     <script src="filter-editor.js?v=5-type-labels" defer></script>
-    <script src="search-navigation.js?v=154-ui-structure" defer></script>
-    <script src="management-results.js?v=183-style-cleanup" defer></script>
+    <script src="search-navigation.js?v=20261103-focus-navigation" defer></script>
+    <script src="management-results.js?v=184-import-details" defer></script>
     <script src="data-transfer.js?v=178-data-dialogs" defer></script>
-    <script src="import-attempt.js?v=1" defer></script>
+    <script src="import-attempt.js?v=2" defer></script>
     <script src="spreadsheet-loader.js?v=1" defer></script>
     <script src="overlays.js?v=193-popup-height" defer></script>
-    <script src="catalog-search.js?v=27-195-chip-spacing" defer></script>
+    <script src="catalog-search.js?v=20261104-supabase" defer></script>
     <script src="owned-cards.js?v=156-owned-detail-colors" defer></script>
     <script src="auth-session.js?v=2" defer></script>
-    <script src="authentication-result.js?v=2" defer></script>
+    <script src="authentication-result.js?v=3" defer></script>
     <script src="admin-session.js?v=5" defer></script>
     <script src="documents.js?v=3-document-list-overlay" defer></script>
-    <script src="membership-claims-sync.js?v=6" defer></script>
+    <script src="membership-claims-sync.js?v=7-not-required" defer></script>
     <script src="discord-popup.js?v=4" defer></script>
-    <script src="script.js?v=211-authentication-result" defer></script>
+    <script src="script.js?v=20261112-membership-selection" defer></script>
     <!-- 인벤토리 필터 팝업 -->
     <section id="inventory-filter-popup" class="catalog-filter-editor ui-overlay ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium" role="dialog" tabindex="-1" hidden>
         <!-- JS에서 동적 렌더링 -->
@@ -2637,17 +2662,21 @@
     </div>
 
     <!-- [모바일 개편] 카드 이름 / 번호 / 보관 위치 입력 오버레이 -->
-    <div id="mobile-sheet-input-overlay" class="mobile-sheet-input-overlay" role="dialog" aria-label="카드 정보 입력" tabindex="-1" inert style="display: none;">
-        <div class="overlay-header">
-            <button class="btn-flat back-btn waves-effect" aria-label="입력 닫기" onclick="closeSheetOverlay()"><i
-                    class="material-icons">arrow_back</i></button>
-            <div class="overlay-input-wrapper">
-                <input type="text" id="overlay-search-input" placeholder="입력하세요" autocomplete="off">
-                <i id="overlay-clear-btn" class="material-icons clear-btn" role="button" tabindex="0" aria-label="입력 내용 지우기" onclick="clearOverlayInput()">cancel</i>
+    <div id="mobile-sheet-input-overlay" class="mobile-search color-surface-000" role="dialog" aria-label="카드 정보 입력" tabindex="-1" inert style="display: none;">
+        <div class="mobile-search__panel">
+            <div class="mobile-search__toolbar color-surface-000 border-section-000">
+                <div class="mobile-search__input-wrap">
+                    <div class="mobile-search__surface ui-search-surface color-surface-001 shadow-small shape-capsule border-basic" aria-hidden="true"></div>
+                    <input type="text" id="overlay-search-input" class="search-input search-input--mobile color-text-000" placeholder="입력하세요" autocomplete="off">
+                    <button type="button" id="overlay-clear-btn" class="ui-button ui-button--text color-text-003 mobile-search__clear"
+                            aria-label="입력 내용 지우기" onclick="clearOverlayInput()" style="display: none;"><i class="material-icons" aria-hidden="true">cancel</i></button>
+                </div>
+                <button type="button" class="ui-button ui-button--text color-text-000 mobile-search__back" aria-label="입력 닫기" onclick="closeSheetOverlay()"><i
+                        class="material-icons" aria-hidden="true">arrow_back</i></button>
             </div>
-        </div>
-        <div class="overlay-content">
-            <ul id="overlay-suggestions-list" class="overlay-suggestions"></ul>
+            <div class="mobile-search__content color-surface-001">
+                <ul id="overlay-suggestions-list" class="custom-dropdown mobile-dropdown active"></ul>
+            </div>
         </div>
     </div>
 

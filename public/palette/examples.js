@@ -339,12 +339,9 @@ export function renderExamples(container) {
     const artLabel = element('span', 'search-art-caption-label');
     artMeta.appendChild(artLabel); artCaption.append(previousArt, artMeta, nextArt);
     const stripRow = element('div', 'search-art-strip-row');
-    const previousThumb = button('❮', `search-art-strip-prev ${movementClasses}`);
-    const nextThumb = button('❯', `search-art-strip-next ${movementClasses}`);
-    previousThumb.setAttribute('aria-label', '이전 도형 썸네일'); nextThumb.setAttribute('aria-label', '다음 도형 썸네일');
     const thumbs = element('div', 'search-art-thumbs');
     thumbs.setAttribute('role', 'group'); thumbs.setAttribute('aria-label', '도형 일러스트 선택');
-    stripRow.append(previousThumb, thumbs, nextThumb); gallery.append(picture, artCaption, stripRow); artworkStage.appendChild(gallery);
+    stripRow.append(thumbs); gallery.append(picture, artCaption, stripRow); artworkStage.appendChild(gallery);
     const tokenStyle = document.defaultView.getComputedStyle(document.documentElement);
     const token = name => tokenStyle.getPropertyValue(name).trim();
     const artUrls = [
@@ -369,8 +366,18 @@ export function renderExamples(container) {
         const image = element('img'); image.src = url; image.alt = `도형 ${index + 1}`;
         thumb.appendChild(image); listen(thumb, 'click', () => selectArt(index)); artThumbs.push(thumb); thumbs.appendChild(thumb);
     });
-    listen(previousArt, 'click', () => selectArt(selectedArt - 1)); listen(previousThumb, 'click', () => selectArt(selectedArt - 1));
-    listen(nextArt, 'click', () => selectArt(selectedArt + 1)); listen(nextThumb, 'click', () => selectArt(selectedArt + 1));
+    const syncArtStrip = () => {
+        stripRow.setAttribute('data-scroll-before', String(thumbs.scrollLeft > 1));
+        stripRow.setAttribute('data-scroll-after', String(thumbs.scrollWidth - thumbs.clientWidth - thumbs.scrollLeft > 1));
+    };
+    listen(thumbs, 'scroll', syncArtStrip);
+    const StripResizeObserver = document.defaultView.ResizeObserver;
+    if (StripResizeObserver) {
+        const observer = new StripResizeObserver(syncArtStrip);
+        observer.observe(thumbs); removers.push(() => observer.disconnect());
+    }
+    listen(previousArt, 'click', () => selectArt(selectedArt - 1));
+    listen(nextArt, 'click', () => selectArt(selectedArt + 1));
     selectArt(0);
 
     const ownedStage = section('owned', '[단일 카드 정보]-[보유 요약·상세]',
@@ -444,8 +451,8 @@ export function renderExamples(container) {
     more.append(element('span', '', '더보기'), icon('expand_more'));
     stats.appendChild(more);
 
-    const header = section('header', '[전역 헤더]-[로그인·공지·멤버십·지역 선택·테마 스위치]',
-        '고정 헤더를 만들지 않고 실제 버튼만 비교합니다. 스위치는 이 예제의 체크 상태만 바꾸며 문서 테마·저장 설정은 변경하지 않습니다.');
+    const header = section('header', '[전역 헤더]-[로그인·공지·멤버십·지역 선택·테마 아이콘 버튼]',
+        '고정 헤더를 만들지 않고 실제 버튼만 비교합니다. 테마 버튼은 이 예제의 아이콘 상태만 바꾸며 문서 테마·저장 설정은 변경하지 않습니다.');
     const headerRow = row();
     for (const [label, glyph, color, border] of [['로그인', 'account_circle', 'color-type000', ''], ['공지사항', 'notifications_none', 'color-type000', ''], ['멤버십 인증', 'workspace_premium', 'color-type002', 'border-theme']]) {
         const notice = label === '공지사항';
@@ -462,11 +469,19 @@ export function renderExamples(container) {
     region.append(icon('public', 'region-icon color-text-002'), element('span', 'region-text', '한국'));
     headerRow.appendChild(region);
     const switchWrapper = element('div', 'theme-switch-wrapper color-text-002');
-    const switchLabel = element('label', 'theme-switch');
-    const switchInput = element('input'); switchInput.type = 'checkbox'; switchInput.id = `${prefix}-switch`;
-    switchInput.setAttribute('aria-label', '로컬 테마 스위치 상태 예제'); switchLabel.htmlFor = switchInput.id;
-    switchLabel.append(switchInput, element('div', 'theme-switch__track color-switch-theme'));
-    switchWrapper.appendChild(switchLabel); headerRow.appendChild(switchWrapper); header.appendChild(headerRow);
+    const themeButton = element('button', 'ui-button ui-button--text color-text-002 color-highlight-theme shape-capsule theme-toggle');
+    themeButton.type = 'button';
+    themeButton.setAttribute('aria-label', '다크 모드로 전환 예제');
+    themeButton.setAttribute('aria-pressed', 'false');
+    const themeIcon = icon('dark_mode');
+    themeButton.appendChild(themeIcon);
+    listen(themeButton, 'click', () => {
+        const dark = themeButton.getAttribute('aria-pressed') !== 'true';
+        themeButton.setAttribute('aria-pressed', String(dark));
+        themeButton.setAttribute('aria-label', dark ? '라이트 모드로 전환 예제' : '다크 모드로 전환 예제');
+        themeIcon.textContent = dark ? 'light_mode' : 'dark_mode';
+    });
+    switchWrapper.appendChild(themeButton); headerRow.appendChild(switchWrapper); header.appendChild(headerRow);
 
     const navigation = section('navigation', '[데스크톱 사이드바]-[메뉴 버튼]',
         '고정 사이드바 없이 실제 메뉴 버튼의 기본·선택·호버·키보드 상태를 비교합니다. 선택은 이 예제 안에서만 바뀝니다.');

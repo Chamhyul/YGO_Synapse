@@ -75,12 +75,13 @@
         const buttons = options.map(opt => {
             const button = document.createElement('button');
             button.type = 'button';
-            button.className = 'illustration-picker-option';
+            const selected = IllustrationImages.ciidValue(opt.val) === IllustrationImages.ciidValue(value);
+            button.className = 'illustration-picker-option ui-button shape-rounded003 ' + (selected ? 'color-tint-theme' : 'color-type001');
             const label = IllustrationImages.label(opt.val) || opt.text;
             button.setAttribute('aria-label', label);
-            button.setAttribute('aria-pressed', String(IllustrationImages.ciidValue(opt.val) === IllustrationImages.ciidValue(value)));
+            button.setAttribute('aria-pressed', String(selected));
             const preview = document.createElement('span');
-            preview.className = 'illustration-picker-preview';
+            preview.className = 'illustration-picker-preview shape-rounded002 color-text-001';
             preview.textContent = '불러오는 중…';
             const caption = document.createElement('span');
             caption.className = 'illustration-picker-caption';

@@ -6,6 +6,8 @@
     'use strict';
     return function create(root) {
         const storageKey = 'ygo_import_attempts_v1', running = new Map();
+        const requestId = entry => typeof entry === 'string' ? entry : entry?.id;
+        const validGeneration = value => typeof value === 'string' && /^(0|[1-9]\d{0,18})$/.test(value);
         const error = (code, message) => Object.assign(new Error(message), { code });
         const check = valid => { if (!valid()) throw error('IMPORT_ACCOUNT_CHANGED', '계정이 변경되었습니다. 가져오기를 다시 확인해 주세요.'); };
         async function fingerprint(value) {
@@ -16,7 +18,8 @@
             try {
                 const value = JSON.parse(root.sessionStorage.getItem(storageKey) || '{}');
                 if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length > 16
-                    || Object.entries(value).some(([k, v]) => !/^[a-f0-9]{64}$/.test(k) || !/^[a-f0-9]{32}$/.test(v))) throw 1;
+                    || Object.entries(value).some(([k, v]) => !/^[a-f0-9]{64}$/.test(k)
+                        || !/^[a-f0-9]{32}$/.test(requestId(v) || '') || (typeof v !== 'string' && !validGeneration(v.generation)))) throw 1;
                 return value;
             } catch (_) { throw error('IMPORT_STORAGE_UNAVAILABLE', '가져오기 시도 기록을 보관할 수 없습니다. 브라우저 저장 설정을 확인해 주세요.'); }
         }
@@ -24,8 +27,8 @@
             try { const text = JSON.stringify(value); root.sessionStorage.setItem(storageKey, text); if (root.sessionStorage.getItem(storageKey) !== text) throw 1; }
             catch (_) { throw error('IMPORT_STORAGE_UNAVAILABLE', '가져오기 시도 기록을 보관할 수 없습니다. 브라우저 저장 설정을 확인해 주세요.'); }
         }
-        function forget(key, id) { const value = load(); if (value[key] === id) { delete value[key]; save(value); } }
-        async function perform({ uid, source, payload, send, isCurrent }) {
+        function forget(key, id) { const value = load(); if (requestId(value[key]) === id) { delete value[key]; save(value); } }
+        async function perform({ uid, source, payload, send, isCurrent, bindGeneration = false }) {
             check(isCurrent);
             const body = source === 'file' ? payload.data ?? null : [payload.spreadsheetId ?? null, payload.fingerprint ?? null];
             const digest = await fingerprint([source, body]), key = await fingerprint([uid, source, body]);
@@ -36,7 +39,7 @@
                     if (Object.keys(saved).length >= 16) throw error('IMPORT_PENDING_LIMIT', '확인되지 않은 가져오기가 남아 있습니다. 이전 저장 결과부터 확인해 주세요.');
                     saved[key] = [...root.crypto.getRandomValues(new Uint8Array(16))].map(n => n.toString(16).padStart(2, '0')).join(''); save(saved);
                 }
-                const id = saved[key];
+                const id = requestId(saved[key]);
                 let status;
                 try { status = await send({ importRequestId: id, importFingerprint: digest }, null); }
                 catch (e) {
@@ -45,7 +48,7 @@
                 }
                 check(isCurrent);
                 const state = status?.success && status.importRequest?.status;
-                if (state === 'unsupported' && ['localhost', '127.0.0.1'].includes(root.location?.hostname)) {
+                if (!bindGeneration && state === 'unsupported' && ['localhost', '127.0.0.1'].includes(root.location?.hostname)) {
                     // 기본 로컬 저장소의 기존 API를 보존한다. 운영 writer 영수증 보호와 구분한다.
                     forget(key, id); return send({}, payload);
                 }
@@ -57,9 +60,19 @@
                 if (state !== 'missing') throw error('IMPORT_RESULT_UNCONFIRMED', state === 'unsupported'
                     ? '서버의 안전한 가져오기 기능이 준비되지 않았습니다. 저장하지 않았습니다.'
                     : '이전 가져오기 저장 결과를 확인 중입니다. 새 작업으로 다시 제출하지 마세요.');
+                const generation = saved[key].generation ?? status.importRequest.generation;
+                if (bindGeneration) {
+                    if (!validGeneration(status.importRequest.generation)) {
+                        throw error('IMPORT_RESULT_UNCONFIRMED', '서버의 안전한 가져오기 기능이 준비되지 않았습니다. 저장하지 않았습니다.');
+                    }
+                    const attempts = load();
+                    attempts[key] = { id, generation };
+                    save(attempts);
+                }
                 check(isCurrent);
                 try {
-                    const result = await send({}, { ...payload, importRequestId: id });
+                    const query = bindGeneration ? { importRequestId: id, importFingerprint: digest, importGeneration: generation } : {};
+                    const result = await send(query, { ...payload, importRequestId: id });
                     if (result?.success !== true) throw error('IMPORT_RESULT_UNCONFIRMED', '가져오기 저장 결과를 확인하지 못했습니다.');
                     try { forget(key, id); } catch (_) {} return result;
                 } catch (e) {

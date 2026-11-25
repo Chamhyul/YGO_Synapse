@@ -716,6 +716,31 @@ html.is-mobile-device .owned-card__illustration-group {
   grid-row: 1;
 }
 
+/* 발매 지역 안내: 외곽은 공통 오버레이, 버튼 색상은 공통 조합에서 받는다. */
+.search-art-region { position: relative; width: 28px; height: 28px; }
+.search-art-region > button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px;
+  border-radius: 0;
+}
+.search-art-region > button svg { display: block; }
+
+.search-art-popup.ui-overlay__panel.ui-overlay--popup {
+  z-index: 100002;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  gap: 0;
+  text-align: center;
+  word-break: keep-all;
+}
+
+.search-art-region-line { text-wrap: balance; }
+
 .search-card-details {
   display: flex;
   flex-direction: column;
@@ -723,36 +748,44 @@ html.is-mobile-device .owned-card__illustration-group {
 }
 
 .search-art-strip-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  min-width: 0;
 }
 
-.search-art-strip-row > button {
-  flex: 0 0 24px;
-  width: 24px;
-  min-width: 24px;
-  height: 64px;
-  min-height: 64px;
-  margin-top: 6px;
-  padding: 0;
+.search-art-strip-row[data-scroll-before="true"] .search-art-thumbs {
+  --strip-fade-start: 32px;
+}
+
+.search-art-strip-row[data-scroll-after="true"] .search-art-thumbs {
+  --strip-fade-end: 32px;
 }
 
 .search-art-thumbs {
+  --strip-fade-start: 0px;
+  --strip-fade-end: 0px;
   position: relative;
   display: flex;
-  flex: 1 1 auto;
   min-width: 0;
   gap: 10px;
   overflow-x: auto;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--strip-fade-start), #000 calc(100% - var(--strip-fade-end)), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 var(--strip-fade-start), #000 calc(100% - var(--strip-fade-end)), transparent);
   padding: 6px 4px 8px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-000) transparent;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-.search-art-thumbs::-webkit-scrollbar { height: 4px; }
-.search-art-thumbs::-webkit-scrollbar-track { background: transparent; }
-.search-art-thumbs::-webkit-scrollbar-thumb { background: var(--border-000); border-radius: 999px; }
+.search-art-thumbs::-webkit-scrollbar { display: none; }
+
+/* 남는 공간만 양끝에 나누어 긴 목록의 시작·끝 스크롤은 유지한다. */
+.search-art-thumbs > .search-art-thumb:first-child { margin-inline-start: auto; }
+.search-art-thumbs > .search-art-thumb:last-child { margin-inline-end: auto; }
+
+.search-art-thumbs[data-dragging="true"] { cursor: grabbing; }
+.search-art-thumbs .search-art-thumb { cursor: inherit; }
+
 
 .search-art-thumb,
 .search-art-thumb:focus {

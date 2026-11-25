@@ -114,11 +114,11 @@
         if (style.getPropertyValue?.('--overlay-viewport-top') !== top) {
             style.setProperty('--overlay-viewport-top', top);
         }
-        for (const [panel, trigger] of popups) {
+        for (const [panel, { trigger, options }] of popups) {
             if (panel.isConnected === false) {
                 stopTransition(panel);
                 popups.delete(panel);
-            } else placePopup(panel, trigger);
+            } else placePopup(panel, trigger, options);
         }
     }
 
@@ -190,7 +190,7 @@
         };
     }
 
-    function placePopup(panel, trigger) {
+    function placePopup(panel, trigger, options = {}) {
         const viewTop = root.visualViewport?.offsetTop || 0;
         const viewHeight = root.visualViewport?.height || root.innerHeight;
         const viewLeft = root.visualViewport?.offsetLeft || 0;
@@ -198,21 +198,36 @@
         const rect = trigger?.getBoundingClientRect();
         const width = panel.offsetWidth;
         const height = panel.offsetHeight;
-        const left = Math.max(viewLeft + 16, Math.min(rect?.left ?? viewLeft + (viewWidth - width) / 2, viewLeft + viewWidth - width - 16));
+        const center = options.centerElement?.getBoundingClientRect();
+        const preferredLeft = center ? center.left + (center.width - width) / 2 : rect?.left ?? viewLeft + (viewWidth - width) / 2;
+        const left = Math.max(viewLeft + 16, Math.min(preferredLeft, viewLeft + viewWidth - width - 16));
         const preferred = rect ? rect.bottom + 8 : viewTop + (viewHeight - height) / 2;
         const above = rect ? rect.top - height - 8 : preferred;
         const top = Math.max(viewTop + 16, Math.min(preferred + height <= viewTop + viewHeight - 16 ? preferred : above, viewTop + viewHeight - height - 16));
-        panel.style.left = `${left}px`;
-        panel.style.top = `${top}px`;
+        let originLeft = 0, originTop = 0;
+        if (center) {
+            // 변환된 조상 안의 fixed 좌표를 뷰포트 좌표와 구분한다.
+            for (let parent = panel.parentElement; parent; parent = parent.parentElement) {
+                const style = getComputedStyle(parent);
+                if (style.transform && style.transform !== 'none') {
+                    const origin = parent.getBoundingClientRect();
+                    originLeft = origin.left + parent.clientLeft - parent.scrollLeft;
+                    originTop = origin.top + parent.clientTop - parent.scrollTop;
+                    break;
+                }
+            }
+        }
+        panel.style.left = `${left - originLeft}px`;
+        panel.style.top = `${top - originTop}px`;
     }
 
-    function openPopup(panel, trigger) {
+    function openPopup(panel, trigger, options = {}) {
         stopTransition(panel);
-        popups.set(panel, trigger);
+        popups.set(panel, { trigger, options });
         panel.hidden = false;
         panel.inert = false;
         panel.style.removeProperty('display');
-        placePopup(panel, trigger);
+        placePopup(panel, trigger, options);
         animate(panel, null, true, () => {});
     }
 
@@ -229,7 +244,7 @@
             const rect = panelRect(panel);
             panelSizes.set(panel, { height:rect.height, width:rect.width, animation:null });
         }
-        if (trigger !== undefined) popups.set(panel, trigger);
+        if (trigger !== undefined) popups.set(panel, { trigger, options: popups.get(panel)?.options || {} });
         update();
         syncPanelHeight(panel);
     }

@@ -3,8 +3,11 @@
     'use strict';
     const LIMIT = 96, KEY = 'ygo_login_timing_redirect_v1';
     const stages = new Set(['page_to_auth_state', 'provider_round_trip', 'id_token', 'app_check', 'http',
-        'response_json', 'registration_gate', 'user_data', 'claims_token', 'render', 'ui_ready_wait']);
+        'response_json', 'inventory_catalog', 'catalog_index', 'catalog_names', 'catalog_packs', 'catalog_rarities', 'catalog_metadata', 'inventory_receive', 'snapshot', 'registration_gate', 'user_data', 'claims_token', 'render', 'ui_ready_wait']);
     const operations = new Set(['login', 'getRegistrationStatus', 'getUserData']);
+    const serverStages=new Set(['api','identity','appcheck','inventory_read','membership_read','auth_account','login_catalog','catalog_read','catalog_connect','catalog_base','catalog_detail_sql','catalog_shape','json','compression',
+        'db_acquire','db_connect','db_prepare','db_pool_wait','db_begin','db_uid','db_state_sql','db_items_sql','db_catalog_sql','db_commit','db_rollback','db_read_batch',
+        'membership_db_acquire','membership_db_connect','membership_db_prepare','membership_db_pool_wait','membership_db_begin','membership_db_uid','membership_db_sql','membership_db_commit','membership_db_rollback','membership_db_read_batch']);
     const outcomes = new Set(['ready', 'failed', 'signup_required', 'superseded', 'signed_out']);
     let active, pendingPopup, recentPopup;
     const now = () => { try { return root.performance.now(); } catch (_) { return 0; } };
@@ -106,7 +109,7 @@
     }
     function startup() {
         // URL·쿼리·HTTP 본문은 반환하지 않고 고정 분류와 숫자만 사용한다.
-        const result = { scope: 'page', marks: { ...marks }, navigation: {}, resources: [] };
+        const result = { scope: 'page', marks: { ...marks }, visibility: ['visible','hidden'].includes(root.document?.visibilityState)?root.document.visibilityState:'unknown', navigation: {}, resources: [] };
         try {
             const n = root.performance.getEntriesByType('navigation')[0];
             if (n) for (const key of ['requestStart', 'responseStart', 'responseEnd', 'domInteractive', 'domContentLoadedEventStart', 'domContentLoadedEventEnd', 'loadEventStart']) {
@@ -118,6 +121,9 @@
                 ['/auth-bootstrap.js', 'auth_bootstrap'], ['/script.js', 'app_script'], ['/admin-session.js', 'admin_bridge'],
                 ['/hangul-js', 'hangul'], ['/ajax/libs/materialize/1.0.0/js/materialize.min.js', 'materialize'],
                 ['/xlsx-latest/package/dist/xlsx.full.min.js', 'xlsx'], ['/gsi/client', 'youtube_gis'],
+                ['/api/v2/environment','service_environment'], ['/api/v2/registration','service_registration'],
+                ['/api/v2/bootstrap','service_bootstrap'], ['/api/v2/catalog/inventory-batches','inventory_catalog'],
+                ['/api/v2/catalog/registration','legacy_inventory_catalog'], ['/api/v2/membership','membership'],
                 ['/__/auth/iframe', 'auth_iframe'], ['/__/auth/iframe.js', 'auth_iframe_script'],
             ]);
             for (const entry of root.performance.getEntriesByType('resource').slice(0, 300)) {
@@ -126,11 +132,17 @@
                 if (u.hostname === 'identitytoolkit.googleapis.com') category = path.endsWith('/accounts:signInWithIdp') ? 'auth_idp'
                     : path.endsWith('/accounts:lookup') ? 'auth_lookup' : 'auth_config';
                 if (u.hostname === 'securetoken.googleapis.com') category = 'auth_token_refresh';
-                if (u.hostname === 'firebaseappcheck.googleapis.com') category = 'app_check_exchange';
+                if (['firebaseappcheck.googleapis.com','content-firebaseappcheck.googleapis.com'].includes(u.hostname)) category = 'app_check_exchange';
+                if (['www.google.com','www.recaptcha.net'].includes(u.hostname) && path === '/recaptcha/enterprise.js') category = 'recaptcha_script';
+                if (['www.google.com','www.recaptcha.net'].includes(u.hostname) && path.startsWith('/recaptcha/enterprise/')) category = 'recaptcha_frame';
+                if (u.hostname === 'www.gstatic.com' && path.startsWith('/recaptcha/releases/')) category = 'recaptcha_runtime';
                 if (!category || result.resources.length >= 48) continue;
                 result.resources.push({ category, startMs: round(entry.startTime), durationMs: round(entry.duration),
                     responseStartMs: round(entry.responseStart), responseEndMs: round(entry.responseEnd),
-                    detailed: Number.isFinite(entry.responseStart) && entry.responseStart > 0 });
+                    detailed: Number.isFinite(entry.responseStart) && entry.responseStart > 0,
+                    ...Object.fromEntries(['encodedBodySize','decodedBodySize','transferSize'].filter(key=>Number.isFinite(entry[key])&&entry[key]>=0).map(key=>[key,round(entry[key])])),
+                    ...(Array.isArray(entry.serverTiming) && entry.serverTiming.some(s=>s.name==='api' && Number.isFinite(s.duration))
+                        ? {serverMs:round(entry.serverTiming.find(s=>s.name==='api').duration),serverPhases:Object.fromEntries(entry.serverTiming.filter(s=>serverStages.has(s.name)&&Number.isFinite(s.duration)&&s.duration>=0).map(s=>[s.name,round(s.duration)]))}:{}) });
             }
         } catch (_) { /* 브라우저 계측 제한이 로그인 결과에 영향을 주지 않게 한다. */ }
         return result;
@@ -173,7 +185,7 @@
         const started = now(), traceId = id(), spans = []; let finished = false;
         return {
             measure(name, work) {
-                if (!['registration_attempt', 'app_check_refresh', 'retry_delay', 'restore_wait', 'membership_request', 'claims_sync', 'final_sync', 'render'].includes(name)
+                if (!['registration_attempt', 'app_check_refresh', 'retry_delay', 'restore_wait', 'membership_request', 'inventory_restore_wait', 'claims_sync', 'final_sync', 'render'].includes(name)
                     || finished || spans.length >= 16) return work();
                 const span = { name, startMs: round(now() - started) }; spans.push(span);
                 const at = now(), end = ok => { span.durationMs = round(now() - at); span.ok = ok; };

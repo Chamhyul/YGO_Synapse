@@ -206,6 +206,7 @@ function ensureCatalogFilterState(state) {
 }
 
 async function loadCatalogSearchState(state, sequence) {
+    if (globalThis.AppBackend) return globalThis.AppBackend.loadCatalog(state, sequence);
     const isCurrent = () => sequence === searchSequence && lastSearchState === state && UIStore.mode === 'search';
     state.pending = true;
     state.error = '';

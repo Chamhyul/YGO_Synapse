@@ -1,0 +1,14 @@
+/* 관리자 작업 기록의 배치. 표면·곡률·강조는 기존 공통 조합을 사용한다. */
+.admin-log-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.admin-log-filters label { display: flex; flex-direction: column; gap: 8px; font-size: .8rem; }
+.admin-log-filters select { box-sizing: border-box; min-height: 44px; border: 0; padding: 12px 40px 12px 20px; font: inherit; color: var(--color-text); appearance: none; background-image: linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%); background-position: right 20px center,right 16px center; background-size: 4px 4px; background-repeat: no-repeat; }
+.admin-log-list { list-style: none; padding: 0; margin: 20px 0; display: grid; gap: 4px; }
+.admin-log-row summary { display: grid; grid-template-columns: minmax(180px,1.1fr) minmax(120px,1fr) minmax(180px,1.1fr) minmax(110px,.7fr); gap: 8px 16px; align-items: center; cursor: pointer; min-height: 56px; padding: 12px 16px; box-sizing: border-box; font-size: .8rem; overflow-wrap: anywhere; }
+.admin-log-row summary::-webkit-details-marker { display: none; }
+.admin-log-row summary strong { font-weight: 500; }
+.admin-log-row summary:is(:hover,:focus-visible) { background-color: var(--color-highlight-bg); color: var(--color-highlight-text); }
+.admin-log-row summary:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
+.admin-log-detail { padding: 4px 16px 16px; font-size: .8rem; line-height: 1.8; overflow-wrap: anywhere; }
+.admin-log-detail p { margin-block: 8px; }
+@media (max-width: 1100px) { .admin-log-row summary { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } }
+@media (max-width: 480px) { .admin-log-filters label { flex: 1 1 100%; } .admin-log-filters > button { margin-left: auto; } .admin-log-row summary { grid-template-columns: minmax(0,1fr); padding: 12px; } }

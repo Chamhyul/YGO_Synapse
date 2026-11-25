@@ -14,7 +14,7 @@
     function supported(response) {
         return response.headers?.get('Content-Type')?.split(';')[0].trim() === contentType;
     }
-    function read(response, { onRecorded = () => {}, onFailure = () => {} } = {}) {
+    function read(response, { onRecorded = () => {}, onFailure = () => {}, maxBytes = 1024 * 1024 } = {}) {
         if (!supported(response)) return response.json();
         return new Promise((resolve, reject) => {
             let resultReceived = false, terminal = false, failureReported = false, kind;
@@ -49,7 +49,7 @@
                         const { value, done } = await reader.read();
                         if (done) { buffer += decoder.decode(); break; }
                         bytes += value.byteLength;
-                        if (bytes > 1024 * 1024) throw new Error();
+                        if (bytes > maxBytes) throw new Error();
                         buffer += decoder.decode(value, { stream: true });
                         let newline;
                         while ((newline = buffer.indexOf('\n')) >= 0) {
