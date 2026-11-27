@@ -62,14 +62,15 @@ test('구형 CID 응답은 세부 정보를 보충하고 연결 캐시만 있어
     assert.equal(lookup, 1); assert.equal(metadata, 2);
 });
 
-test('동봉된 메타데이터는 실제 캐시 병합과 카드 종류 판독에 반영된다', async () => {
+test('검색 응답에 동봉된 메타데이터로 추가 조회 없이 결과 행의 카드 종류를 판별한다', async () => {
     const c = fixture(['카드 A']);
     vm.runInContext(appSource.slice(appSource.indexOf('function mergeCardMetaToCache('),
         appSource.indexOf('async function fetchCardMetaWithCache(')), c);
     c.callApi = async () => ({ success: true, results: { '카드 A': ['7'] }, metadata: { '7': { 0: ['카드 A', [], {}], 10: 2 } } });
     c.fetchCardsMetaBatch = async () => { throw new Error('중복 조회'); };
-    await c.resolveCatalogMatches(c.collectCatalogMatches('카드'), 1);
-    assert.equal(c.parseMetaKind(c.cidMetaMemoryCache.get('7')).kindStr, '함정');
+    const [card] = await c.resolveCatalogMatches(c.collectCatalogMatches('카드'), 1);
+    assert.equal(card.cid, '7');
+    assert.equal(c.getCatalogNormalizedMeta(card).kind, 'trap');
 });
 
 test('이름 100개·번호 50개 이후에도 검색하고 보유 우선 순위를 적용한다', () => {
@@ -188,24 +189,61 @@ test('이전 검색 응답은 새 검색 결과를 덮어쓰지 않는다', asyn
     assert.equal(renders.at(-1), '카드 B');
 });
 
-test('데스크톱 Enter는 강조된 추천이나 드롭다운 표시 여부와 무관하게 입력어를 검색한다', () => {
+function desktopSearchKeyboardFixture({ hidden = false, active = true, focus = -1, items = [] } = {}) {
     const begin = appSource.indexOf("        searchInput.addEventListener('keydown', function (e) {");
     const end = appSource.indexOf("        searchInput.addEventListener('blur'", begin);
     let keydown;
     const calls = [];
     const input = { value: '입력어', blur() {}, addEventListener(_, fn) { keydown = fn; } };
-    const list = { style: { display: 'block' }, querySelectorAll: () => [{ dataset: { val: '다른 추천' } }] };
+    const list = { hidden, classList: { contains: () => active }, querySelectorAll: () => items };
+    const UIStore = { dropdownFocus: focus };
     vm.runInNewContext(appSource.slice(begin, end), { searchInput: input,
-        document: { getElementById: () => list }, UIStore: { dropdownFocus: 0 },
+        document: { getElementById: () => list }, UIStore, checkClearBtn() {}, updateHighlight() {},
         startSearch: (...args) => calls.push(args) });
-    for (const display of ['block', 'none']) {
-        list.style.display = display;
-        keydown.call(input, { key: 'Enter', preventDefault() {} });
+    return { input, calls, press: (key, options = {}) => keydown.call(input, { key, preventDefault() {}, ...options }) };
+}
+
+test('데스크톱 방향키로 고른 이름·번호는 Enter로 해당 카드 상세 검색을 실행한다', () => {
+    const items = [
+        { dataset: { val: '선택 카드', type: 'name', isTarget: 'true' } },
+        { dataset: { val: 'ABC-KR001', type: 'number', isTarget: 'true' } },
+    ];
+    for (const [key, index] of [['ArrowDown', 0], ['ArrowUp', 1]]) {
+        const f = desktopSearchKeyboardFixture({ items });
+        f.press(key);
+        f.press('Enter');
+        assert.equal(f.input.value, items[index].dataset.val);
+        assert.deepEqual(f.calls, [[false, items[index].dataset.type, true]]);
     }
-    assert.equal(input.value, '입력어');
-    assert.deepEqual(calls, [[false, 'auto', false], [false, 'auto', false]]);
-    keydown.call(input, { key: 'Enter', isComposing: true });
-    assert.equal(calls.length, 2);
+});
+
+test('선택 없음·빈 목록·닫힌 목록·유효하지 않은 선택에서는 Enter로 입력어를 검색한다', () => {
+    const items = [{ dataset: { val: '다른 추천', type: 'name', isTarget: 'true' } }];
+    for (const options of [{ focus: -1 }, { focus: 0, hidden: true }, { focus: 0, active: false },
+        { focus: 4 }, { focus: 0, items: [] }]) {
+        const f = desktopSearchKeyboardFixture({ items, ...options });
+        f.press('Enter');
+        assert.equal(f.input.value, '입력어');
+        assert.deepEqual(f.calls, [[false, 'auto', false]]);
+    }
+});
+
+test('키보드로 고른 최근 검색은 일반 검색·상세 검색 구분을 보존한다', () => {
+    for (const isTarget of ['false', 'true']) {
+        const f = desktopSearchKeyboardFixture({ focus: 0,
+            items: [{ dataset: { val: '최근 카드', type: 'name', isTarget } }] });
+        f.press('Enter');
+        assert.equal(f.input.value, '최근 카드');
+        assert.deepEqual(f.calls, [[false, 'name', isTarget === 'true']]);
+    }
+});
+
+test('한글 조합 중 Enter는 선택된 자동완성이나 일반 검색을 실행하지 않는다', () => {
+    const f = desktopSearchKeyboardFixture({ focus: 0,
+        items: [{ dataset: { val: '선택 카드', type: 'name', isTarget: 'true' } }] });
+    f.press('Enter', { isComposing: true });
+    assert.equal(f.input.value, '입력어');
+    assert.deepEqual(f.calls, []);
 });
 
 test('언어·표시 수량은 같은 드롭다운 열기, 닫기, 키보드 선택 동작을 사용한다', () => {

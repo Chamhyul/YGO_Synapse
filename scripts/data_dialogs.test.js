@@ -147,10 +147,11 @@ test('결과는 5종·나머지 추가 매수, 전체 상세, 이스케이프와
   const f = fixture();
   f.context.showMigrationResultModal({ importedItems: Array.from({ length: 7 }, (_, i) => ({ ...done.importedItems[0], cid: String(i), name: '<가상 카드>', qty: i + 1 })) });
   assert.equal((f.element('migration-summary-body').innerHTML.match(/<li /g) || []).length, 5);
-  assert.equal((f.element('migration-detail-body').innerHTML.match(/<tr>/g) || []).length, 7);
+  assert.equal(f.element('migration-detail-body').innerHTML, '');
   assert.equal(f.element('migration-summary-rest').textContent, '그 외 13장');
-  assert.match(f.element('migration-detail-body').innerHTML, /&lt;가상 카드&gt;/);
   f.context.toggleMigrationResultView('detail'); assert.equal(f.element('migration-summary-table-box').hidden, true);
+  assert.equal((f.element('migration-detail-body').innerHTML.match(/<tr>/g) || []).length, 7);
+  assert.match(f.element('migration-detail-body').innerHTML, /&lt;가상 카드&gt;/);
   f.context.showMigrationResultModal({ updatedItems: [{ qty: 999 }] });
   assert.match(f.element('migration-success-text').textContent, /집계를 확인할 수 없습니다/);
   assert.equal(f.element('migration-summary-body').textContent, '');

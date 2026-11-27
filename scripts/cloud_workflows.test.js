@@ -52,6 +52,8 @@ test('외부 저장소 PR은 배포 작업을 실행하지 않으며 미리보�
   const deploy = job.steps.find(step => step.name === 'Deploy Hosting preview');
   assert.match(deploy.run, /hosting:channel:deploy/);
   assert.match(deploy.run, /--expires 7d/);
+  assert.match(deploy.run, /--config firebase\.pr-preview\.json/);
+  assert.match(deploy.run, /--no-authorized-domains/);
   assert.ok(!deploy.run.includes('--force'));
   for (const workflow of workflows) {
     for (const step of Object.values(workflow.jobs)[0].steps) {
@@ -60,7 +62,26 @@ test('외부 저장소 PR은 배포 작업을 실행하지 않으며 미리보�
   }
 });
 
-async function publishPreview(result, comments = []) {
+test('PR 설정은 운영 API나 관리자 함수를 연결하지 않고 시험 API만 사용한다', () => {
+  const config = JSON.parse(fs.readFileSync(path.join(root, 'firebase.pr-preview.json'), 'utf8'));
+  assert.deepEqual(Object.keys(config), ['hosting']);
+  assert.equal(config.hosting.site, 'ygo-synapse');
+  assert.equal(config.hosting.public, 'public');
+  assert.ok(config.hosting.ignore.includes('**/gha-creds-*.json'));
+  assert.deepEqual(config.hosting.rewrites, [
+    { source: '/api/v2/**', run: { serviceId: 'ygo-supabase-pr-preview', region: 'asia-northeast3' } },
+    { source: '**', destination: '/index.html' },
+  ]);
+  const production = JSON.parse(fs.readFileSync(path.join(root, 'firebase.json'), 'utf8'));
+  assert.equal(production.hosting.rewrites.find(rewrite => rewrite.source === '/api/v2/**').run.serviceId, 'ygo-supabase-production');
+});
+
+const prOrigin = 'https://ygo-synapse--pr-7-k3pcjmzo.web.app';
+const prResult = { status: 'success', result: { fixture: { url: prOrigin } } };
+
+async function publishPreview(result, comments = [], {
+  environment = 'preview', authMode = 'demo', allowOrigin = prOrigin,
+} = {}) {
   const calls = [];
   const job = Object.values(workflows[1].jobs)[0];
   const script = job.steps.find(step => step.name === 'Publish preview link').with.script;
@@ -68,7 +89,16 @@ async function publishPreview(result, comments = []) {
   await vm.runInNewContext(`(async () => {${script}\n})()`, {
     process: { env: { RUNNER_TEMP: '/fixture' } },
     require(name) { return name === 'node:fs' ? { readFileSync: () => JSON.stringify(result) } : path; },
-    URL, context: { repo: { owner: 'fixture', repo: 'fixture' }, payload: { pull_request: { number: 7, head: { sha: 'fixture-sha' } } } },
+    URL, AbortSignal, context: { repo: { owner: 'fixture', repo: 'fixture' }, payload: { pull_request: { number: 7, head: { sha: 'fixture-sha' } } } },
+    async fetch(url, options) {
+      assert.equal(options.redirect, 'error');
+      if (url === prOrigin + '/api/v2/environment') return new Response(JSON.stringify({ environment, authMode }));
+      assert.equal(url, prOrigin + '/api/v2/demo/session');
+      assert.equal(options.method, 'OPTIONS');
+      assert.equal(options.headers.Origin, prOrigin);
+      assert.equal(options.headers['Access-Control-Request-Method'], 'POST');
+      return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': allowOrigin } });
+    },
     core: { summary: { addHeading() { return this; }, addRaw() { return this; }, write: record('summary') } },
     github: { paginate: async () => comments, rest: {
       issues: { listComments() {}, createComment: record('create'), updateComment: record('update') },
@@ -79,11 +109,10 @@ async function publishPreview(result, comments = []) {
 }
 
 test('미리보기 주소 안내·기존 댓글 갱신·PR 커밋 검사를 보존한다', async () => {
-  const result = { status: 'success', result: { fixture: { url: 'https://fixture.web.app' } } };
-  const fresh = await publishPreview(result);
+  const fresh = await publishPreview(prResult);
   assert.equal(fresh.find(call => call.name === 'create').body.issue_number, 7);
   assert.equal(fresh.find(call => call.name === 'check').body.head_sha, 'fixture-sha');
-  const repeated = await publishPreview(result, [{ id: 42, user: { login: 'github-actions[bot]' }, body: '<!-- ygo-firebase-hosting-preview -->' }]);
+  const repeated = await publishPreview(prResult, [{ id: 42, user: { login: 'github-actions[bot]' }, body: '<!-- ygo-firebase-hosting-preview -->' }]);
   assert.equal(repeated.find(call => call.name === 'update').body.comment_id, 42);
   assert.ok(!repeated.some(call => call.name === 'create'));
 });
@@ -93,6 +122,11 @@ test('배포 실패·주소 없음·다른 출처 주소를 성공 안내로 게
     { status: 'success', result: { fixture: { url: 'https://example.invalid' } } }]) {
     await assert.rejects(publishPreview(result), /확인하지 못했습니다/);
   }
+});
+
+test('운영이나 샘플 로그인을 허용하지 않는 API는 미리보기 링크로 게시하지 않는다', async () => {
+  await assert.rejects(publishPreview(prResult, [], { environment: 'production', authMode: 'firebase' }), /시험 API 연결/);
+  await assert.rejects(publishPreview(prResult, [], { allowOrigin: 'https://ygo-synapse.web.app' }), /샘플 로그인 출처/);
 });
 
 test('임시 인증 설정은 Git·Hosting·Functions에서 제외한다', () => {

@@ -2,6 +2,7 @@
 
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
 const path = require('node:path');
 const Module = require('node:module');
 const { getApps } = require('firebase-admin/app');
@@ -446,9 +447,12 @@ test('HTTP 가입 조회 장애·지원하지 않는 프로필은 503으로 닫�
   const before = await rawProfile(uid), app = await harness();
   await app.call('getRegistrationStatus', uid, {}, { expectedStatus: 503 });
   await app.call('updateUserSettings', uid, { settings: { theme: 'dark' } }, { expectedStatus: 503 });
+  // 조회가 실패하는 계정이므로 공개 문서에서 유효한 버전을 얻어 저장 단계의 장애를 검사한다.
+  const consentVersions = Object.fromEntries(['terms', 'privacy'].map(name => [
+    name, createHash('sha256').update(readSourceFile(path.join(__dirname, '../../public', `${name}.html`))).digest('hex'),
+  ]));
   await app.call('completeRegistration', uid, { agreements: { terms: true, privacy: true },
-    consentVersions: { terms: 'a189fde0dce4ec14f7ae6b8b495674e42b455f1d453d785084ffd5a083dca7ca',
-      privacy: '227208e70b6de548fd8e081b50a0b01dd2adc6537d3c8d05fa80e60879ada2e8' } }, { expectedStatus: 503 });
+    consentVersions }, { expectedStatus: 503 });
   assert.deepEqual(await rawProfile(uid), before);
   const failed = await harness({ hook: (event, invoke) => {
     if (event.method === 'get' && event.path.startsWith('users/')) {

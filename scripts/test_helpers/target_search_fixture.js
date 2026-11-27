@@ -74,7 +74,7 @@ function fixture() {
         renderOwnedCardsToContainer() {}, updateSearchHash() {}, console,
     });
     const load = (from, to) => vm.runInContext(source.slice(source.indexOf(from), source.indexOf(to)), context);
-    load('function extractLangData(', 'function getCardMetaType(');
+    load('function extractLangData(', 'function findCidByNameOrNo(');
     load('function updateMemoryDecodedElements(', 'function getInventoryRowsByCidOrName(');
     load('async function renderTargetByCid(', 'function renderOwnedCardsToContainer(');
     return {

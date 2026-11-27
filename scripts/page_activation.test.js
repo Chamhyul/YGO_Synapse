@@ -93,13 +93,10 @@ function fixture({ initialPage = 'home' } = {}) {
   const manageSegment = element('manage-top-segment', 'ui-segment', pages.manage);
   for (const mode of ['add', 'move', 'discard']) element(`tab-mode-${mode}`, '', manageSegment, 'input');
   const manageForms = element('manage-mode-forms', '', pages.manage);
-  for (const id of ['general-mode-wrapper', 'form-pack-add', 'form-deck-add', 'manage-move-wrapper', 'manage-discard-wrapper']) {
+  for (const id of ['general-mode-wrapper', 'manage-move-wrapper', 'manage-discard-wrapper']) {
     element(id, 'mode-form anim-hidden', manageForms);
   }
   element('manage-auto-loc-container', '', pages.manage);
-  const table = element('manage-table-container', 'mode-form anim-hidden', pages.manage);
-  element('pack-table-area', '', table);
-  element('deck-table-area', '', table);
   const inventorySegment = element('inventory-segment', 'ui-segment', pages.inventory);
   const inventoryForms = element('inventory-mode-forms', '', pages.inventory);
   for (const mode of ['dashboard', 'list']) {
@@ -124,12 +121,11 @@ function fixture({ initialPage = 'home' } = {}) {
     document, URLSearchParams,
     window: { location, isAuthInitialized: true, scrollTo() {} },
     history: { pushState() { location.hash = ''; } },
-    UIStore: { mode: initialPage, lastManageMode: 'add', chipState: { add: 'general' }, inventoryMode: 'dashboard' },
-    PackDeckStore: { isPackTableGenerated: false, isDeckTableGenerated: false },
-    currentToastInstance: null, currentToastMessage: null, addSubMode: 'general',
+    UIStore: { mode: initialPage, lastManageMode: 'add', inventoryMode: 'dashboard' },
+    currentToastInstance: null, currentToastMessage: null,
     updateActiveNav() {}, toggleSearchWrapper() {}, initPageMove() {}, initPageDiscard() {},
     prepareMembershipEntry() {},
-    handleAutomationParams() {}, updateManageFooter() {}, renderInventoryGrid() {}, updateDashboardStats() {},
+    updateManageFooter() {}, renderInventoryGrid() {}, updateDashboardStats() {},
     requestAnimationFrame(fn) { frames.set(++frameId, fn); return frameId; },
     cancelAnimationFrame(id) { cancelledFrames.push(id); },
     setTimeout(fn) { timers.set(++timerId, fn); return timerId; },
@@ -138,8 +134,8 @@ function fixture({ initialPage = 'home' } = {}) {
   const stateStart = source.indexOf('let transitionTimer =');
   const helpersStart = source.indexOf('function setViewActive(');
   vm.runInContext(source.slice(stateStart, helpersStart) + [
-    'setViewActive', 'setModePanelActive', 'setActivePage', 'focusActivePage',
-    'switchToMode', 'switchInventoryMode', 'handleManageUI',
+    'setViewActive', 'setModePanelActive', 'setActivePage',
+    'switchToMode', 'switchInventoryMode', 'handleManageUI', 'handleHelpClick',
   ].map(functionSource).join('\n'), context);
   context.setActivePage(pages[initialPage]);
   const flushFrames = () => {
@@ -184,25 +180,25 @@ test('새로고침의 인증 복원을 기다린 뒤에도 제목에 자동 초�
 
 test('관리 페이지를 열어도 비활성 페이지와 내부 패널은 조작 불가능한 상태를 유지한다', () => {
   const { context: c, pages, nodes, document, flushFrames } = fixture();
-  c.switchToMode('add', true, 'general', null, true);
+  c.switchToMode('add', true);
   flushFrames();
   for (const [name, page] of Object.entries(pages)) {
     assert.equal(page.inert, name !== 'manage', name);
     assert.equal(page.classList.contains('active'), name === 'manage', name);
   }
   assert.equal(nodes.get('general-mode-wrapper').inert, false);
-  for (const id of ['form-pack-add', 'form-deck-add', 'manage-move-wrapper', 'manage-discard-wrapper', 'manage-table-container']) {
+  for (const id of ['manage-move-wrapper', 'manage-discard-wrapper']) {
     assert.equal(nodes.get(id).inert, true, id);
     assert.equal(nodes.get(id).classList.contains('anim-hidden'), true, id);
   }
-  assert.equal(document.activeElement, pages.manage.heading);
-  assert.equal(pages.manage.heading.getAttribute('tabindex'), '-1');
-  assert.equal(pages.manage.heading.focusCalls[0].preventScroll, true);
+  assert.equal(document.activeElement, document.body);
+  assert.equal(pages.manage.heading.hasAttribute('tabindex'), false);
+  assert.equal(pages.manage.heading.focusCalls.length, 0);
 });
 
 test('관리 패널 변경은 세그먼트 초점을 보존하고 비활성 패널만 잠근다', () => {
   const { context: c, nodes, document, flushFrames } = fixture();
-  c.switchToMode('add', true, 'general', null, true);
+  c.switchToMode('add', true);
   flushFrames();
   const segment = nodes.get('tab-mode-move');
   segment.focus();
@@ -271,18 +267,18 @@ test('취소된 이전 프레임이 늦게 실행되어도 최신 페이지와 �
   c.switchToMode('search');
   assert.ok(cancelledFrames.includes(oldId));
   flushFrames();
-  assert.equal(document.activeElement, pages.search.heading);
+  assert.equal(document.activeElement, document.body);
   staleFrame();
   assert.equal(pages.search.inert, false);
   assert.equal(pages.search.classList.contains('active'), true);
   assert.equal(pages.settings.inert, true);
   assert.equal(pages.settings.classList.contains('active'), false);
-  assert.equal(document.activeElement, pages.search.heading);
+  assert.equal(document.activeElement, document.body);
 });
 
 test('즉시 전환 직후 같은 관리 페이지의 패널을 바꾸면 no-transition이 남지 않는다', () => {
   const { context: c, pages, nodes, document, frames, cancelledFrames, flushFrames } = fixture();
-  c.switchToMode('add', true, 'general', null, true);
+  c.switchToMode('add', true);
   assert.equal(document.body.classList.contains('no-transition'), true);
   const [oldId, staleFrame] = [...frames][0];
   const segment = nodes.get('tab-mode-move');
@@ -300,6 +296,24 @@ test('즉시 전환 직후 같은 관리 페이지의 패널을 바꾸면 no-tra
 });
 
 
+test('검색 상단 사용법은 홈에서만 초점을 받고 홈 온보딩을 연다', () => {
+  const { context: c, document, shell, element } = fixture();
+  const help = element('help', 'help-trigger-btn', shell, 'button');
+  const starts = [];
+  c.OnboardingManager = { isActive: () => false, start: (...args) => starts.push(args) };
+  c.switchToMode('settings', true);
+  help.focus();
+  assert.equal(help.inert, true);
+  assert.notEqual(document.activeElement, help);
+  c.handleHelpClick();
+  assert.deepEqual(starts, []);
+  c.switchToMode('home', true);
+  help.focus();
+  assert.equal(document.activeElement, help);
+  c.handleHelpClick();
+  assert.deepEqual(starts, [['home', true]]);
+});
+
 test('모바일 로고는 홈 이탈 직후 탐색에서 제외되고 홈 복귀 시 다시 조작할 수 있다', () => {
   for (const mobile of [true, false]) {
     const { context: c, document, shell, element, flushFrames } = fixture();
@@ -310,6 +324,7 @@ test('모바일 로고는 홈 이탈 직후 탐색에서 제외되고 홈 복귀
       c.switchToMode(mode);
       assert.equal(masthead.inert, mobile, `${mobile}: ${mode} 퇴장 중`);
       flushFrames();
+      logo.blur();
       logo.focus();
       assert.equal(document.activeElement === logo, !mobile, `${mobile}: ${mode} 로고 초점`);
       c.switchToMode('home');

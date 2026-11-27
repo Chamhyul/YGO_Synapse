@@ -150,6 +150,8 @@ test('원본과 대기 기록은 하나의 배치로 저장하며 실패를 전�
 
 test('운영·로컬 주소 목록이 서버 등록과 일치하고 레거시 호출이 없다',async()=>{
   const source=readSourceFile(path.join(__dirname,'../../public/script.js'),'utf8');
+  const lookup=readSourceFile(path.join(__dirname,'../../public/registration-lookup.js'),'utf8');
+  assert.match(lookup,/callApi\('crawlPackCardsBatch',[\s\S]*?window\.AppBackend \? \{ cids, signal \} : \{ cids \}\)/);
   const configEnd=source.indexOf('const FIREBASE_CONFIG =');
   assert.ok(configEnd>0,'API 설정과 토큰 준비 코드의 경계를 확인해야 합니다.');
   const configBlockEnd=source.indexOf('\n};',configEnd)+3;
@@ -178,12 +180,13 @@ test('운영·로컬 주소 목록이 서버 등록과 일치하고 레거시 �
         // 사진 검색은 모델·인덱스 운영 키 없이 고정 운영 API를 사용한다.
         assert.equal(sandbox.endpoints.searchCardByImage, 'https://asia-northeast3-ygo-synapse.cloudfunctions.net/searchCardByImage');
         assert.ok(sandbox.endpoints.crawlPackCardsBatch.startsWith(`http://${localHost}:${functionsPort}/`));
-        assert.match(source,/callApi\('crawlPackCardsBatch',[\s\S]*?\{ cids \}\)/);
       }
       if(hostname==='ygo-synapse.web.app') {
         assert.ok(Object.values(sandbox.endpoints).every(url => url.startsWith('https://asia-northeast3-ygo-synapse.cloudfunctions.net/')));
       }
-      for(const match of source.matchAll(/callApi\(['"]([^'"]+)['"]/g))assert.ok(sandbox.endpoints[match[1]],match[1]);
+      for(const script of [source, lookup]){
+        for(const match of script.matchAll(/callApi\(['"]([^'"]+)['"]/g))assert.ok(sandbox.endpoints[match[1]],match[1]);
+      }
       for(const name of ['keepAlivePing','checkMembership','cleanNumbersCollection','buildIndex'])assert.equal(sandbox.endpoints[name],undefined);
     }
   }

@@ -97,8 +97,8 @@ const importMessages = {
 };
 // 기존 가입 API와 같은 공개 문서의 SHA-256을 사용한다.
 const consentVersions = Object.freeze({
-  terms: 'a189fde0dce4ec14f7ae6b8b495674e42b455f1d453d785084ffd5a083dca7ca',
-  privacy: '227208e70b6de548fd8e081b50a0b01dd2adc6537d3c8d05fa80e60879ada2e8',
+  terms: '966011b1ef355861d244dc75753102257809b936cb26a46143bd6b21e5fd17f9',
+  privacy: '6735e5dcac3b618c633257b46dbede1085181828dd09eb3832d927d9382e5182',
 });
 const importStatusPaths = new Set(['/api/v2/migrateFromData', '/api/v2/migrateFromSheet']);
 function validateBodyHeaders(req, maxBytes) {

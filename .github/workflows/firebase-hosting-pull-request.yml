@@ -43,7 +43,7 @@ jobs:
           PREVIEW_CHANNEL: pr-${{ github.event.pull_request.number }}
         run: |
           set -o pipefail
-          npx firebase-tools@15.12.0 hosting:channel:deploy "$PREVIEW_CHANNEL" --project ygo-synapse --expires 7d --non-interactive --json | tee "$RUNNER_TEMP/hosting-preview.json"
+          npx firebase-tools@15.12.0 hosting:channel:deploy "$PREVIEW_CHANNEL" --config firebase.pr-preview.json --project ygo-synapse --expires 7d --no-authorized-domains --non-interactive --json | tee "$RUNNER_TEMP/hosting-preview.json"
       - name: Publish preview link
         uses: actions/github-script@v7
         with:
@@ -55,8 +55,23 @@ jobs:
             const urls = Object.values(deployment.result || {}).map(site => site.url).filter(Boolean);
             if (!urls.length || urls.some(value => {
               const url = new URL(value);
-              return url.protocol !== 'https:' || !url.hostname.endsWith('.web.app');
+              return !new RegExp(`^https://ygo-synapse--pr-${context.payload.pull_request.number}-[a-z0-9]+\\.web\\.app$`).test(url.origin)
+                || url.href !== url.origin + '/';
             })) throw new Error('미리보기 주소를 확인하지 못했습니다.');
+            for (const value of urls) {
+              const origin = new URL(value).origin;
+              const environment = await fetch(origin + '/api/v2/environment', { redirect: 'error', signal: AbortSignal.timeout(20000) });
+              if (!environment.ok) throw new Error('미리보기 API에 연결할 수 없습니다.');
+              const { environment: mode, authMode } = await environment.json();
+              if (mode !== 'preview' || authMode !== 'demo') throw new Error('샘플 전용 시험 API 연결을 확인하지 못했습니다.');
+              const probe = await fetch(origin + '/api/v2/demo/session', {
+                method: 'OPTIONS', headers: { Origin: origin, 'Access-Control-Request-Method': 'POST' },
+                redirect: 'error', signal: AbortSignal.timeout(20000),
+              });
+              if (probe.status !== 204 || probe.headers.get('access-control-allow-origin') !== origin) {
+                throw new Error('미리보기에서 샘플 로그인 출처가 허용되지 않습니다.');
+              }
+            }
             const links = urls.map(url => `[미리보기 열기](${url})`).join('\n');
             await core.summary.addHeading('Firebase Hosting 미리보기').addRaw(links).write();
             const marker = '<!-- ygo-firebase-hosting-preview -->';

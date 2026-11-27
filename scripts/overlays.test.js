@@ -11,7 +11,7 @@ function fixture({ mobile = false, reduced = false } = {}) {
     const animations = [];
     const style = { setProperty(name, value) { this[name] = value; }, removeProperty(name) { delete this[name]; } };
     return {
-      style, animations, hidden: false, offsetWidth: 400, offsetHeight: 240,
+      style, animations, dataset: {}, hidden: false, offsetWidth: 400, offsetHeight: 240,
       classList: {
         contains: value => classes.has(value), add: (...values) => values.forEach(value => classes.add(value)),
         toggle(value, active) { if (active) classes.add(value); else classes.delete(value); },
@@ -37,6 +37,7 @@ function fixture({ mobile = false, reduced = false } = {}) {
   vm.runInContext(source, context);
   const calls = [];
   const modal = element('ui-overlay ui-overlay__panel');
+  modal.hidden = true;
   const backdrop = element();
   const instance = { el: modal, $overlay: { 0: backdrop, remove: () => calls.push('remove') },
     options: { onOpenEnd: () => calls.push('openEnd'), onCloseEnd: () => calls.push('closeEnd') } };
@@ -51,16 +52,21 @@ function fixture({ mobile = false, reduced = false } = {}) {
 test('모달과 배경막의 공통 전환이 끝난 후 종료 콜백을 한 번 호출한다', async () => {
   const f = fixture();
   f.instance._animateIn();
-  assert.equal(f.modal.style.display, 'flex');
+  assert.equal(f.modal.hidden, false);
   assert.equal(f.modal.classList.contains('ui-overlay--modal'), true);
   assert.equal(f.modal.animations[0].options.duration, 200);
   assert.equal(f.modal.animations[0].options.easing, 'ease');
+  assert.equal(f.backdrop.classList.contains('color-backdrop-navi'), true);
+  assert.deepEqual(Array.from(f.backdrop.animations[0].frames, frame => frame.opacity), [0, 1]);
   await f.flush(f.modal, f.backdrop);
+  assert.equal(f.backdrop.classList.contains('active'), true);
+  assert.equal(f.backdrop.style.opacity, undefined);
   assert.deepEqual(f.calls, ['openEnd']);
   f.instance._animateOut();
-  assert.equal(f.modal.style.display, 'flex', '종료 전에는 공통 수명주기가 잠금을 계속 소유한다');
+  assert.equal(f.modal.hidden, false, '종료 전에는 공통 수명주기가 잠금을 계속 소유한다');
   await f.flush(f.modal, f.backdrop);
-  assert.equal(f.modal.style.display, 'none');
+  assert.equal(f.backdrop.classList.contains('active'), false);
+  assert.equal(f.modal.hidden, true);
   assert.deepEqual(f.calls, ['openEnd', 'remove', 'closeEnd']);
 });
 
@@ -72,8 +78,8 @@ test('닫힘 도중 다시 열면 이전 종료가 패널을 숨기거나 closeE
   f.instance._animateIn();
   stale.forEach(animation => animation.finish());
   await f.flush(f.modal, f.backdrop);
-  assert.equal(f.modal.style.display, 'flex');
-  assert.equal(f.modal.style.opacity, '1');
+  assert.equal(f.modal.hidden, false);
+  assert.equal(f.modal.style.opacity, undefined);
   assert.deepEqual(f.calls, ['openEnd', 'openEnd']);
 });
 
@@ -85,8 +91,24 @@ test('모바일 모달은 시트 외곽·그림자를 선택하고 감소된 모
   assert.equal(f.modal.classList.contains('shadow-modal'), false);
   assert.equal(f.modal.animations.length, 0);
   f.instance._animateOut();
-  assert.equal(f.modal.style.display, 'none');
+  assert.equal(f.modal.hidden, true);
   assert.deepEqual(f.calls, ['openEnd', 'remove', 'closeEnd']);
+});
+
+test('CSS 표시 모달은 종료까지 배치하고 재열기 뒤 이전 숨김을 무시한다', async () => {
+  const f = fixture();
+  assert.equal(f.modal.hidden, true);
+  f.instance._animateIn(); await f.flush(f.modal, f.backdrop);
+  f.instance._animateOut();
+  assert.equal(f.modal.hidden, false);
+  f.instance._animateIn(); await f.flush(f.modal, f.backdrop);
+  assert.equal(f.modal.hidden, false);
+  assert.deepEqual(f.calls, ['openEnd', 'openEnd']);
+  f.instance._animateOut(); await f.flush(f.modal, f.backdrop);
+  assert.equal(f.modal.hidden, true);
+  assert.equal(f.modal.style.display, undefined);
+  assert.equal(f.modal.style.opacity, undefined);
+  assert.deepEqual(f.calls, ['openEnd', 'openEnd', 'remove', 'closeEnd']);
 });
 
 test('키보드의 visualViewport 변화는 공통 가용 높이와 상단 위치에 반영된다', () => {
@@ -113,6 +135,7 @@ test('화면 경계의 팝업은 앵커 위로 배치하며 다시 열면 늦은
   assert.notEqual(panel.style.display, 'none');
   f.api.closePopup(panel); await f.flush(panel);
   assert.equal(panel.hidden, true);
+  assert.equal(panel.style.display, undefined);
 });
 
 
@@ -128,6 +151,16 @@ test('팝업 재열기는 이전 DOM 제거를 취소하며 최종 종료만 콜
   assert.equal(removed, 0);
   f.api.closePopup(panel, () => removed++); await f.flush(panel);
   assert.equal(removed, 1);
+});
+
+test('CSS 기본 불투명도를 사용하는 팝업은 전환 뒤 인라인 opacity를 남기지 않는다', async () => {
+  const f = fixture();
+  const panel = f.element('ui-overlay--popup');
+  f.api.openPopup(panel); await f.flush(panel);
+  assert.equal(panel.style.opacity, undefined);
+  f.api.closePopup(panel); await f.flush(panel);
+  assert.equal(panel.hidden, true);
+  assert.equal(panel.style.opacity, undefined);
 });
 
 
@@ -152,7 +185,7 @@ function sizeFixture({ reduced = false, sheet = false, popup = false } = {}) {
   const panel = {
     nodeType: 1, isConnected: true, height: 400, width: 600, hidden: false, activeAnimation: null,
     matches: selector => selector === '.ui-overlay__panel' || selector.includes(popup ? '.ui-overlay--popup' : sheet ? '.ui-overlay--sheet' : '.ui-overlay--modal'),
-    closest: selector => selector === '.ui-overlay__panel' ? panel : panel.hidden ? panel : null,
+    closest: selector => selector.includes('.ui-overlay__panel') ? panel : panel.hidden ? panel : null,
     contains: node => node === panel || node === body,
     querySelectorAll: () => [],
     getBoundingClientRect: () => ({ height: panel.activeAnimation?.currentHeight ?? (panel.hidden ? 0 : panel.height), width: panel.width }),
@@ -269,8 +302,8 @@ test('나중에 추가한 시트도 관찰하되 팝업은 높이 전환 대상�
   const dynamic = {
     nodeType: 1, isConnected: true,
     contains: node => node === dynamic,
-    matches: selector => selector === '.ui-overlay__panel' || sheet,
-    closest: selector => selector === '.ui-overlay__panel' ? dynamic : null,
+    matches: selector => selector.includes('.ui-overlay__panel') || (sheet && selector.includes('.ui-overlay--sheet')),
+    closest: selector => selector.includes('.ui-overlay__panel') ? dynamic : null,
     querySelectorAll: () => [],
     getBoundingClientRect: () => ({ height, width: 375 }),
     animate(frames) {

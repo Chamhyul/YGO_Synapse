@@ -15,7 +15,7 @@ function functionSource(name) {
 
 // 관리 HTML 생성 결과를 작은 DOM으로 읽는다. 레이아웃·CSS 엔진을 대체하지 않으며,
 // 외부 위젯/네트워크만 격리하고 행 생성·추가·삭제·재번호화는 앱 함수를 실행한다.
-function fixture(view, mode, subMode = 'general') {
+function fixture(view, mode) {
     const document = { activeElement: null };
     const dataKey = name => name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
     const decode = value => value.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
@@ -129,17 +129,17 @@ function fixture(view, mode, subMode = 'general') {
     const wrapper = document.body.appendChild(new Element());
     wrapper.className = `${view}-cards-wrapper`;
     const list = wrapper.appendChild(new Element());
-    list.id = `${view}-cards-list-${mode === 'add' ? subMode : mode}`;
+    list.id = `${view}-cards-list-${mode === 'add' ? 'general' : mode}`;
     list.className = `${view}-cards-list`;
     document.getElementById = id => document.documentElement.querySelector(`#${id}`);
     document.createElement = tag => new Element(tag);
     const c = vm.createContext({
-        document, console, UIStore: { mode }, addSubMode: subMode, currentEditingRowIndex: -1,
+        document, console, UIStore: { mode }, currentEditingRowIndex: -1,
         IllustrationImages: { label: value => value || '' },
         getLocalizedRarity: value => value || '',
         setIllustrationValue(input, value) { input.value = value; },
         getIllustrationValue: input => input?.dataset.raw || input?.value || '',
-        initCardWidgets() {}, restoreDesktopDropdownOptions() {}, lockNameInputAndSetLink() {},
+        initCardWidgets() {}, releaseDesktopCardFields() {}, restoreDesktopDropdownOptions() {}, lockNameInputAndSetLink() {},
     });
     const functions = [
         'escapeHTML', 'getSelectWrapperState', 'restoreSelectWrapperState', 'getDesktopCardData', 'updateManagementCardStack',
@@ -151,7 +151,7 @@ function fixture(view, mode, subMode = 'general') {
     vm.runInContext(functions.map(functionSource).join('\n'), c);
     return {
         c, list, document,
-        add: data => c[`${view}AddEntry`](mode, subMode, data),
+        add: data => c[`${view}AddEntry`](mode, data),
         rows: () => list.querySelectorAll(`.${view}-info-card`),
         reindex: () => c[view === 'mobile' ? 'reindexMobileCards' : 'reindexDesktopCards'](list),
         remove(row) {
@@ -181,9 +181,24 @@ function assertStack(f) {
 }
 
 for (const view of ['desktop', 'mobile']) {
-    for (const [mode, subMode] of [['add', 'general'], ['add', 'pack'], ['add', 'deck'], ['move', 'general'], ['discard', 'general']]) {
-        test(`${view} ${mode}/${subMode}: 추가·삭제·재번호화가 접합과 교차색을 갱신하고 기존 입력을 보존한다`, () => {
-            const f = fixture(view, mode, subMode);
+    for (const mode of ['add', 'move', 'discard']) {
+        test(`${view} ${mode}: 목록을 다시 그려도 마지막 행의 삭제를 막는다`, () => {
+            const f = fixture(view, mode);
+            f.add(data(1));
+            f.c[view === 'desktop' ? 'renderDesktopCardsFromData' : 'renderMobileCardsFromData']([data(1)]);
+            const first = f.rows()[0];
+            assert.ok(first.querySelector('.btn-card-action.delete').hasAttribute('disabled'));
+            f.remove(first);
+            assert.deepEqual(f.rows(), [first]);
+
+            f.c[view === 'desktop' ? 'renderDesktopCardsFromData' : 'renderMobileCardsFromData']([data(1), data(2)]);
+            assert.ok(f.rows().every(row => !row.querySelector('.btn-card-action.delete').hasAttribute('disabled')));
+            f.remove(f.rows()[1]);
+            assert.ok(f.rows()[0].querySelector('.btn-card-action.delete').hasAttribute('disabled'));
+        });
+
+        test(`${view} ${mode}: 추가·삭제·재번호화가 접합과 교차색을 갱신하고 기존 입력을 보존한다`, () => {
+            const f = fixture(view, mode);
             const first = f.add(data(1));
             assertStack(f);
             const inputs = first.querySelectorAll('input');
@@ -217,7 +232,9 @@ for (const view of ['desktop', 'mobile']) {
                 f.remove(last);
                 assert.deepEqual(f.rows(), [last], '데스크톱 마지막 행 삭제 방지 유지');
             } else {
-                assert.equal(last.querySelector('.btn-card-action.edit').getAttribute('onclick'), 'openEditBottomSheet(0)');
+                assert.equal(last.querySelector('.btn-card-action.edit'), null);
+                assert.equal(last.querySelector('button.card-title-text').getAttribute('aria-haspopup'), 'dialog');
+                assert.equal(last.getAttribute('onclick'), 'handleMobileCardClick(event)');
                 const removeName = mode === 'move' ? 'triggerMobileMoveDelete' : mode === 'discard' ? 'triggerMobileDiscardDelete' : 'triggerMobileDelete';
                 assert.equal(last.querySelector('.btn-card-action.delete').getAttribute('onclick'), `${removeName}(0)`);
             }

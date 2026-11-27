@@ -1,0 +1,53 @@
+# GitHub PR Hosting 전용 샘플 API 및 휘발성 샘플 DB.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: ygo-supabase-pr-preview
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/invoker-iam-disabled: 'true'
+    run.googleapis.com/minScale: '0'
+    run.googleapis.com/maxScale: '1'
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: '1'
+        run.googleapis.com/startup-cpu-boost: 'true'
+        run.googleapis.com/container-dependencies: '{"api":["pack-db"]}'
+    spec:
+      serviceAccountName: synapse-transition-preview@ygo-synapse.iam.gserviceaccount.com
+      containerConcurrency: 8
+      timeoutSeconds: 30
+      containers:
+        - name: api
+          image: asia-northeast3-docker.pkg.dev/ygo-synapse/supabase-transition/api@sha256:177ae82c8c1793d8fcbbac74bc3945bec8157438f93c6965f2b1ce3d88b0499c
+          ports: [{ containerPort: 8080 }]
+          resources:
+            limits: { cpu: '1', memory: 256Mi }
+          env:
+            - { name: TRANSITION_ENV, value: preview }
+            - { name: TRANSITION_AUTH_MODE, value: demo }
+            - { name: SUPABASE_PROJECT_REF, value: xeipznzgzvmybnsxavin }
+            - { name: TRANSITION_ALLOWED_ORIGINS, value: 'https://ygo-synapse--supabase-transition-k3pcjmzo.web.app' }
+            - { name: TRANSITION_ARTWORK_BUCKET, value: ygo-synapse-transition-artworks }
+            - { name: TRANSITION_PACK_PREVIEW_DB, value: '1' }
+            - { name: TRANSITION_PREVIEW_INVENTORY_DB, value: '1' }
+            - name: TRANSITION_SESSION_SECRET
+              valueFrom:
+                secretKeyRef: { name: ygo-synapse-transition-session, key: latest }
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: ygo-synapse-transition-db, key: latest }
+          startupProbe:
+            tcpSocket: { port: 8080 }
+            periodSeconds: 5
+            failureThreshold: 12
+        - name: pack-db
+          image: asia-northeast3-docker.pkg.dev/ygo-synapse/supabase-transition/pack-preview-db@sha256:2d66923e9771388de8d1637ca9bc2f2a8bf469ce574f4c04efef29266c6fecc2
+          resources:
+            limits: { cpu: '1', memory: 768Mi }
+          startupProbe:
+            tcpSocket: { port: 5432 }
+            periodSeconds: 2
+            failureThreshold: 15

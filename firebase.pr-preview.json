@@ -1,0 +1,31 @@
+{
+  "hosting": {
+    "site": "ygo-synapse",
+    "public": "public",
+    "ignore": [
+      "**/.*",
+      "**/node_modules/**",
+      "**/gha-creds-*.json",
+      "**/*.log"
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-store" },
+          { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+        ]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "/api/v2/**",
+        "run": {
+          "serviceId": "ygo-supabase-pr-preview",
+          "region": "asia-northeast3"
+        }
+      },
+      { "source": "**", "destination": "/index.html" }
+    ]
+  }
+}
