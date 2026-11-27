@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../public/script.js'), 'utf8');
 
 test('모바일 자동완성은 기존 최근 검색 칩 아래를 갱신한다', () => {
-  const list = { children: [], classList: { add() {} }, appendChild(child) { this.children.push(child); }, querySelector() { return this.children.find(c => c.className === 'mobile-recent-container'); } };
+  const list = { children: [], style: {}, classList: { add() {} }, appendChild(child) { this.children.push(child); }, querySelector() { return this.children.find(c => c.className === 'mobile-recent-container'); } };
   function element(className = '') {
     const node = { className, remove() { list.children.splice(list.children.indexOf(this), 1); } };
     node.classList = { contains: name => node.className.split(/\s+/).includes(name) };
@@ -68,7 +68,7 @@ test('모바일 지우기 후 예약된 검색은 최근 검색 목록을 덮어
 
 function mobileSearchMotionFixture({ reduced = false } = {}) {
   const classes = new Set();
-  const overlay = { style: { display: 'none' }, offsetHeight: 800,
+  const overlay = { hidden: true, offsetHeight: 800,
     classList: { add: name => classes.add(name), remove: name => classes.delete(name), contains: name => classes.has(name) } };
   const input = { value: '이전 검색', focus() {} };
   const clear = { hidden: false };
@@ -103,15 +103,16 @@ test('모바일 검색을 닫는 중 다시 열면 이전 종료가 새 화면�
   assert.equal(f.overlay.classList.contains('active'), true);
   assert.equal(f.clear.hidden, true);
   f.c.closeMobileSearch(true);
+  assert.equal(f.overlay.hidden, false);
   assert.equal([...f.timers.values()][0].duration, 200);
   f.c.openMobileSearch(); f.flushFrames();
   f.input.value = '새 검색';
   f.flushTimers();
-  assert.equal(f.overlay.style.display, 'flex');
+  assert.equal(f.overlay.hidden, false);
   assert.equal(f.overlay.classList.contains('active'), true);
   assert.equal(f.input.value, '새 검색');
   f.c.closeMobileSearch(); f.flushTimers();
-  assert.equal(f.overlay.style.display, 'none');
+  assert.equal(f.overlay.hidden, true);
   assert.equal(f.input.value, '');
 });
 
@@ -120,7 +121,7 @@ test('모바일 검색이 열림 프레임 전에 닫혀도 뒤늦게 활성화�
   f.c.openMobileSearch(); f.c.closeMobileSearch(true);
   f.flushFrames(); f.flushTimers();
   assert.equal(f.overlay.classList.contains('active'), false);
-  assert.equal(f.overlay.style.display, 'none');
+  assert.equal(f.overlay.hidden, true);
 });
 
 test('모바일 검색은 감소된 모션에서 애니메이션 지연 없이 종료한다', () => {
@@ -128,5 +129,5 @@ test('모바일 검색은 감소된 모션에서 애니메이션 지연 없이 �
   f.c.openMobileSearch(); f.flushFrames(); f.c.closeMobileSearch(true);
   assert.equal([...f.timers.values()][0].duration, 0);
   f.flushTimers();
-  assert.equal(f.overlay.style.display, 'none');
+  assert.equal(f.overlay.hidden, true);
 });

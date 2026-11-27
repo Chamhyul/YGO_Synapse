@@ -26,6 +26,10 @@
   background-color: var(--color-bg);
 }
 
+.color-backdrop-navi {
+  --color-bg: color-mix(in srgb, var(--surface-navi) 80%, transparent);
+}
+
 .color-text-000 {
   --color-text: var(--text-000);
   --color-highlight-text: var(--text-000);
@@ -309,8 +313,9 @@ input[type="text"].ui-input--filled.border-theme:focus:not([readonly]) {
   border: 1px solid transparent;
 }
 
-.border-cardinput:is(:hover, :focus, :focus-within) {
-  border-color: var(--theme-000);
+.border-cardinput:is(:hover, :focus, :focus-within),
+.custom-select-wrapper:is(:hover, .active) > .border-cardinput {
+  border-color: var(--border-highlight, var(--theme-000));
 }
 
 .border-section-000,
@@ -359,6 +364,18 @@ input[type="text"].ui-input--filled.border-theme:focus:not([readonly]) {
 .ui-button:where(:not(.ui-button--text):not(:disabled):not([aria-disabled="true"])):is(:hover, :focus-visible) {
   background-color: var(--color-highlight-bg, var(--color-bg, transparent));
   color: var(--color-highlight-text, var(--color-text, inherit));
+}
+
+/* 페이지 본문의 로그인 안내 버튼 크기와 글자. */
+.ui-button--sign-in {
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 10px 20px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 /* 글자색은 color-* 조합이 제공하며 기본적으로 호버·키보드 포커스를 강조한다. */
@@ -670,6 +687,10 @@ input[type="number"].ui-input--filled::placeholder {
   transform: translateX(200%);
 }
 
+.ui-segment__input:nth-of-type(4):checked ~ .ui-segment__indicator {
+  transform: translateX(300%);
+}
+
 .ui-segment--compact > .ui-segment__option {
   flex: none;
   width: var(--segment-option-width);
@@ -797,7 +818,7 @@ html.is-mobile-device .ui-segment--compact {
   box-sizing: border-box;
 }
 
-/* 공통 로딩 링. 미이관 모달은 기존 색상 fallback을 유지한다. */
+/* 공통 로딩 링의 둘레 색상은 조합 클래스에서 받는다. */
 :where(.loading-spinner-small) {
   --color-bg: initial;
   --color-text: initial;
@@ -806,7 +827,7 @@ html.is-mobile-device .ui-segment--compact {
 .loading-spinner-small {
   width: 20px;
   height: 20px;
-  border: 2px solid var(--color-bg, var(--spinner-track));
+  border: 2px solid var(--color-bg);
   border-top: 2px solid var(--color-text, var(--theme-000));
   border-radius: 50%;
   animation: spinDash 1s linear infinite;

@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="ko" id="synapse-landing">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="카드 검색부터 등록, 보관 위치와 보유 현황까지. 유희왕 실물 카드 관리 서비스 YGO Synapse.">
+  <title>YGO Synapse — 유희왕 카드 관리</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="stylesheet" href="/vendor/ui/c8dc98a6aff552aa5348aade3e19a65c50d59873fb304b06aafb5fa64a825908.css">
+  <link rel="stylesheet" href="/vendor/ui/aba72a1d60bf725f6cabcd9bc940ea546707378936e5f1a3b4b1f7d4885d1854.css">
+  <link rel="stylesheet" href="/vendor/ui/65db03ecf48e2c4b24c7020615d9d3c96dd1540536df57301ac7ea84eaed8b74.css">
+  <link rel="stylesheet" href="/vendor/ui/452b88e08deeba5cb9bb31c2cee114561c7120f4a9ccc2eb65c8b602cd4b63eb.css">
+  <link rel="stylesheet" href="/styles/tokens.css?v=20261124-service-css-cleanup">
+  <link rel="stylesheet" href="/styles/base.css?v=20261124-css-structure">
+  <link rel="stylesheet" href="/styles/components.css?v=20261125-card-input-border">
+  <link rel="stylesheet" href="/styles/field-controls.css?v=20261125-search-text">
+  <link rel="stylesheet" href="/styles/management.css?v=20261125-form-actions">
+  <link rel="stylesheet" href="/styles/desktop-card-fields.css?v=20261125-form-actions">
+  <link rel="stylesheet" href="/styles/card-row-actions.css?v=20261125-form-actions">
+  <link rel="stylesheet" href="/styles/search.css?v=20261125-ui-standardization">
+  <link rel="stylesheet" href="/styles/overlays.css?v=20261125-ui-standardization">
+  <link rel="stylesheet" href="/styles/dashboard.css?v=154-ui-structure">
+  <link rel="stylesheet" href="/styles/layout.css?v=20261124-css-structure">
+  <link rel="stylesheet" href="/landing/landing.css?v=20261125-small-button">
+  <script src="/landing/landing.js?v=2" defer></script>
+</head>
+<body class="landing-page">
+  <a class="landing-skip" href="#main">본문으로 바로가기</a>
+  <header class="landing-header landing-wrap">
+    <a class="landing-brand" href="#main" aria-label="YGO Synapse 홈"><img src="/favicon-32x32.png" alt="" width="32" height="32"></a>
+    <nav class="landing-nav" aria-label="서비스 소개"><a href="#manage">카드 관리</a><a href="#register">등록 방법</a><a href="#inventory">보유 현황</a></nav>
+    <div class="theme-switch-wrapper color-text-002">
+                <button type="button" id="theme-theme-toggle-btn" class="ui-button ui-button--text color-text-002 color-highlight-theme shape-capsule theme-toggle" aria-label="다크 모드로 전환" aria-pressed="false"><i class="material-icons" aria-hidden="true">dark_mode</i></button>
+            </div>
+    <a class="ui-button color-theme shape-capsule landing-button landing-button--small" href="https://ygo-synapse.web.app/" target="_blank" rel="noopener noreferrer">서비스 열기 <i class="material-icons" aria-hidden="true">north_east</i><span class="visually-hidden">(새 탭)</span></a>
+  </header>
+
+  <main id="main">
+    <section class="landing-hero landing-wrap" aria-labelledby="hero-title">
+      <div class="landing-hero-copy">
+        <p class="landing-kicker">유희왕 카드 관리 시스템</p>
+        <h1 id="hero-title">내 유희왕 카드,<br><em>더 빠르고 편하게.</em></h1>
+        <p class="landing-lead">카드 이름으로 찾고, 보관 위치까지 기록하세요.<br>실물 카드의 검색·등록·보유 현황을 한곳에서.</p>
+        <a class="ui-button color-theme shape-capsule landing-button" href="https://ygo-synapse.web.app/" target="_blank" rel="noopener noreferrer">카드 관리 시작하기 <i class="material-icons" aria-hidden="true">arrow_forward</i><span class="visually-hidden">(새 탭)</span></a>
+        <div class="landing-search" id="search">
+          <label for="search-card-search">카드 이름 또는 번호로 검색해 보세요.</label>
+          <form id="landing-search-form" aria-label="서비스에서 카드 검색"><div class="landing-search-desktop"><div class="search-row">
+                    <div class="search-input-wrapper dropdown-capsule" id="search-search-wrapper">
+                        <div class="search-expansion-bg dropdown-capsule__surface ui-search-surface color-surface-001 shadow-small shape-capsule border-basic">
+                            <ul id="search-custom-dropdown" class="custom-dropdown"></ul>
+                        </div>
+                        <input type="text" id="search-card-search" class="search-input search-input--desktop color-text-000" autocomplete="off" placeholder="" aria-label="카드 이름 또는 번호">
+                        <button id="search-desktop-photo-search-btn" class="ui-button ui-button--text color-text-002 search-input-action photo-search-icon-btn" type="button" aria-label="사진으로 카드 검색" hidden=""><i class="material-icons" aria-hidden="true">photo_camera</i></button>
+                        <button id="search-clear-btn" type="button" class="ui-button ui-button--text color-text-002 search-input-action clear-search-btn" aria-label="검색어 지우기" hidden=""><i class="material-icons" aria-hidden="true">cancel</i></button>
+                    </div>
+                    <button id="search-search-btn" type="button" aria-label="카드 검색" class="ui-button color-theme shape-capsule"><i class="material-icons" aria-hidden="true">search</i></button>
+                </div></div><div class="landing-search-mobile"><div class="mobile-search__input-wrap">
+                    <div class="mobile-search__surface ui-search-surface color-surface-001 shadow-small shape-capsule border-basic" aria-hidden="true"></div>
+                    <button type="button" id="mobile-search-mobile-search-btn" class="ui-button ui-button--text color-text-003 mobile-search__submit" aria-label="카드 검색 실행"><i class="material-icons" aria-hidden="true">search</i></button>
+                    <input type="search" id="mobile-search-mobile-card-search" class="search-input search-input--mobile color-text-000" aria-label="카드 검색" placeholder="카드 검색" enterkeyhint="search" autocomplete="off">
+                    <button type="button" id="mobile-search-mobile-search-clear-btn" class="ui-button ui-button--text color-text-003 mobile-search__clear" aria-label="검색어 지우기" hidden=""><i class="material-icons" aria-hidden="true">cancel</i></button>
+                </div></div></form>
+          <p>검색은 로그인 없이 사용할 수 있습니다.<span>검색 결과는 서비스에서 새 탭으로 열립니다.</span></p>
+        </div>
+      </div>
+      <div class="landing-hero-ui color-surface-002 shape-rounded-lg" id="manage">
+        <div class="landing-ui-heading"><h2>카드 관리</h2><span>입력 항목 미리보기</span></div>
+        <fieldset class="ui-segment ui-segment--compact color-surface-001 shape-capsule" id="preview-manage-top-segment">
+                                <legend class="visually-hidden">카드 관리 작업</legend>
+                                <input type="radio" class="ui-segment__input" name="preview-manage-tab-mode" id="preview-tab-mode-add" value="add" checked="">
+                                <label for="preview-tab-mode-add" class="ui-segment__option color-text-selectable shape-capsule">등록</label>
+                                <input type="radio" class="ui-segment__input" name="preview-manage-tab-mode" id="preview-tab-mode-move" value="move">
+                                <label for="preview-tab-mode-move" class="ui-segment__option color-text-selectable shape-capsule">이동</label>
+                                <input type="radio" class="ui-segment__input" name="preview-manage-tab-mode" id="preview-tab-mode-discard" value="discard">
+                                <label for="preview-tab-mode-discard" class="ui-segment__option color-text-selectable shape-capsule">제거</label>
+                                <div class="ui-segment__indicator color-surface-002 shape-capsule" aria-hidden="true"></div>
+                            </fieldset>
+        <div class="landing-panel" id="preview-add-panel" data-manage-panel="add" role="region" aria-label="등록 입력 항목">
+          <div id="desktop-cards-list-general" class="landing-entry landing-entry--desktop shadow-drop-small">
+            <div class="desktop-info-card desktop-info-card--editable ui-stack-card shape-rounded003 color-card-odd" inert aria-hidden="true">
+              <div class="card-row-top">
+                <div class="desktop-card-index">
+                  <div class="desktop-card-index-badge">
+                    <span class="card-num-badge">1</span>
+                  </div>
+                  <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
+                </div>
+                <div class="custom-select-wrapper no-arrow" data-card-field="name">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" autocomplete="off">
+                  <i class="material-icons clear-name-btn" aria-hidden="true">cancel</i>
+                </div>
+                <div class="custom-select-wrapper no-arrow" data-card-field="no">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" autocomplete="off">
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="card-actions">
+                  <button type="button" class="btn-card-action copy ui-button color-theme" title="복제" aria-label="복제"><i class="material-icons" aria-hidden="true">library_add</i></button>
+                  <button type="button" disabled class="btn-card-action delete ui-button color-danger ui-control--disabled color-disabled" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
+                </div>
+              </div>
+              <div class="card-row-bottom">
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="illust">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" inputmode="none" role="button" aria-label="일러스트 선택" aria-haspopup="dialog" aria-expanded="false" placeholder="일러스트" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="rare">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="custom-select-wrapper" data-type="free" id="desktop-wrap-add-0" data-card-field="loc">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="보관 위치" disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="desktop-qty-wrapper border-cardinput shape-capsule color-text-table">
+                  <input type="number" class="desktop-card-input color-text-table shape-capsule browser-default desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly>
+                  <span>장</span>
+                  <div class="desktop-qty-controls">
+                    <div class="qty-up-btn"><i class="material-icons">keyboard_arrow_up</i></div>
+                    <div class="qty-down-btn"><i class="material-icons">keyboard_arrow_down</i></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="landing-entry landing-entry--mobile shadow-drop-small">
+            <div class="mobile-info-card ui-stack-card shape-rounded003 color-card-odd" inert aria-hidden="true">
+              <div class="card-row-top">
+                <span class="card-num-badge">1</span>
+                <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
+                <button type="button" class="card-title-text ui-button ui-button--text color-text-table">카드 추가</button>
+                <span class="card-code-text color-text-table">-</span>
+                <div class="card-actions">
+                  <button type="button" class="btn-card-action copy ui-button ui-button--text color-text-table" title="복제" aria-label="복제"><i class="material-icons" aria-hidden="true">library_add</i></button>
+                  <button type="button" disabled class="btn-card-action delete ui-button ui-button--text color-text-table ui-control--disabled" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
+                </div>
+              </div>
+              <div class="card-row-bottom">
+                <span class="card-info-badge color-text-table illust">일러스트</span>
+                <span class="card-info-badge color-text-table rarity">레어도</span>
+                <span class="card-info-badge color-text-table location">보관 위치</span>
+                <span class="card-info-badge color-text-table qty">수량</span>
+              </div>
+            </div>
+          </div>
+          <div class="landing-panel-copy"><h3>카드 이름부터 보관 위치까지.</h3><p>보유한 카드를 등록하고<br>레어도·수량·보관 위치를 함께 관리합니다.</p></div>
+        </div>
+        <div class="landing-panel" id="preview-move-panel" data-manage-panel="move" role="region" aria-label="이동 입력 항목" hidden>
+          <div id="desktop-cards-list-move" class="landing-entry landing-entry--desktop shadow-drop-small">
+            <div class="desktop-info-card desktop-info-card--editable ui-stack-card shape-rounded003 color-card-odd" inert aria-hidden="true">
+              <div class="card-row-top">
+                <div class="desktop-card-index">
+                  <div class="desktop-card-index-badge">
+                    <span class="card-num-badge">1</span>
+                  </div>
+                  <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
+                </div>
+                <div class="custom-select-wrapper no-arrow" data-card-field="name">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" autocomplete="off">
+                  <i class="material-icons clear-name-btn" aria-hidden="true">cancel</i>
+                </div>
+                <div class="custom-select-wrapper no-arrow" data-card-field="no">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" autocomplete="off">
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="card-actions">
+                  <button type="button" disabled class="btn-card-action delete ui-button color-danger ui-control--disabled color-disabled" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
+                </div>
+              </div>
+              <div class="card-row-bottom">
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="illust">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" inputmode="none" role="button" aria-label="일러스트 선택" aria-haspopup="dialog" aria-expanded="false" placeholder="일러스트" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="rare">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="desktop-card-move-locations">
+                  <div class="custom-select-wrapper no-option" data-type="strict" id="desktop-wrap-move-from-1" data-card-field="loc">
+                    <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="보관 위치" readonly disabled>
+                    <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                  </div>
+                  <i class="material-icons loc-arrow" aria-hidden="true">arrow_forward</i>
+                  <div class="custom-select-wrapper" data-type="free" id="desktop-wrap-move-to-1" data-card-field="to">
+                    <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-to custom-input" data-field="to" placeholder="이동 위치">
+                    <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                  </div>
+                </div>
+                <div class="desktop-qty-wrapper border-cardinput shape-capsule color-text-table">
+                  <input type="number" class="desktop-card-input color-text-table shape-capsule browser-default desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly>
+                  <span>장</span>
+                  <div class="desktop-qty-controls">
+                    <div class="qty-up-btn"><i class="material-icons">keyboard_arrow_up</i></div>
+                    <div class="qty-down-btn"><i class="material-icons">keyboard_arrow_down</i></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="landing-entry landing-entry--mobile shadow-drop-small">
+            <div class="mobile-info-card ui-stack-card shape-rounded003 color-card-odd" inert aria-hidden="true">
+              <div class="card-row-top">
+                <span class="card-num-badge">1</span>
+                <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
+                <button type="button" class="card-title-text ui-button ui-button--text color-text-table">카드 추가</button>
+                <span class="card-code-text color-text-table">-</span>
+                <div class="card-actions">
+                  <button type="button" class="btn-card-action copy ui-button ui-button--text color-text-table" title="복제" aria-label="복제"><i class="material-icons" aria-hidden="true">library_add</i></button>
+                  <button type="button" disabled class="btn-card-action delete ui-button ui-button--text color-text-table ui-control--disabled" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
+                </div>
+              </div>
+              <div class="card-row-bottom">
+                <span class="card-info-badge color-text-table illust">일러스트</span>
+                <span class="card-info-badge color-text-table rarity">레어도</span>
+                <span class="card-info-badge color-text-table location">보관 위치</span>
+                <i class="material-icons loc-arrow color-text-table" aria-hidden="true">arrow_forward</i>
+                <span class="card-info-badge color-text-table location to-loc">이동 위치</span>
+                <span class="card-info-badge color-text-table qty">수량</span>
+              </div>
+            </div>
+          </div>
+          <div class="landing-panel-copy"><h3>보관 위치가 바뀌었을 때도.</h3><p>이동할 카드와 수량을 선택하고<br>새로운 보관 위치로 옮깁니다.</p></div>
+        </div>
+        <div class="landing-panel" id="preview-discard-panel" data-manage-panel="discard" role="region" aria-label="제거 입력 항목" hidden>
+          <div id="desktop-cards-list-discard" class="landing-entry landing-entry--desktop shadow-drop-small">
+            <div class="desktop-info-card desktop-info-card--editable ui-stack-card shape-rounded003 color-card-odd" inert aria-hidden="true">
+              <div class="card-row-top">
+                <div class="desktop-card-index">
+                  <div class="desktop-card-index-badge">
+                    <span class="card-num-badge">1</span>
+                  </div>
+                  <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
+                </div>
+                <div class="custom-select-wrapper no-arrow" data-card-field="name">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-name custom-input" data-field="name" placeholder="카드 이름" autocomplete="off">
+                  <i class="material-icons clear-name-btn" aria-hidden="true">cancel</i>
+                </div>
+                <div class="custom-select-wrapper no-arrow" data-card-field="no">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-no custom-input" data-field="no" placeholder="카드 번호" autocomplete="off">
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="card-actions">
+                  <button type="button" disabled class="btn-card-action delete ui-button color-danger ui-control--disabled color-disabled" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
+                </div>
+              </div>
+              <div class="card-row-bottom">
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="illust">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-illust custom-input" data-field="illust" inputmode="none" role="button" aria-label="일러스트 선택" aria-haspopup="dialog" aria-expanded="false" placeholder="일러스트" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="custom-select-wrapper no-option" data-type="strict" data-card-field="rare">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-rare custom-input" data-field="rare" placeholder="레어도" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="custom-select-wrapper no-option" data-type="strict" id="desktop-wrap-discard-0" data-card-field="loc">
+                  <input type="text" class="desktop-card-input color-text-table shape-capsule browser-default border-cardinput desktop-card-loc custom-input" data-field="loc" placeholder="보관 위치" readonly disabled>
+                  <i class="material-icons arrow-icon" aria-hidden="true">arrow_drop_down</i>
+                </div>
+                <div class="desktop-qty-wrapper border-cardinput shape-capsule color-text-table">
+                  <input type="number" class="desktop-card-input color-text-table shape-capsule browser-default desktop-card-qty qty-input" data-field="qty" placeholder="수량" min="1" readonly>
+                  <span>장</span>
+                  <div class="desktop-qty-controls">
+                    <div class="qty-up-btn"><i class="material-icons">keyboard_arrow_up</i></div>
+                    <div class="qty-down-btn"><i class="material-icons">keyboard_arrow_down</i></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="landing-entry landing-entry--mobile shadow-drop-small">
+            <div class="mobile-info-card ui-stack-card shape-rounded003 color-card-odd" inert aria-hidden="true">
+              <div class="card-row-top">
+                <span class="card-num-badge">1</span>
+                <span class="card-num-divider color-text-table" aria-hidden="true">|</span>
+                <button type="button" class="card-title-text ui-button ui-button--text color-text-table">카드 추가</button>
+                <span class="card-code-text color-text-table">-</span>
+                <div class="card-actions">
+                  <button type="button" disabled class="btn-card-action delete ui-button ui-button--text color-text-table ui-control--disabled" title="제거" aria-label="제거"><i class="material-icons" aria-hidden="true">delete</i></button>
+                </div>
+              </div>
+              <div class="card-row-bottom">
+                <span class="card-info-badge color-text-table illust">일러스트</span>
+                <span class="card-info-badge color-text-table rarity">레어도</span>
+                <span class="card-info-badge color-text-table location">보관 위치</span>
+                <span class="card-info-badge color-text-table qty">수량</span>
+              </div>
+            </div>
+          </div>
+          <div class="landing-panel-copy"><h3>보유 정보도 현재에 맞게.</h3><p>더 이상 보유하지 않는 카드의<br>수량을 선택해 보유 목록에서 제거합니다.</p></div>
+        </div>
+        <a class="ui-button ui-button--text color-text-theme landing-open-mode" href="https://ygo-synapse.web.app/#add" target="_blank" rel="noopener noreferrer">등록 화면 열기 <i class="material-icons" aria-hidden="true">arrow_forward</i><span class="visually-hidden">(새 탭)</span></a>
+      </div>
+    </section>
+
+    <div class="landing-feature-line landing-wrap" aria-label="주요 기능">
+      <span><i class="material-icons" aria-hidden="true">search</i> 카드 검색</span><span><i class="material-icons" aria-hidden="true">layers</i> 등록·이동·제거</span><span><i class="material-icons" aria-hidden="true">list_alt</i> 보유 현황</span>
+    </div>
+
+    <section class="landing-register landing-wrap" id="register" aria-labelledby="register-title">
+      <div class="landing-section-heading"><div><p class="landing-kicker">카드 관리</p><h2 id="register-title">한 장씩 등록하거나,<br>팩과 덱으로 불러오거나.</h2></div><p>카드마다 입력하는 방법 외에도<br>팩 단위 등록과 NEURON 덱 불러오기를 지원합니다.</p></div>
+      <div class="landing-register-grid">
+        <article class="landing-method color-surface-001 shape-rounded-lg"><div class="landing-method-copy"><h3>팩 단위 등록</h3><p>팩 이름으로 수록된 카드를 검색하고<br>카드 목록을 만들어 등록하세요.</p></div><div class="landing-native-input registration-lookup__body" inert aria-hidden="true">
+            <form>
+              <div class="mobile-search__input-wrap">
+                <div class="mobile-search__surface ui-search-surface color-surface-001 shadow-small shape-capsule border-basic"></div>
+                <input type="search" class="search-input search-input--mobile color-text-000" placeholder="팩 이름 검색" readonly>
+              </div>
+              <button type="button" class="ui-button color-surface-002 color-text-001 shape-capsule registration-lookup__submit" disabled><i class="material-icons">search</i></button>
+            </form>
+          </div><a class="ui-button ui-button--text color-text-theme color-highlight-theme landing-method-link" href="https://ygo-synapse.web.app/#add" target="_blank" rel="noopener noreferrer">팩 추가 <i class="material-icons" aria-hidden="true">arrow_forward</i><span class="visually-hidden">(새 탭)</span></a></article>
+        <article class="landing-method color-surface-001 shape-rounded-lg"><div class="landing-method-copy"><h3>덱 불러오기</h3><p>덱 코드를 입력해 Yu-Gi-Oh! NEURON에<br>등록된 덱 레시피를 불러오세요.</p></div><div class="landing-native-input registration-lookup__body" inert aria-hidden="true">
+            <form>
+              <div class="mobile-search__input-wrap">
+                <div class="mobile-search__surface ui-search-surface color-surface-001 shadow-small shape-capsule border-basic"></div>
+                <input type="search" class="search-input search-input--mobile color-text-000" placeholder="뉴런 덱 코드" readonly>
+              </div>
+              <button type="button" class="ui-button color-surface-002 color-text-001 shape-capsule registration-lookup__submit" disabled><i class="material-icons">search</i></button>
+            </form>
+          </div><a class="ui-button ui-button--text color-text-theme color-highlight-theme landing-method-link" href="https://ygo-synapse.web.app/#add" target="_blank" rel="noopener noreferrer">덱 불러오기 <i class="material-icons" aria-hidden="true">arrow_forward</i><span class="visually-hidden">(새 탭)</span></a></article>
+      </div>
+    </section>
+
+    <section class="landing-inventory color-surface-002" id="inventory" aria-labelledby="inventory-title">
+      <div class="landing-wrap landing-inventory-grid"><div class="landing-inventory-copy"><p class="landing-kicker">보유 현황</p><h2 id="inventory-title">몇 장인지, 어디에 있는지.<br>보유 정보를 한눈에.</h2><p>보유 카드 수량과 종류를 확인하고,<br>보관 위치별·레어도별로 살펴보세요.</p><a class="ui-button ui-button--text color-text-theme landing-inventory-link" href="https://ygo-synapse.web.app/#inventory/dashboard" target="_blank" rel="noopener noreferrer">보유 현황 열기 <i class="material-icons" aria-hidden="true">arrow_forward</i><span class="visually-hidden">(새 탭)</span></a></div><div class="landing-inventory-ui"><dl class="ui-stat-grid">
+                                    <div class="ui-stat color-surface-001 shape-rounded-lg">
+                                        <dt class="ui-stat__label color-text-001">보유 카드 수량</dt>
+                                        <dd id="summary-inv-total-cards" class="ui-stat__value color-text-theme">0</dd>
+                                    </div>
+                                    <div class="ui-stat color-surface-001 shape-rounded-lg">
+                                        <dt class="ui-stat__label color-text-001">보유 카드 종류</dt>
+                                        <dd id="summary-inv-kind-cards" class="ui-stat__value color-text-theme">0</dd>
+                                    </div>
+                                </dl><p class="landing-empty-note">카드가 등록되지 않은 기본 상태입니다.</p></div></div>
+    </section>
+
+    <section class="landing-faq landing-wrap" id="faq" aria-labelledby="faq-title"><div><p class="landing-kicker">이용 안내</p><h2 id="faq-title">자주 묻는 질문</h2></div><div class="landing-faq-items"><details class="ui-disclosure color-surface-001 shape-rounded-lg">
+                                    <summary class="ui-disclosure__summary color-text-000">
+                                        <span>1. YGO Synapse는 어떤 서비스인가요?</span>
+                                        <i class="fa-solid fa-chevron-down ui-disclosure__icon color-text-001 color-highlight-theme" aria-hidden="true"></i>
+                                    </summary>
+                                    <p class="ui-disclosure__body color-text-001">
+                                        YGO Synapse는 유희왕 오피셜 카드게임(OCG)을 즐기는 플레이어와 수집가를 위해 실물 카드의 보유 현황을 효율적으로 전산화하고 관리해
+                                        주는 웹 서비스입니다. 카드 이름이나 카드 번호로 정보를 조회하여 각 사용자의 데이터에 등록할 수 있습니다. 보관 위치 지정, 팩 단위 일괄
+                                        등록, 덱 레시피 불러오기, 스프레드시트 CSV 내보내기 등 실물 덱 구성과 카드 수집 및 관리에 필요한 최적의 편의 기능을 무료로 제공합니다.
+                                        또한 카드 이름과 카드 번호를 사용해서 특정 카드의 정보를 검색해볼 수도 있습니다.
+                                    </p>
+                                </details>
+<details class="ui-disclosure color-surface-001 shape-rounded-lg">
+                                    <summary class="ui-disclosure__summary color-text-000">
+                                        <span>2. YGO Synapse는 어떻게 이용하나요?</span>
+                                        <i class="fa-solid fa-chevron-down ui-disclosure__icon color-text-001 color-highlight-theme" aria-hidden="true"></i>
+                                    </summary>
+                                    <p class="ui-disclosure__body color-text-001">
+                                        기본적인 검색 기능은 로그인 없이도 사용 가능합니다. 하지만 전산화 기능은 구글 혹은 X(구 트위터) 계정을 통해 SNS 로그인 후 이용할 수
+                                        있습니다. 카드 관리 페이지의 등록 / 이동 / 제거 탭을 통해 보유한 카드 정보를 편집할 수 있으며, 카드 현황 페이지에서 등록된 카드의
+                                        정보를 확인할 수 있습니다.
+                                    </p>
+                                </details></div></section>
+    <section class="landing-closing landing-wrap" aria-labelledby="closing-title"><div><h2 id="closing-title">실물 카드 관리를<br>YGO Synapse에서.</h2><p>로그인하고 보유한 카드부터 등록해 보세요.</p></div><a class="ui-button color-theme shape-capsule landing-button" href="https://ygo-synapse.web.app/" target="_blank" rel="noopener noreferrer">서비스 열기 <i class="material-icons" aria-hidden="true">north_east</i><span class="visually-hidden">(새 탭)</span></a></section>
+  </main>
+  <footer class="landing-footer landing-wrap"><p>YGO Synapse는 비공식 팬 사이트이며, 코나미(KONAMI)와 제휴하거나 보장받지 않았습니다.</p><div><a href="https://ygo-synapse.web.app/terms.html" target="_blank" rel="noopener noreferrer">이용약관<span class="visually-hidden">(새 탭)</span></a><a href="https://ygo-synapse.web.app/privacy.html" target="_blank" rel="noopener noreferrer">개인정보 처리방침<span class="visually-hidden">(새 탭)</span></a><a href="https://ygo-synapse.web.app/licenses.html" target="_blank" rel="noopener noreferrer">라이선스 및 출처<span class="visually-hidden">(새 탭)</span></a></div></footer>
+</body>
+</html>

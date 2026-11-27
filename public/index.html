@@ -1,8 +1,11 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" data-backend="supabase">
 
 <head>
     <meta charset="UTF-8">
+    <script src="backend/inventory-state.js?v=1-login-view" defer></script>
+    <script src="card-name-autocomplete.js?v=20261119-jamo" defer></script>
+    <script src="backend/supabase.js?v=20261125-settings-app-check" defer></script>
     <!-- 기존 OAuth 복귀 주소는 유지하고, 팝업만 일반 앱 부팅 전에 분리한다. -->
     <script>
         (function () {
@@ -16,13 +19,26 @@
                 var result = new URLSearchParams();
                 ['code', 'state', 'error'].forEach(function (key) { query.getAll(key).forEach(function (value) { result.append(key, value); }); });
                 history.replaceState({}, '', location.pathname);
+                var code = result.get('code'), error = result.get('error');
+                if (marker.expiresAt > Date.now() && window.opener && !window.opener.closed &&
+                    result.getAll('code').length <= 1 && result.getAll('error').length <= 1 &&
+                    Boolean(code) !== Boolean(error) && (!code || code.length <= 4096)) {
+                    try {
+                        window.opener.postMessage(Object.assign({ type: 'ygo.discord.oauth.result', version: 1, state: marker.state },
+                            code ? { code: code } : { error: error === 'access_denied' ? 'cancelled' : 'failed' }), location.origin);
+                        try { sessionStorage.removeItem('ygo_discord_popup_callback'); } catch (_) {}
+                        return;
+                    } catch (_) { /* 기존 전달 문서에서 결과나 오류를 처리한다. */ }
+                }
                 location.replace('/discord-popup.html#' + result.toString());
             } catch (_) { /* 일반 페이지의 인증 초기화는 그대로 진행한다. */ }
         })();
     </script>
+    <link rel="preload" as="script" href="script.js?v=20261125-ui-standardization" fetchpriority="high">
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
+    <template data-unconnected-service="auth-preconnect">
     <!-- 인증에 필요한 외부 연결만 미리 준비한다. 실제 요청과 인증 검사는 기존 SDK가 수행한다. -->
     <link rel="preconnect" href="https://accounts.google.com">
     <link rel="preconnect" href="https://apis.google.com">
@@ -31,6 +47,8 @@
     <link rel="dns-prefetch" href="https://apis.google.com">
     <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com">
 
+    </template>
+    <template data-unconnected-service="analytics">
     <!-- Google Tag Manager: GA4 태그·운영 호스트 조건은 컨테이너에서 관리한다. -->
     <script>
         (function (w, d, s, l, i) {
@@ -43,6 +61,7 @@
         })(window, document, 'script', 'dataLayer', 'GTM-5ZPPC8HH');
     </script>
 
+    </template>
     <script>
         /* 첫 화면은 이 기기에서 마지막으로 사용한 테마, 기록이 없으면 기기 테마. */
         (function () {
@@ -68,15 +87,7 @@
         })();
     </script>
     <script>
-        /* 초기 로딩 시 탭 깜빡임(FODC) 방지를 위한 경로 감지 로직 */
         (function () {
-            var hash = window.location.hash;
-            if (hash.indexOf('#add/pack') !== -1) {
-                document.documentElement.classList.add('route-add-pack');
-            } else if (hash.indexOf('#add/deck') !== -1) {
-                document.documentElement.classList.add('route-add-deck');
-            }
-
             /* 기기 감지 로직: 모바일 기기 접속 시 전용 클래스 부여 */
             var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
             if (isMobile) {
@@ -85,23 +96,27 @@
         })();
     </script>
 
+    <template data-unconnected-service="advertising">
     <!-- [Google AdSense] 자동 광고 및 라이브러리 스크립트 -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2358258042309830"
         crossorigin="anonymous"></script>
 
+    </template>
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
     <link rel="shortcut icon" href="/favicon.ico">
 
     <!-- 같은 기본 앱의 인증 준비는 일반 화면 라이브러리보다 먼저 시작한다. -->
-    <script src="login-timing.js?v=8-auth-recovery-end" defer></script>
+    <script src="login-timing.js?v=20261111-discord-return" defer></script>
+    <template data-unconnected-service="firebase-auth">
     <!-- Firebase SDK -->
     <script defer src="/__/firebase/13.0.0/firebase-app-compat.js"></script>
     <script defer src="/__/firebase/13.0.0/firebase-auth-compat.js"></script>
     <script defer src="/__/firebase/13.0.0/firebase-app-check-compat.js"></script>
     <script defer src="/__/firebase/init.js"></script>
-    <script src="auth-bootstrap.js?v=3-discord-popup" defer></script>
+    <script src="auth-bootstrap.js?v=3-discord-popup" defer></script>    </template>
+
 
     <title>YGO 시냅스 - 유희왕 카드 관리 시스템</title>
     <meta name="description"
@@ -113,27 +128,43 @@
     <meta property="og:url" content="https://ygo-synapse.web.app/">
 
     <link rel="stylesheet"
-        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.2.0/css/all.min.css">
-    <link rel="stylesheet" href="styles/tokens.css?v=177-danger-tokens">
-    <link rel="stylesheet" href="styles/base.css?v=142-common-ui">
-    <link rel="stylesheet" href="styles/components.css?v=191-filter-alignment">
-    <link rel="stylesheet" href="style.css?v=190-overlay-cleanup">
-    <link rel="stylesheet" href="styles/settings.css?v=154-ui-structure">
-    <link rel="stylesheet" href="styles/dashboard.css?v=154-ui-structure">
-    <link rel="stylesheet" href="styles/search.css?v=166-style-cleanup">
-    <link rel="stylesheet" href="styles/search-results.css?v=196-chip-remove-padding">
-    <link rel="stylesheet" href="styles/home.css?v=154-ui-structure">
-    <link rel="stylesheet" href="styles/layout.css?v=20261021-discord-header-v38">
-    <link rel="stylesheet" href="styles/overlays.css?v=190-overlay-cleanup">
+        href="/vendor/ui/aba72a1d60bf725f6cabcd9bc940ea546707378936e5f1a3b4b1f7d4885d1854.css" />
+    <link rel="stylesheet" href="/vendor/ui/c8dc98a6aff552aa5348aade3e19a65c50d59873fb304b06aafb5fa64a825908.css">
+    <link href="/vendor/ui/65db03ecf48e2c4b24c7020615d9d3c96dd1540536df57301ac7ea84eaed8b74.css" rel="stylesheet">
+    <link rel="stylesheet" href="/vendor/ui/452b88e08deeba5cb9bb31c2cee114561c7120f4a9ccc2eb65c8b602cd4b63eb.css">
+    <link rel="stylesheet" href="styles/tokens.css?v=20261124-service-css-cleanup">
+    <link rel="stylesheet" href="styles/base.css?v=20261124-css-structure">
+    <link rel="stylesheet" href="styles/components.css?v=20261125-card-input-border">
+    <link rel="stylesheet" href="/styles/feedback.css?v=20261125-ui-standardization">
+    <link rel="stylesheet" href="/styles/field-controls.css?v=20261125-search-text">
+    <link rel="stylesheet" href="/styles/management.css?v=20261125-form-actions">
+    <link rel="stylesheet" href="/styles/inventory-list.css?v=20261125-unused-css">
+    <link rel="stylesheet" href="/styles/photo-analysis.css?v=20261124-css-structure">
+    <link rel="stylesheet" href="styles/management-auto-location.css?v=20261114-auto-location">
+    <link rel="stylesheet" href="styles/desktop-card-fields.css?v=20261125-form-actions">
+    <link rel="stylesheet" href="styles/card-row-actions.css?v=20261125-form-actions">
+    <link rel="stylesheet" href="styles/settings.css?v=20261124-css-structure">
+    <link rel="stylesheet" href="styles/dashboard.css?v=20261122-dashboard">
+    <link rel="stylesheet" href="styles/search.css?v=20261125-ui-standardization">
+    <link rel="stylesheet" href="styles/photo-card-ui.css?v=20261125-ui-standardization">
+    <link rel="stylesheet" href="styles/search-results.css?v=20261124-service-css-cleanup">
+    <link rel="stylesheet" href="styles/home.css?v=20261121-sign-in-button">
+    <link rel="stylesheet" href="styles/layout.css?v=20261124-css-structure">
+    <link rel="stylesheet" href="styles/overlays.css?v=20261125-ui-standardization">
+    <link rel="stylesheet" href="styles/card-info-sheet.css?v=20261124-service-css-cleanup">
+    <link rel="stylesheet" href="styles/quantity-sheet.css?v=20261124-service-css-cleanup">
+    <link rel="stylesheet" href="styles/rarity-sheet.css?v=20261111-rarity-sheet">
+    <link rel="stylesheet" href="styles/notice-preview.css?v=20261105-notice-list-surface">
+    <link rel="stylesheet" href="styles/illustration-picker.css?v=20261104-picker-ui">
     <link rel="stylesheet" href="styles/documents.css?v=10-document-cleanup">
+    <link rel="stylesheet" href="styles/onboarding.css?v=20261124-service-css-cleanup">
 </head>
 
-<body class="no-transition">
+<body id="synapse-app" class="no-transition">
+    <template data-unconnected-service="analytics-noscript">
     <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5ZPPC8HH"
-        height="0" width="0" style="display:none;visibility:hidden" title="Google Tag Manager"></iframe></noscript>
+        height="0" width="0" style="display:none;visibility:hidden" title="Google Tag Manager"></iframe></noscript>    </template>
+
     <script>
         /* 초기 로드 시 1프레임 깜빡임 방지를 위한 레이아웃 사전 결정 로직 */
         (function () {
@@ -159,12 +190,12 @@
             <i class="material-icons app-navi-item__icon">list_alt</i>
             <span class="app-navi-item__label">보유 현황</span>
         </button>
-        <div style="flex-grow: 1;"></div>
+        <div class="app-sidebar__spacer"></div>
 
         <!-- 사이드바 광고 슬롯 -->
-        <div id="sidebar-ad-container" class="sidebar-ad-slot">
+        <div id="sidebar-ad-container" class="ad-slot sidebar-ad-slot color-surface-000 color-text-003" hidden>
             <!-- [AD] sidebar_banner -->
-            <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-2358258042309830"
+            <ins class="adsbygoogle" data-ad-client="ca-pub-2358258042309830"
                 data-ad-slot="1729996200" data-ad-format="auto" data-full-width-responsive="true"></ins>
         </div>
 
@@ -176,8 +207,8 @@
 
     <!-- 모바일 광고·내비게이션: 공통 고정 영역 외곽에 그림자를 한 번 적용 -->
     <div class="app-mobile-dock shadow-mobile-nav">
-        <div id="mobile-anchor-ad" class="mobile-ad-anchor">
-            <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-2358258042309830"
+        <div id="mobile-anchor-ad" class="ad-slot mobile-ad-anchor color-surface-001 color-text-003 border-basic" hidden>
+            <ins class="adsbygoogle" data-ad-client="ca-pub-2358258042309830"
                 data-ad-slot="6790751191" data-ad-format="auto" data-full-width-responsive="true"></ins>
         </div>
 
@@ -233,10 +264,7 @@
                 <span class="auth-text">멤버십<span class="membership-verify-suffix"> 인증</span></span>
             </button>
             <div class="theme-switch-wrapper color-text-002">
-                <label class="theme-switch" for="checkbox-theme">
-                    <input type="checkbox" id="checkbox-theme" aria-label="화면 테마 전환" onchange="toggleTheme()">
-                    <div class="theme-switch__track color-switch-theme shape-capsule"></div>
-                </label>
+                <button type="button" id="theme-toggle-btn" class="ui-button ui-button--text color-text-002 color-highlight-theme shape-capsule theme-toggle" aria-label="다크 모드로 전환" aria-pressed="false" onclick="toggleTheme()"><i class="material-icons" aria-hidden="true">dark_mode</i></button>
             </div>
 
             <div class="region-container dropdown-capsule" id="region-wrapper">
@@ -261,34 +289,22 @@
             </div>
     </header>
 
-    <div id="loading-overlay">
+    <div id="loading-overlay" class="color-backdrop-navi" hidden>
         <!-- 광고 노출 영역: 광고가 있을 때 스피너 대신 노출됨 -->
-        <div id="loading-ad-container" class="ad-container">
+        <div id="loading-ad-container" class="ad-slot" hidden>
             <!-- 추후 광고 코드 삽입 예정 -->
         </div>
 
         <div id="loading-spinner-wrapper">
-            <div class="preloader-wrapper big active">
-                <div class="spinner-layer spinner-teal-only">
-                    <div class="circle-clipper left">
-                        <div class="circle"></div>
-                    </div>
-                    <div class="gap-patch">
-                        <div class="circle"></div>
-                    </div>
-                    <div class="circle-clipper right">
-                        <div class="circle"></div>
-                    </div>
-                </div>
-            </div>
-            <p id="loading-text" style="margin-top: 20px; font-weight: bold; color: var(--text-000);">데이터 동기화 중...
-            </p>
+            <div class="loading-spinner-small color-theme-002" aria-hidden="true"></div>
+            <p id="loading-text" class="color-text-000">데이터 동기화 중...</p>
+            <strong id="discord-restore-membership-result" class="color-text-000" role="status" hidden></strong>
         </div>
     </div>
 
 
     <!-- 모바일 전용 검색 오버레이 -->
-    <div id="mobile-search-overlay" class="mobile-search color-surface-000" style="display: none;">
+    <div id="mobile-search-overlay" class="mobile-search color-surface-000" hidden>
         <div class="mobile-search__panel">
             <div class="mobile-search__toolbar color-surface-000 border-section-000">
                 <div class="mobile-search__input-wrap">
@@ -330,7 +346,7 @@
 
             <div class="search-box" role="search" aria-label="카드 검색">
                 <div class="search-header-row">
-                    <button type="button" class="ui-button ui-button--text color-text-002 help-trigger-btn" onclick="handleHelpClick()">
+                    <button type="button" class="ui-button ui-button--text color-text-002 help-trigger-btn" onclick="handleHelpClick()" inert>
                         <i class="fa-solid fa-circle-question"></i>
                         <span>사용법</span>
                     </button>
@@ -395,7 +411,7 @@
                                     </li>
                                 </ul>
                             </div>
-                            <button type="button" class="ui-button home-signin__action color-theme shape-capsule"
+                            <button type="button" class="ui-button ui-button--sign-in color-theme shape-capsule"
                                 onclick="toggleAuthModal()">로그인하기</button>
                         </section>
                         <section id="home-auth-content" aria-labelledby="home-summary-title" hidden>
@@ -1531,8 +1547,8 @@
                 <div class="page-transition-inner">
                     <section id="result-area" class="search-results" aria-label="카드 검색 결과"></section>
                     <!-- 검색 결과 하단 광고 슬롯 -->
-                    <div id="search-result-ad" class="ad-slot-inline ad-margin-top">
-                        <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-2358258042309830"
+                    <div id="search-result-ad" class="ad-slot ad-slot-inline ad-margin-top color-surface-000 color-text-003 border-basic shape-rounded002" hidden>
+                        <ins class="adsbygoogle" data-ad-client="ca-pub-2358258042309830"
                             data-ad-slot="9416914535" data-ad-format="auto" data-full-width-responsive="true"></ins>
                     </div>
                 </div>
@@ -1541,44 +1557,40 @@
             <div id="app-page-manage" class="content-section centered-content-area" inert>
                 <div class="page-transition-inner">
                     <h5 class="content-title">카드 관리</h5>
-                    <p class="content-subtitle" style="color: var(--text-001); margin-bottom: 20px;">사용자가 보유한 카드
+                    <p class="content-subtitle">사용자가 보유한 카드
                         정보를
                         관리합니다.</p>
 
                     <!-- 관리 페이지 상단 광고 (통합) -->
-                    <div id="manage-page-ad" class="ad-slot-inline">
-                        <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-2358258042309830"
+                    <div id="manage-page-ad" class="ad-slot ad-slot-inline color-surface-000 color-text-003 border-basic shape-rounded002" hidden>
+                        <ins class="adsbygoogle" data-ad-client="ca-pub-2358258042309830"
                             data-ad-slot="9416914535" data-ad-format="auto" data-full-width-responsive="true"></ins>
                     </div>
 
-                    <!-- 상위 제어 영역 (세그먼트 컨트롤 + 보관위치 자동입력) -->
-                    <div class="manage-top-controls"
-                        style="display: flex; justify-content: space-between; align-items: center; margin: 20px auto 12px auto; width: 100%;">
-                        <div class="segment-control-wrapper">
-                            <fieldset class="ui-segment ui-segment--compact color-surface-001 shape-capsule" id="manage-top-segment">
-                                <legend class="visually-hidden">카드 관리 작업</legend>
-                                <input type="radio" class="ui-segment__input" name="manage-tab-mode" id="tab-mode-add" value="add" checked
-                                    onchange="switchManageTab('add')">
-                                <label for="tab-mode-add" class="ui-segment__option color-text-selectable shape-capsule">등록</label>
-                                <input type="radio" class="ui-segment__input" name="manage-tab-mode" id="tab-mode-move" value="move"
-                                    onchange="switchManageTab('move')">
-                                <label for="tab-mode-move" class="ui-segment__option color-text-selectable shape-capsule">이동</label>
-                                <input type="radio" class="ui-segment__input" name="manage-tab-mode" id="tab-mode-discard" value="discard"
-                                    onchange="switchManageTab('discard')">
-                                <label for="tab-mode-discard" class="ui-segment__option color-text-selectable shape-capsule">제거</label>
-                                <div class="ui-segment__indicator color-surface-002 shape-capsule" aria-hidden="true"></div>
-                            </fieldset>
-                        </div>
+                    <!-- 상위 제어 영역 (카드 관리 모드 + 보관 위치 자동 입력) -->
+                    <div class="manage-top-controls">
+                        <fieldset class="ui-segment ui-segment--compact color-surface-001 shape-capsule" id="manage-top-segment">
+                            <legend class="visually-hidden">카드 관리 작업</legend>
+                            <input type="radio" class="ui-segment__input" name="manage-tab-mode" id="tab-mode-add" value="add" checked
+                                onchange="switchManageTab('add')">
+                            <label for="tab-mode-add" class="ui-segment__option color-text-selectable shape-capsule">등록</label>
+                            <input type="radio" class="ui-segment__input" name="manage-tab-mode" id="tab-mode-move" value="move"
+                                onchange="switchManageTab('move')">
+                            <label for="tab-mode-move" class="ui-segment__option color-text-selectable shape-capsule">이동</label>
+                            <input type="radio" class="ui-segment__input" name="manage-tab-mode" id="tab-mode-discard" value="discard"
+                                onchange="switchManageTab('discard')">
+                            <label for="tab-mode-discard" class="ui-segment__option color-text-selectable shape-capsule">제거</label>
+                            <div class="ui-segment__indicator color-surface-002 shape-capsule" aria-hidden="true"></div>
+                        </fieldset>
 
-                        <!-- 자동 위치 래퍼 (등록 모드 및 카드 등록/팩/덱 상태에서만 필요) -->
-                        <div id="manage-auto-loc-container" class="capsule-input-container" style="display: flex;">
-                            <div class="custom-select-wrapper no-arrow dropdown-capsule" id="wrap-auto-loc" data-type="free">
-                                <div class="search-expansion-bg dropdown-capsule__surface shadow-small shape-capsule border-basic"></div>
-                                <input type="text" id="auto-location-input" class="custom-input capsule-input"
+                        <!-- 등록 탭 보관 위치 자동 입력 -->
+                        <div id="manage-auto-loc-container" class="auto-location">
+                            <div class="custom-select-wrapper no-arrow dropdown-capsule auto-location__control" id="wrap-auto-loc" data-type="free">
+                                <div class="dropdown-capsule__surface color-surface-001 shadow-small shape-capsule border-basic"></div>
+                                <input type="text" id="auto-location-input" class="auto-location__input browser-default shape-capsule color-text-000"
                                     placeholder="보관 위치 자동 입력" oninput="handleAutoLocInput(this)" autocomplete="off">
-                                <i id="auto-loc-clear-btn" class="material-icons clear-btn">cancel</i>
-                                <i class="material-icons arrow-icon">arrow_drop_down</i>
-                                <span class="tooltip-enter">엔터를 눌러주세요.</span>
+                                <button type="button" id="auto-loc-clear-btn" class="ui-button ui-button--text shape-capsule color-text-002 auto-location__clear" aria-label="보관 위치 지우기"><i class="material-icons" aria-hidden="true">cancel</i></button>
+                                <span class="tooltip-enter color-danger shape-rounded001">엔터를 눌러주세요.</span>
                             </div>
                         </div>
                     </div>
@@ -1586,146 +1598,116 @@
                     <div id="manage-mode-forms">
 
                         <!-- 등록 파트 -->
-                        <div id="form-pack-add" class="mode-form anim-hidden" inert>
-                            <div class="mode-form-content">
-                                <div id="pack-search-box"
-                                    style="background: var(--bg-surface); border-radius: 12px; padding: 20px; border: none; box-shadow: none; display: flex; flex-direction: column; gap: 12px; transition: all 0.3s ease, var(--transition-colors);">
-                                    <div id="pack-search-content"
-                                        style="display: flex; flex-direction: column; gap: 0px; overflow: hidden; transition: max-height 0.3s ease, margin 0.3s ease, opacity 0.3s ease, var(--transition-colors);">
-                                        <div class="form-row">
-                                            <input type="text" id="pack-search-input" class="custom-input mode-input browser-default border-basic"
-                                                placeholder="팩 이름 검색" autocomplete="off">
-                                            <i id="pack-clear-btn" class="material-icons mode-clear-btn"
-                                                onmousedown="event.preventDefault()">cancel</i>
-
-                                            <button id="pack-search-btn" class="btn-flat mode-search-btn"><i
-                                                    class="material-icons">search</i></button>
-                                        </div>
-                                        <div id="pack-status-msg" class="status-msg-area"></div>
-                                    </div>
-                                </div>
-
-
-                            </div>
-                        </div>
-
-                        <div id="form-deck-add" class="mode-form anim-hidden" inert>
-                            <div class="mode-form-content">
-                                <div id="deck-search-box"
-                                    style="background: var(--bg-surface); border-radius: 12px; padding: 20px; border: none; box-shadow: none; display: flex; flex-direction: column; gap: 12px; transition: all 0.3s ease, var(--transition-colors);">
-                                    <div id="deck-search-content"
-                                        style="display: flex; flex-direction: column; gap: 0px; overflow: hidden; transition: max-height 0.3s ease, margin 0.3s ease, opacity 0.3s ease, var(--transition-colors);">
-                                        <div class="form-row">
-                                            <input type="text" id="deck-code-input" class="custom-input mode-input browser-default border-basic"
-                                                placeholder="덱 코드"
-                                                onkeydown="if(event.key==='Enter') handleDeckSearch()">
-                                            <i id="deck-clear-btn" class="material-icons mode-clear-btn"
-                                                onmousedown="event.preventDefault()">cancel</i>
-                                            <button id="deck-search-btn" class="btn-flat mode-search-btn"
-                                                onclick="handleDeckSearch()"><i
-                                                    class="material-icons">search</i></button>
-                                        </div>
-                                        <div id="deck-status-msg" class="status-msg-area">
-                                            <span
-                                                style="font-size: 0.85rem; font-weight: 500; color: var(--text-001); line-height: 1.4; text-align: center;">덱
-                                                코드를 입력하여 뉴런에 등록된 덱 리스트를 가져옵니다.<br><a href="#" class="fna-link"
-                                                    style="color: var(--theme-000); text-decoration: underline;">덱
-                                                    코드는
-                                                    어떻게 확인하나요?</a></span>
-                                        </div>
-                                    </div>
-                                </div>
-
-
-                            </div>
-                        </div>
-
                         <div id="general-mode-wrapper" class="mode-form anim-hidden" inert>
                             <div class="mode-form-content">
 
-                                <div class="desktop-cards-wrapper" style="display: none;">
+                                <div class="desktop-cards-wrapper">
                                     <div class="desktop-cards-list shadow-drop-small" id="desktop-cards-list-general"></div>
-                                    <div class="desktop-add-dashed-card-container card-add-split border-dashed shape-rounded003">
-                                        <button class="add-page-row-btn photo-register-trigger" onclick="openPhotoRegistration()" tabindex="0">
-                                            <i class="material-icons">photo_camera</i><span style="font-weight: 700;">사진으로 등록</span>
-                                        </button>
-                                        <button class="add-page-row-btn" onclick="addMultipleRows(event)" tabindex="0"
-                                            onkeydown="handleAddButtonKey(event, 'add')">
-                                            <span style="font-weight: 700;">입력란 추가</span>
-                                            <div class="qty-control-box" onclick="event.stopPropagation()">
-                                                <span class="ctrl-btn" onclick="adjustAddCount(-1)">-</span>
-                                                <span id="add-count-desktop" class="ctrl-val">1장</span>
-                                                <span class="ctrl-btn" onclick="adjustAddCount(1)">+</span>
+                                    <div class="desktop-add-dashed-card-container manage-registration-add shape-rounded003" data-animate-height>
+                                        <div class="manage-registration-add__outline" data-animate-height-outline aria-hidden="true"></div>
+                                        <div class="manage-registration-add__controls">
+                                            <div class="manage-registration-add__input-row" data-animate-height-row>
+                                                <button type="button" class="add-page-row-btn" data-animate-height-outline-target>
+                                                    <span class="manage-add-row-label"><i class="material-icons" aria-hidden="true">add</i><span>입력란 추가</span></span>
+                                                    <span class="manage-registration-add__quantity">
+                                                        <span class="manage-registration-add__quantity-inner">
+                                                            <span class="qty-control-box color-type000" onclick="event.stopPropagation()">
+                                                                <span class="ctrl-btn" onclick="adjustAddCount(-1)">-</span>
+                                                                <span id="add-count-desktop" class="ctrl-val">1장</span>
+                                                                <span class="ctrl-btn" onclick="adjustAddCount(1)">+</span>
+                                                            </span>
+                                                        </span>
+                                                    </span>
+                                                </button>
                                             </div>
-                                        </button>
+                                            <div class="manage-registration-add__workspace">
+                                                <div class="manage-registration-options" role="group" aria-label="등록 부가 기능">
+                                                    <button type="button" class="ui-button color-text-selectable shape-rounded003" aria-expanded="false" aria-controls="manage-registration-inline" onclick="RegistrationLookup.openInline('photo', this)">
+                                                        <i class="material-icons" aria-hidden="true">photo_camera</i><span>사진 등록</span>
+                                                        <i class="material-icons manage-registration-options__collapse" aria-hidden="true">keyboard_arrow_up</i>
+                                                    </button>
+                                                    <button type="button" class="ui-button color-text-selectable shape-rounded003" aria-expanded="false" aria-controls="manage-registration-inline" onclick="RegistrationLookup.openInline('pack', this)">
+                                                        <i class="material-symbols-registration" aria-hidden="true">package_2</i><span>팩 검색</span>
+                                                        <i class="material-icons manage-registration-options__collapse" aria-hidden="true">keyboard_arrow_up</i>
+                                                    </button>
+                                                    <button type="button" class="ui-button color-text-selectable shape-rounded003" aria-expanded="false" aria-controls="manage-registration-inline" onclick="RegistrationLookup.openInline('deck', this)">
+                                                        <i class="material-symbols-registration material-symbols-registration--deck-code" aria-hidden="true">123</i><span>덱코드</span>
+                                                        <i class="material-icons manage-registration-options__collapse" aria-hidden="true">keyboard_arrow_up</i>
+                                                    </button>
+                                                </div>
+                                                <div id="manage-registration-inline" class="manage-registration-inline__viewport"></div>
+                                            </div>
+                                        </div>
+                                        <template id="manage-registration-inline-template">
+                                            <section class="manage-registration-inline color-text-001" tabindex="-1">
+                                                <div class="manage-registration-inline__content"></div>
+                                            </section>
+                                        </template>
                                     </div>
                                 </div>
                                 <div class="mobile-cards-wrapper">
-                                    <div class="mobile-cards-list shadow-drop-small" id="mobile-cards-list-general"
-                                        style="display: none;"></div>
-                                    <div class="mobile-add-dashed-card shape-rounded003 border-dashed card-add-split">
-                                        <button type="button" onclick="openPhotoRegistration()"><i class="material-icons">photo_camera</i><span>사진으로 등록</span></button>
-                                        <button type="button" onclick="handleMobileAddCardClick()"><i class="material-icons">add</i><span>입력란 추가</span></button>
+                                    <div class="mobile-cards-list shadow-drop-small" id="mobile-cards-list-general"></div>
+                                    <div class="mobile-add-dashed-card card-add-split manage-registration-add manage-registration-add__controls border-dashed shape-rounded003">
+                                        <button type="button" onclick="handleMobileAddCardClick()"><span class="manage-add-row-label"><i class="material-icons" aria-hidden="true">add</i><span>입력란 추가</span></span></button>
+                                        <div class="manage-registration-options" role="group" aria-label="등록 부가 기능">
+                                            <button type="button" class="ui-button color-text-001" onclick="openPhotoRegistration()"><i class="material-icons" aria-hidden="true">photo_camera</i><span>사진 등록</span></button>
+                                            <button type="button" class="ui-button color-text-001" aria-haspopup="dialog" aria-controls="registration-lookup-sheet" onclick="RegistrationLookup.open('pack', this)"><i class="material-symbols-registration" aria-hidden="true">package_2</i><span>팩 검색</span></button>
+                                            <button type="button" class="ui-button color-text-001" aria-haspopup="dialog" aria-controls="registration-lookup-sheet" onclick="RegistrationLookup.open('deck', this)"><i class="material-symbols-registration material-symbols-registration--deck-code" aria-hidden="true">123</i><span>덱코드</span></button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
                         <!-- 이동 파트 -->
-                        <div id="manage-move-wrapper" class="mode-form anim-hidden" inert
-                            style="background-color: transparent; border: none; box-shadow: none;">
+                        <div id="manage-move-wrapper" class="mode-form anim-hidden" inert>
                             <div class="mode-form-content">
 
-                                <div class="desktop-cards-wrapper" style="display: none;">
+                                <div class="desktop-cards-wrapper">
                                     <div class="desktop-cards-list shadow-drop-small" id="desktop-cards-list-move"></div>
                                     <div class="desktop-add-dashed-card-container">
                                         <button class="add-page-row-btn border-dashed shape-rounded003" onclick="addMultipleMoveRows(event)"
                                             tabindex="0" onkeydown="handleAddButtonKey(event, 'move')">
-                                            <span style="font-weight: 700;">이동할 카드 추가</span>
-                                            <div class="qty-control-box" onclick="event.stopPropagation()">
+                                            <span class="manage-add-row-label"><i class="material-icons" aria-hidden="true">add</i><span>입력란 추가</span></span>
+                                            <span class="qty-control-box color-type000" onclick="event.stopPropagation()">
                                                 <span class="ctrl-btn" onclick="adjustMoveCount(-1)">-</span>
                                                 <span id="add-move-count-desktop" class="ctrl-val">1장</span>
                                                 <span class="ctrl-btn" onclick="adjustMoveCount(1)">+</span>
-                                            </div>
+                                            </span>
                                         </button>
                                     </div>
                                 </div>
                                 <div class="mobile-cards-wrapper">
-                                    <div class="mobile-cards-list shadow-drop-small" id="mobile-cards-list-move"
-                                        style="display: none;"></div>
+                                    <div class="mobile-cards-list shadow-drop-small" id="mobile-cards-list-move"></div>
                                     <div class="mobile-add-dashed-card shape-rounded003 border-dashed" onclick="handleMobileAddMoveCardClick()">
-                                        <i class="material-icons">add</i>
-                                        <span>이동할 카드 추가</span>
+                                        <span class="manage-add-row-label"><i class="material-icons" aria-hidden="true">add</i><span>입력란 추가</span></span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
                         <!-- 제거 파트 -->
-                        <div id="manage-discard-wrapper" class="mode-form anim-hidden" inert
-                            style="background-color: transparent; border: none; box-shadow: none;">
+                        <div id="manage-discard-wrapper" class="mode-form anim-hidden" inert>
                             <div class="mode-form-content">
 
-                                <div class="desktop-cards-wrapper" style="display: none;">
+                                <div class="desktop-cards-wrapper">
                                     <div class="desktop-cards-list shadow-drop-small" id="desktop-cards-list-discard"></div>
                                     <div class="desktop-add-dashed-card-container">
                                         <button class="add-page-row-btn border-dashed shape-rounded003" onclick="addMultipleDiscardRows(event)"
                                             tabindex="0" onkeydown="handleAddButtonKey(event, 'discard')">
-                                            <span style="font-weight: 700;">제거할 카드 추가</span>
-                                            <div class="qty-control-box" onclick="event.stopPropagation()">
+                                            <span class="manage-add-row-label"><i class="material-icons" aria-hidden="true">add</i><span>입력란 추가</span></span>
+                                            <span class="qty-control-box color-type000" onclick="event.stopPropagation()">
                                                 <span class="ctrl-btn" onclick="adjustDiscardCount(-1)">-</span>
                                                 <span id="add-discard-count-desktop" class="ctrl-val">1장</span>
                                                 <span class="ctrl-btn" onclick="adjustDiscardCount(1)">+</span>
-                                            </div>
+                                            </span>
                                         </button>
                                     </div>
                                 </div>
                                 <div class="mobile-cards-wrapper">
-                                    <div class="mobile-cards-list shadow-drop-small" id="mobile-cards-list-discard"
-                                        style="display: none;"></div>
+                                    <div class="mobile-cards-list shadow-drop-small" id="mobile-cards-list-discard"></div>
                                     <div class="mobile-add-dashed-card shape-rounded003 border-dashed" onclick="handleMobileAddDiscardCardClick()">
-                                        <i class="material-icons">add</i>
-                                        <span>제거할 카드 추가</span>
+                                        <span class="manage-add-row-label"><i class="material-icons" aria-hidden="true">add</i><span>입력란 추가</span></span>
                                     </div>
                                 </div>
                             </div>
@@ -1738,77 +1720,6 @@
                         <div id="manage-footer-right" class="manage-footer-right"></div>
                     </div>
 
-                    <!-- 팩/덱 등록 표 컨테이너 -->
-                    <div id="manage-table-container" class="mode-form anim-hidden" inert
-                        style="background-color: transparent; border: none; box-shadow: none;">
-                        <div class="mode-form-content">
-                            <div id="pack-table-area" style="display: none;">
-
-                                <div class="desktop-cards-wrapper" style="display: none;">
-                                    <div class="desktop-cards-list shadow-drop-small" id="desktop-cards-list-pack"></div>
-                                    <div class="desktop-add-dashed-card-container card-add-split border-dashed shape-rounded003">
-                                        <button class="add-page-row-btn photo-register-trigger" onclick="openPhotoRegistration()" tabindex="0">
-                                            <i class="material-icons">photo_camera</i><span style="font-weight: 700;">사진으로 등록</span>
-                                        </button>
-                                        <button class="add-page-row-btn" onclick="addMultipleRows(event)" tabindex="0"
-                                            onkeydown="handleAddButtonKey(event, 'pack-add')">
-                                            <span style="font-weight: 700;">입력란 추가</span>
-                                            <div class="qty-control-box" onclick="event.stopPropagation()">
-                                                <span class="ctrl-btn" onclick="adjustAddCount(-1)">-</span>
-                                                <span id="pack-add-count-desktop" class="ctrl-val">1장</span>
-                                                <span class="ctrl-btn" onclick="adjustAddCount(1)">+</span>
-                                            </div>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="mobile-cards-wrapper">
-                                    <div class="mobile-cards-list shadow-drop-small" id="mobile-cards-list-pack"
-                                        style="display: none;"></div>
-                                    <div class="mobile-add-dashed-card shape-rounded003 border-dashed card-add-split">
-                                        <button type="button" onclick="openPhotoRegistration()"><i class="material-icons">photo_camera</i><span>사진으로 등록</span></button>
-                                        <button type="button" onclick="handleMobileAddCardClick()"><i class="material-icons">add</i><span>입력란 추가</span></button>
-                                    </div>
-                                </div>
-                                <div class="page-btn-container">
-                                    <button class="btn cyan-theme waves-effect waves-light"
-                                        data-requires-inventory onclick="submitPageEntries()" tabindex="0">등록</button>
-                                </div>
-                            </div>
-
-                            <div id="deck-table-area" style="display: none;">
-
-                                <div class="desktop-cards-wrapper" style="display: none;">
-                                    <div class="desktop-cards-list shadow-drop-small" id="desktop-cards-list-deck"></div>
-                                    <div class="desktop-add-dashed-card-container card-add-split border-dashed shape-rounded003">
-                                        <button class="add-page-row-btn photo-register-trigger" onclick="openPhotoRegistration()" tabindex="0">
-                                            <i class="material-icons">photo_camera</i><span style="font-weight: 700;">사진으로 등록</span>
-                                        </button>
-                                        <button class="add-page-row-btn" onclick="addMultipleRows(event)" tabindex="0"
-                                            onkeydown="handleAddButtonKey(event, 'deck-add')">
-                                            <span style="font-weight: 700;">입력란 추가</span>
-                                            <div class="qty-control-box" onclick="event.stopPropagation()">
-                                                <span class="ctrl-btn" onclick="adjustAddCount(-1)">-</span>
-                                                <span id="deck-add-count-desktop" class="ctrl-val">1장</span>
-                                                <span class="ctrl-btn" onclick="adjustAddCount(1)">+</span>
-                                            </div>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="mobile-cards-wrapper">
-                                    <div class="mobile-cards-list shadow-drop-small" id="mobile-cards-list-deck"
-                                        style="display: none;"></div>
-                                    <div class="mobile-add-dashed-card shape-rounded003 border-dashed card-add-split">
-                                        <button type="button" onclick="openPhotoRegistration()"><i class="material-icons">photo_camera</i><span>사진으로 등록</span></button>
-                                        <button type="button" onclick="handleMobileAddCardClick()"><i class="material-icons">add</i><span>입력란 추가</span></button>
-                                    </div>
-                                </div>
-                                <div class="page-btn-container">
-                                    <button class="btn cyan-theme waves-effect waves-light"
-                                        data-requires-inventory onclick="submitPageEntries()" tabindex="0">등록</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -1818,8 +1729,8 @@
                     <p class="content-subtitle">보유 중인 모든 카드 목록을 확인하고 관리합니다.</p>
 
                     <!-- 보유 현황 페이지 상단 광고 -->
-                    <div id="inventory-page-ad" class="ad-slot-inline">
-                        <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-2358258042309830"
+                    <div id="inventory-page-ad" class="ad-slot ad-slot-inline color-surface-000 color-text-003 border-basic shape-rounded002" hidden>
+                        <ins class="adsbygoogle" data-ad-client="ca-pub-2358258042309830"
                             data-ad-slot="9416914535" data-ad-format="auto" data-full-width-responsive="true"></ins>
                     </div>
 
@@ -1845,24 +1756,26 @@
                                 <dl class="ui-stat-grid">
                                     <div class="ui-stat color-surface-001 shape-rounded-lg">
                                         <dt class="ui-stat__label color-text-001">보유 카드 수량</dt>
-                                        <dd id="inv-total-cards" class="ui-stat__value color-text-theme">0</dd>
+                                        <dd id="inv-total-cards" class="ui-stat__value color-text-theme">—</dd>
                                     </div>
                                     <div class="ui-stat color-surface-001 shape-rounded-lg">
                                         <dt class="ui-stat__label color-text-001">보유 카드 종류</dt>
-                                        <dd id="inv-kind-cards" class="ui-stat__value color-text-theme">0</dd>
+                                        <dd id="inv-kind-cards" class="ui-stat__value color-text-theme">—</dd>
                                     </div>
                                 </dl>
                                 <div class="dashboard-details">
                                     <section class="dash-section" aria-labelledby="inv-location-heading">
                                         <h6 id="inv-location-heading">보관 위치별 수량</h6>
                                         <div id="inv-location-stats" class="stat-list color-surface-001 shape-rounded-lg">
-                                            <div class="loading-spinner-small color-theme-002"></div>
+                                            <div class="loading-spinner-small color-theme-002" role="img" aria-label="보관 위치별 수량 불러오는 중"></div>
+                                            <div data-stat-content hidden></div>
                                         </div>
                                     </section>
                                     <section class="dash-section" aria-labelledby="inv-rarity-heading">
                                         <h6 id="inv-rarity-heading">레어도별 수량</h6>
                                         <div id="inv-rarity-stats" class="stat-list color-surface-001 shape-rounded-lg">
-                                            <div class="loading-spinner-small color-theme-002"></div>
+                                            <div class="loading-spinner-small color-theme-002" role="img" aria-label="레어도별 수량 불러오는 중"></div>
+                                            <div data-stat-content hidden></div>
                                         </div>
                                     </section>
                                 </div>
@@ -1870,70 +1783,68 @@
                         </div>
 
                         <!-- 목록 탭 -->
-                        <div id="form-inventory-list" class="mode-form anim-hidden" inert>
+                        <div id="form-inventory-list" class="mode-form shape-rounded003 anim-hidden" inert>
                             <div class="mode-form-content">
-                                <div id="inventory-grid-container">
+                                <div id="inventory-grid-container" class="color-surface-001 shape-rounded003">
                                     <div class="inventory-grid-wrapper" id="inventory-scroll-area">
-                                        <table class="inventory-table">
-                                            <thead>
+                                        <table class="inventory-table color-text-000">
+                                            <thead class="color-type001 shadow-small">
                                                 <tr>
-                                                    <th class="col-card-name" onclick="handleGridSort(0)">
+                                                    <th class="col-card-name" tabindex="-1" onclick="handleGridSort(0, this)">
                                                         <div class="header-content">
+                                                            <span class="sort-icons-wrapper"><i
+                                                                    class="fa-solid fa-sort background-icon"></i><i
+                                                                    class="fa-solid active-icon"></i></span>
                                                             <span class="header-text">카드 이름</span>
                                                             <div class="icon-group">
-                                                                <span class="sort-icons-wrapper"><i
-                                                                        class="fa-solid fa-sort background-icon"></i><i
-                                                                        class="fa-solid active-icon"></i></span>
-                                                                <div class="filter-trigger-btn"
+                                                                <div class="filter-trigger-btn color-text-selectable"
                                                                     onclick="openGridFilter(event, 0, 'type1')"><i
                                                                         class="material-icons">filter_alt</i></div>
                                                             </div>
                                                         </div>
                                                     </th>
-                                                    <th class="col-card-no" onclick="handleGridSort(1)">
+                                                    <th class="col-card-no" tabindex="-1" onclick="handleGridSort(1, this)">
                                                         <div class="header-content">
+                                                            <span class="sort-icons-wrapper"><i
+                                                                    class="fa-solid fa-sort background-icon"></i><i
+                                                                    class="fa-solid active-icon"></i></span>
                                                             <span class="header-text">카드 번호</span>
                                                             <div class="icon-group">
-                                                                <span class="sort-icons-wrapper"><i
-                                                                        class="fa-solid fa-sort background-icon"></i><i
-                                                                        class="fa-solid active-icon"></i></span>
-                                                                <div class="filter-trigger-btn"
+                                                                <div class="filter-trigger-btn color-text-selectable"
                                                                     onclick="openGridFilter(event, 1, 'type1')"><i
                                                                         class="material-icons">filter_alt</i></div>
                                                             </div>
                                                         </div>
                                                     </th>
-                                                    <th class="col-rarity" onclick="handleGridSort(2)">
+                                                    <th class="col-rarity" tabindex="-1" onclick="handleGridSort(2, this)">
                                                         <div class="header-content">
+                                                            <span class="sort-icons-wrapper"><i
+                                                                    class="fa-solid fa-sort background-icon"></i><i
+                                                                    class="fa-solid active-icon"></i></span>
                                                             <span class="header-text">레어도</span>
                                                             <div class="icon-group">
-                                                                <span class="sort-icons-wrapper"><i
-                                                                        class="fa-solid fa-sort background-icon"></i><i
-                                                                        class="fa-solid active-icon"></i></span>
-                                                                <div class="filter-trigger-btn"
+                                                                <div class="filter-trigger-btn color-text-selectable"
                                                                     onclick="openGridFilter(event, 2, 'type2')"><i
                                                                         class="material-icons">filter_alt</i></div>
                                                             </div>
                                                         </div>
                                                     </th>
-                                                    <th class="col-qty" onclick="handleGridSort(3)">
+                                                    <th class="col-qty" tabindex="-1" onclick="handleGridSort(3, this)">
                                                         <div class="header-content">
+                                                            <span class="sort-icons-wrapper"><i
+                                                                    class="fa-solid fa-sort background-icon"></i><i
+                                                                    class="fa-solid active-icon"></i></span>
                                                             <span class="header-text">수량</span>
-                                                            <div class="icon-group">
-                                                                <span class="sort-icons-wrapper"><i
-                                                                        class="fa-solid fa-sort background-icon"></i><i
-                                                                        class="fa-solid active-icon"></i></span>
-                                                            </div>
                                                         </div>
                                                     </th>
-                                                    <th class="col-loc" onclick="handleGridSort(4)">
+                                                    <th class="col-loc" tabindex="-1" onclick="handleGridSort(4, this)">
                                                         <div class="header-content">
+                                                            <span class="sort-icons-wrapper"><i
+                                                                    class="fa-solid fa-sort background-icon"></i><i
+                                                                    class="fa-solid active-icon"></i></span>
                                                             <span class="header-text">보관 위치</span>
                                                             <div class="icon-group">
-                                                                <span class="sort-icons-wrapper"><i
-                                                                        class="fa-solid fa-sort background-icon"></i><i
-                                                                        class="fa-solid active-icon"></i></span>
-                                                                <div class="filter-trigger-btn"
+                                                                <div class="filter-trigger-btn color-text-selectable"
                                                                     onclick="openGridFilter(event, 4, 'type2')"><i
                                                                         class="material-icons">filter_alt</i></div>
                                                             </div>
@@ -1943,7 +1854,7 @@
                                                         <div class="header-content"><span
                                                                 class="header-text">일러스트</span>
                                                             <div class="icon-group">
-                                                                <div class="filter-trigger-btn"
+                                                                <div class="filter-trigger-btn color-text-selectable"
                                                                     onclick="openGridFilter(event, 5, 'type2')"><i
                                                                         class="material-icons">filter_alt</i></div>
                                                             </div>
@@ -1951,33 +1862,20 @@
                                                     </th>
                                                 </tr>
                                             </thead>
-                                            <tbody id="inventory-grid-body">
+                                            <tbody id="inventory-grid-body" class="color-type001">
                                                 <!-- 데이터 행 혹은 준비 상태 메시지가 삽입될 공간 -->
                                             </tbody>
                                         </table>
-                                        <div id="grid-status-area">
+                                        <div id="grid-status-area" class="color-text-001">
                                             <div class="grid-ready-view">
                                                 <div class="grid-ready-text">데이터를 불러옵니다.</div>
-                                                <button class="btn cyan-theme waves-effect waves-light"
+                                                <button type="button" class="ui-button grid-ready-action color-theme shape-capsule"
                                                     onclick="manualSyncInventory()">불러오기</button>
                                             </div>
                                         </div>
-                                        <div id="grid-append-sensor" style="height: 10px; display: none;"></div>
-                                        <div id="grid-bottom-loader" class="grid-append-loader" style="display: none;">
-                                            <div class="preloader-wrapper small active"
-                                                style="width: 24px; height: 24px;">
-                                                <div class="spinner-layer spinner-teal-only">
-                                                    <div class="circle-clipper left">
-                                                        <div class="circle"></div>
-                                                    </div>
-                                                    <div class="gap-patch">
-                                                        <div class="circle"></div>
-                                                    </div>
-                                                    <div class="circle-clipper right">
-                                                        <div class="circle"></div>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                        <div id="grid-append-sensor" hidden></div>
+                                        <div id="grid-bottom-loader" hidden>
+                                            <div class="loading-spinner-small color-theme-002" aria-hidden="true"></div>
                                         </div>
                                     </div>
                                 </div>
@@ -1990,9 +1888,9 @@
             <div id="app-page-settings" class="content-section centered-content-area" inert>
                 <div class="page-transition-inner">
                     <h5 class="content-title">환경 설정</h5>
-                    <p style="color: var(--text-001); margin-bottom: 30px;">계정 연결 및 데이터를 관리합니다.</p>
+                    <p class="settings-intro color-text-001">계정 연결 및 데이터를 관리합니다.</p>
 
-                    <div class="settings-container" style="text-align: left;">
+                    <div class="settings-container">
 
                         <!-- 상단 계정 정보 카드 -->
                         <section class="account-card color-surface-001 shape-rounded-lg" data-account-card
@@ -2038,14 +1936,12 @@
                         </section>
 
 
-                        <div style="margin-bottom: 40px;">
-                            <h6 class="border-section-000"
-                                style="font-weight: 700; margin-bottom: 4px; padding-bottom: 8px;">
+                        <div class="settings-provider-links">
+                            <h6 class="settings-provider-links__heading border-section-000">
                                 계정 연결</h6>
 
-                            <div class="border-section-001"
-                                style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0;">
-                                <div style="display: flex; align-items: center; gap: 10px;">
+                            <div class="settings-provider-links__row border-section-001">
+                                <div class="settings-provider-links__name">
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="1.5rem"
                                         height="1.5rem">
                                         <path fill="#FFC107"
@@ -2057,70 +1953,62 @@
                                         <path fill="#1976D2"
                                             d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z" />
                                     </svg>
-                                    <span style="font-weight: 600;">Google</span>
+                                    <span>Google</span>
                                 </div>
                                 <div id="google-link-container" class="link-state-box is-unlinked">
                                     <span class="link-status-label">연결됨</span>
-                                    <button id="google-link-btn" class="btn cyan-theme waves-effect"
-                                        onclick="toggleProviderLink('google')"
-                                        style="width: 90px; height: 32px; line-height: 32px; font-size: 0.8rem; padding: 0;">연결</button>
+                                    <button id="google-link-btn" class="btn settings-provider-link waves-effect"
+                                        onclick="toggleProviderLink('google')">연결</button>
                                 </div>
                             </div>
 
-                            <div
-                                style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0;">
-                                <div style="display: flex; align-items: center; gap: 10px;">
-                                    <svg viewBox="0 0 1200 1227"
-                                        style="width: 1.35rem; height: 1.35rem; fill: currentColor; transform: scale(1);">
+                            <div class="settings-provider-links__row">
+                                <div class="settings-provider-links__name">
+                                    <svg viewBox="0 0 1200 1227" class="settings-provider-links__x-icon">
                                         <path
                                             d="M714.163 519.284L1160.89 0H1055.03L667.137 450.887L357.328 0H0L468.492 681.821L0 1226.37H105.866L515.491 750.218L842.672 1226.37H1200L714.137 519.284H714.163ZM569.165 687.828L521.697 619.934L144.011 79.6944H306.615L611.412 515.685L658.88 583.579L1055.08 1150.3H892.476L569.165 687.854V687.828Z" />
                                     </svg>
-                                    <span style="font-weight: 600;">X (Twitter)</span>
+                                    <span>X (Twitter)</span>
                                 </div>
                                 <div id="twitter-link-container" class="link-state-box is-unlinked">
                                     <span class="link-status-label">연결됨</span>
-                                    <button id="twitter-link-btn" class="btn cyan-theme waves-effect"
-                                        onclick="toggleProviderLink('twitter')"
-                                        style="width: 90px; height: 32px; line-height: 32px; font-size: 0.8rem; padding: 0;">연결</button>
+                                    <button id="twitter-link-btn" class="btn settings-provider-link waves-effect"
+                                        onclick="toggleProviderLink('twitter')">연결</button>
                                 </div>
                             </div>
 
                         </div>
 
-                        <div style="margin-bottom: 40px; padding-bottom: 30px;">
-                            <h6 class="border-section-000"
-                                style="font-weight: 700; margin-bottom: 12px; padding-bottom: 8px;">
+                        <div class="settings-data-actions">
+                            <h6 class="settings-data-actions__heading border-section-000">
                                 데이터 관리</h6>
 
-                            <div class="management-row">
-                                <span class="management-desc">외부 데이터를 가져옵니다.</span>
-                                <button class="btn cyan-theme waves-effect waves-light management-btn"
+                            <div class="settings-data-actions__row">
+                                <span class="settings-data-actions__description color-text-001">외부 데이터를 가져옵니다.</span>
+                                <button type="button" class="ui-button color-theme settings-data-actions__button"
                                     onclick="openMigrationModal()">가져오기</button>
                             </div>
 
-                            <div class="management-row" style="margin-top: 15px;">
-                                <span class="management-desc">서버 데이터를 다운로드 합니다.</span>
-                                <button class="btn cyan-theme waves-effect waves-light management-btn"
+                            <div class="settings-data-actions__row">
+                                <span class="settings-data-actions__description color-text-001">서버 데이터를 다운로드 합니다.</span>
+                                <button type="button" class="ui-button color-theme settings-data-actions__button ui-control--disabled color-disabled"
                                     data-requires-inventory onclick="openExportModal()">내보내기</button>
                             </div>
                         </div>
 
                         <div>
-                            <h6 class="border-section-danger"
-                                style="font-weight: 700; margin-bottom: 12px; padding-bottom: 8px; color: var(--red);">
+                            <h6 class="settings-data-actions__heading border-section-danger color-text-red">
                                 위험 구역</h6>
 
-                            <div class="management-row">
-                                <span class="management-desc">서버에 등록된 카드 정보를 삭제합니다.</span>
-                                <button class="btn waves-effect waves-light management-btn"
-                                    data-requires-inventory onclick="openDataClearModal()"
-                                    style="background-color: var(--error-red) !important;">데이터 삭제</button>
+                            <div class="settings-data-actions__row">
+                                <span class="settings-data-actions__description color-text-001">서버에 등록된 카드 정보를 삭제합니다.</span>
+                                <button type="button" class="ui-button color-danger settings-data-actions__button settings-data-actions__button--danger ui-control--disabled color-disabled"
+                                    data-requires-inventory onclick="openDataClearModal()">데이터 삭제</button>
                             </div>
 
-                            <div class="management-row" style="margin-top: 15px;">
-                                <span class="management-desc">사용자 정보를 완전히 삭제하고 탈퇴합니다.</span>
-                                <button class="btn waves-effect waves-light management-btn" onclick="deleteAccount()"
-                                    style="background-color: var(--error-red) !important;">계정 삭제</button>
+                            <div class="settings-data-actions__row">
+                                <span class="settings-data-actions__description color-text-001">사용자 정보를 완전히 삭제하고 탈퇴합니다.</span>
+                                <button type="button" class="ui-button color-danger settings-data-actions__button settings-data-actions__button--danger" onclick="deleteAccount()">계정 삭제</button>
                             </div>
                         </div>
 
@@ -2155,7 +2043,7 @@
     </footer>
     </div>
 
-    <div id="add-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-result-operation="add" role="dialog" aria-labelledby="add-modal-title">
+    <div id="add-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-result-operation="add" role="dialog" aria-labelledby="add-modal-title" hidden>
         <header class="ui-overlay__header">
             <h2 id="add-modal-title" data-result-title class="color-text-000">카드 등록 완료!</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="등록 결과 닫기"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2186,7 +2074,7 @@
         <footer class="ui-overlay__footer"><button type="button" class="ui-button color-theme shape-capsule modal-close">확인</button></footer>
     </div>
 
-    <div id="move-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-result-operation="move" role="dialog" aria-labelledby="move-modal-title">
+    <div id="move-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-result-operation="move" role="dialog" aria-labelledby="move-modal-title" hidden>
         <header class="ui-overlay__header">
             <h2 id="move-modal-title" data-result-title class="color-text-000">카드 이동 완료!</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="이동 결과 닫기"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2217,7 +2105,7 @@
         <footer class="ui-overlay__footer"><button type="button" class="ui-button color-theme shape-capsule modal-close">확인</button></footer>
     </div>
 
-    <div id="discard-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-result-operation="discard" role="dialog" aria-labelledby="discard-modal-title">
+    <div id="discard-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-result-operation="discard" role="dialog" aria-labelledby="discard-modal-title" hidden>
         <header class="ui-overlay__header">
             <h2 id="discard-modal-title" data-result-title class="color-text-000">카드 제거 완료!</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="제거 결과 닫기"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2248,7 +2136,7 @@
         <footer class="ui-overlay__footer"><button type="button" class="ui-button color-theme shape-capsule modal-close">확인</button></footer>
     </div>
 
-    <div id="migration-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-result-operation="import" role="dialog" aria-labelledby="migration-result-title">
+    <div id="migration-result-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-result-operation="import" role="dialog" aria-labelledby="migration-result-title" hidden>
         <header class="ui-overlay__header">
             <h2 id="migration-result-title" data-result-title class="color-text-000">카드 가져오기 완료!</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="가져오기 결과 닫기"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2280,7 +2168,7 @@
     </div>
 
     <!-- 데이터 삭제 확인 모달 -->
-    <div id="data-clear-confirm-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-overlay-size="small" role="dialog" aria-labelledby="data-clear-title">
+    <div id="data-clear-confirm-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-overlay-size="small" role="dialog" aria-labelledby="data-clear-title" hidden>
         <header class="ui-overlay__header">
             <h2 id="data-clear-title" class="color-text-000">보유 카드 전체 삭제</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 ui-control--disabled color-disabled modal-close" aria-label="삭제 확인 닫기"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2299,7 +2187,7 @@
 
 
     <!-- 로그인 전용: 데스크톱 모달 / 모바일 시트 공통 DOM -->
-    <div id="auth-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-labelledby="auth-title">
+    <div id="auth-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-labelledby="auth-title" hidden>
         <header class="ui-overlay__header">
             <h2 id="auth-title" class="color-text-000">로그인</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="로그인 닫기"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2323,7 +2211,7 @@
     </div>
 
     <!-- SNS 인증 이후 신규 사용자에게만 제공하는 동의 화면 -->
-    <div id="signup-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-overlay-size="small" role="dialog" aria-labelledby="signup-title" aria-describedby="signup-guide">
+    <div id="signup-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-overlay-size="small" role="dialog" aria-labelledby="signup-title" aria-describedby="signup-guide" hidden>
         <header class="ui-overlay__header">
             <h2 id="signup-title" class="color-text-000">서비스 가입</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 ui-control--disabled color-disabled modal-close" data-signup-cancel aria-label="가입 취소하고 로그아웃"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2352,7 +2240,7 @@
     </div>
 
     <!-- 가져오기 모달 (UI 전면 개편) -->
-    <div id="migration-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-labelledby="migration-title">
+    <div id="migration-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-labelledby="migration-title" hidden>
         <header class="ui-overlay__header">
             <h2 id="migration-title" class="color-text-000">카드 데이터 가져오기</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 ui-control--disabled color-disabled modal-close" aria-label="가져오기 닫기"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2393,7 +2281,7 @@
     </div>
 
     <!-- 데이터 내보내기(백업) 모달 -->
-    <div id="export-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-labelledby="export-title">
+    <div id="export-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-labelledby="export-title" hidden>
         <header class="ui-overlay__header">
             <h2 id="export-title" class="color-text-000">카드 데이터 내보내기</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="내보내기 닫기"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2411,7 +2299,7 @@
         </footer>
     </div>
 
-    <div id="data-clear-success-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-overlay-size="small" role="dialog" aria-labelledby="data-clear-success-title">
+    <div id="data-clear-success-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-overlay-size="small" role="dialog" aria-labelledby="data-clear-success-title" hidden>
         <header class="ui-overlay__header">
             <h2 id="data-clear-success-title" class="color-text-000">삭제 완료</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="삭제 결과 닫기"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2423,22 +2311,22 @@
         <footer class="ui-overlay__footer"><button type="button" class="ui-button color-theme shape-capsule modal-close">확인</button></footer>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js" defer></script>
-    <script src="https://unpkg.com/hangul-js" defer></script>
+    <script src="/vendor/ui/11d9ccbb8da3c7bb4052a9dd9a60bd1109345bc760994ffe66ad6ce192cf658c.js" defer></script>
+    <script src="/vendor/ui/1c892e8a26f8b37e51cd118e4cc61d864de6e4fc1f1df5d3386bdfe5277a0b7f.js" defer></script>
 
 
-    <section id="noti-popup" class="noti-popup-layer ui-overlay ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium" role="dialog" aria-label="공지 미리보기" tabindex="-1" hidden>
+    <section id="noti-popup" class="noti-popup-layer ui-overlay ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium" role="dialog" aria-label="공지 미리보기" tabindex="-1" data-sheet-display="css" hidden>
         <header class="ui-overlay__header">
             <h2 class="color-text-000">공지사항</h2>
             <button type="button" class="ui-button ui-button--text color-text-001" onclick="closeNotiPopup()" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button>
         </header>
-        <div id="noti-list-container" class="noti-list ui-overlay__body"></div>
+        <div id="noti-list-container" class="noti-list ui-overlay__body color-surface-000 shape-rounded003"></div>
         <footer class="ui-overlay__footer"><button type="button" class="ui-button ui-button--text color-highlight-theme" onclick="openNoticeModal()">더 보기</button></footer>
     </section>
-    <div id="noti-popup-backdrop" class="ui-overlay__backdrop color-surface-black" style="display: none;" onclick="closeNotiPopup()" aria-hidden="true"></div>
+    <div id="noti-popup-backdrop" class="ui-overlay__backdrop color-surface-black" onclick="closeNotiPopup()" aria-hidden="true" hidden></div>
 
     <!-- 공지 문서: 데스크톱 목록·본문 / 모바일 목록·내용 시트 -->
-    <section id="notice-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-overlay-size="large" role="dialog" aria-label="공지사항">
+    <section id="notice-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" data-overlay-size="large" role="dialog" aria-label="공지사항" hidden>
         <header class="ui-overlay__header"><h2 class="color-text-000">공지사항</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
         <div class="ui-overlay__body document-view">
             <nav id="notice-date-list" class="document-view__list color-surface-001" aria-label="공지 선택"></nav>
@@ -2450,11 +2338,11 @@
             <button type="button" class="ui-button color-theme shape-capsule modal-close" data-navigation-slot="end">확인</button>
         </footer>
     </section>
-    <section id="notice-list-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="공지 목록">
+    <section id="notice-list-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="공지 목록" hidden>
         <header class="ui-overlay__header"><h2 class="color-text-000">공지 목록</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
         <div class="ui-overlay__body document-view"><nav id="mobile-notice-list-container" class="document-view__list color-surface-001" aria-label="공지 선택"></nav></div>
     </section>
-    <section id="notice-detail-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="공지사항">
+    <section id="notice-detail-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="공지사항" hidden>
         <header class="ui-overlay__header"><h2 class="color-text-000">공지사항</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
         <div class="ui-overlay__body document-view"><article id="mobile-notice-content-body" class="document-view__content color-surface-000"></article></div>
         <footer class="ui-overlay__footer ui-item-navigation" data-notice-navigation>
@@ -2465,7 +2353,7 @@
     </section>
 
     <!-- 이용약관 모달 -->
-    <div id="terms-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="이용약관">
+    <div id="terms-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="이용약관" hidden>
         <header class="ui-overlay__header"><h2 class="color-text-000">YGO Synapse 서비스 이용 약관</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
         <div class="ui-overlay__body document-view">
             <div class="document-view__content color-surface-000 shape-rounded-lg">
@@ -2513,7 +2401,7 @@
     </div>
 
     <!-- 멤버십 인증: 데스크톱 모달 / 모바일 시트 -->
-    <div id="membership-auth-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-labelledby="membership-auth-title">
+    <div id="membership-auth-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-labelledby="membership-auth-title" hidden>
         <header class="ui-overlay__header">
             <h2 id="membership-auth-title" class="color-text-000">멤버십 인증</h2>
             <button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="멤버십 인증 닫기"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2539,7 +2427,7 @@
     </div>
 
     <!-- 개인정보 수집 및 이용 동의 모달 -->
-    <div id="privacy-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="개인정보 처리방침">
+    <div id="privacy-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="개인정보 처리방침" hidden>
         <header class="ui-overlay__header"><h2 class="color-text-000">개인정보 처리방침</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
         <div class="ui-overlay__body document-view">
             <div class="document-view__content color-surface-000 shape-rounded-lg">
@@ -2575,43 +2463,95 @@
 
 
 
-    <section id="licenses-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="라이선스 및 출처">
+    <section id="licenses-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-label="라이선스 및 출처" hidden>
         <header class="ui-overlay__header"><h2 class="color-text-000">라이선스 및 출처</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
         <div class="ui-overlay__body document-view"><article id="licenses-content" class="document-view__content color-surface-000 shape-rounded-lg"></article></div>
         <footer class="ui-overlay__footer"><a href="licenses.html" target="_blank" rel="noopener" data-overlay-action="auxiliary" class="ui-button ui-button--text color-highlight-theme">자세히보기</a></footer>
     </section>
 
-    <script src="onboarding.js?v=3-faq-segments" defer></script>
-    <script src="illustration-images.js?v=3-private-storage" defer></script>
-    <script src="illustration-picker.js?v=166-overlay-exteriors" defer></script>
+    <script src="feedback.js?v=20261125-ui-standardization" defer></script>
+    <script src="onboarding.js?v=20261123-onboarding-ring-cleanup" defer></script>
+    <script src="illustration-images.js?v=20261104-supabase" defer></script>
+    <script src="illustration-picker.js?v=20261104-picker-ui" defer></script>
     <script src="photo-card-geometry.js?v=1" defer></script>
-    <script src="photo-card-search.js?v=166-overlay-exteriors" defer></script>
-    <script src="search-illustrations.js?v=166-overlay-exteriors" defer></script>
+    <script src="photo-card-ui.js?v=20261124-css-structure" defer></script>
+    <script src="photo-card-search.js?v=20261125-ui-standardization" defer></script>
+    <script src="search-illustrations.js?v=20261104-art-region-surface" defer></script>
     <script src="catalog-filters.js?v=3-type-labels" defer></script>
     <script src="filter-editor.js?v=5-type-labels" defer></script>
-    <script src="search-navigation.js?v=154-ui-structure" defer></script>
-    <script src="management-results.js?v=183-style-cleanup" defer></script>
+    <script src="search-navigation.js?v=20261103-focus-navigation" defer></script>
+    <script src="management-results.js?v=184-import-details" defer></script>
     <script src="data-transfer.js?v=178-data-dialogs" defer></script>
-    <script src="import-attempt.js?v=1" defer></script>
+    <script src="import-attempt.js?v=2" defer></script>
     <script src="spreadsheet-loader.js?v=1" defer></script>
-    <script src="overlays.js?v=193-popup-height" defer></script>
-    <script src="catalog-search.js?v=27-195-chip-spacing" defer></script>
+    <script src="overlays.js?v=20261125-ui-standardization" defer></script>
+    <script src="catalog-search.js?v=20261125-ui-standardization" defer></script>
     <script src="owned-cards.js?v=156-owned-detail-colors" defer></script>
     <script src="auth-session.js?v=2" defer></script>
-    <script src="authentication-result.js?v=2" defer></script>
+    <script src="authentication-result.js?v=3" defer></script>
     <script src="admin-session.js?v=5" defer></script>
     <script src="documents.js?v=3-document-list-overlay" defer></script>
-    <script src="membership-claims-sync.js?v=6" defer></script>
+    <script src="membership-claims-sync.js?v=7-not-required" defer></script>
     <script src="discord-popup.js?v=4" defer></script>
-    <script src="script.js?v=211-authentication-result" defer></script>
+    <script src="registration-lookup.js?v=20261124-service-css-cleanup" defer></script>
+    <script src="script.js?v=20261125-ui-standardization" defer></script>
     <!-- 인벤토리 필터 팝업 -->
-    <section id="inventory-filter-popup" class="catalog-filter-editor ui-overlay ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium" role="dialog" tabindex="-1" hidden>
+    <section id="inventory-filter-popup" data-overlay-size="small" class="catalog-filter-editor ui-overlay ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium" role="dialog" tabindex="-1" hidden>
         <!-- JS에서 동적 렌더링 -->
     </section>
 
+    <div id="registration-lookup-sheet" class="registration-lookup ui-overlay" role="dialog" aria-labelledby="registration-lookup-title" tabindex="-1" data-sheet-display="css" hidden inert>
+        <div class="ui-overlay__backdrop color-surface-black" aria-hidden="true" hidden></div>
+        <section class="ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet">
+            <header class="ui-overlay__header">
+                <h2 id="registration-lookup-title" class="color-text-000"></h2>
+                <button type="button" class="ui-button ui-button--text color-text-001" aria-label="닫기" data-lookup-close><i class="material-icons" aria-hidden="true">close</i></button>
+            </header>
+        </section>
+    </div>
+    <template id="registration-lookup-controls">
+        <div class="ui-overlay__body registration-lookup__body">
+            <form data-registration-lookup="pack" hidden>
+                <div class="mobile-search__input-wrap">
+                    <div class="mobile-search__surface ui-search-surface color-surface-001 shadow-small shape-capsule border-basic" aria-hidden="true"></div>
+                    <input type="search" id="registration-lookup-pack" class="search-input search-input--mobile color-text-000"
+                        aria-label="팩 이름" placeholder="팩 이름 검색" enterkeyhint="search" autocomplete="off">
+                    <button type="button" class="registration-lookup__pack-trigger ui-button search-input--mobile color-text-000 shape-capsule" data-pack-lookup-trigger
+                            aria-haspopup="dialog" aria-controls="mobile-sheet-input-overlay" hidden>팩 이름 검색</button>
+                    <button type="button" class="ui-button ui-button--text color-text-003 color-disabled ui-control--disabled mobile-search__clear" aria-label="검색어 지우기" hidden><i class="material-icons" aria-hidden="true">cancel</i></button>
+                </div>
+                <button type="submit" class="ui-button color-surface-002 color-text-001 shape-capsule color-disabled ui-control--disabled registration-lookup__submit" aria-label="팩 검색 실행"><i class="material-icons" aria-hidden="true">search</i></button>
+            </form>
+            <form data-registration-lookup="deck" hidden>
+                <div class="mobile-search__input-wrap">
+                    <div class="mobile-search__surface ui-search-surface color-surface-001 shadow-small shape-capsule border-basic" aria-hidden="true"></div>
+                    <input type="search" id="registration-lookup-deck" class="search-input search-input--mobile color-text-000"
+                        aria-label="뉴런 덱 코드" placeholder="뉴런 덱 코드" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false">
+                    <button type="button" class="ui-button ui-button--text color-text-003 color-disabled ui-control--disabled mobile-search__clear" aria-label="검색어 지우기" hidden><i class="material-icons" aria-hidden="true">cancel</i></button>
+                </div>
+                <button type="submit" class="ui-button color-surface-002 color-text-001 shape-capsule color-disabled ui-control--disabled registration-lookup__submit" aria-label="덱코드 조회 실행"><i class="material-icons" aria-hidden="true">search</i></button>
+            </form>
+        </div>
+        <footer class="ui-overlay__footer registration-lookup__footer">
+            <p class="registration-lookup__status" role="status"></p>
+            <ul class="ui-chip-list registration-lookup__suggestions" aria-label="팩 이름 추천" hidden></ul>
+            <div class="registration-lookup__pack-summary color-text-000" hidden>
+                <fieldset class="registration-lookup__pack-editions" aria-label="발매 지역" hidden></fieldset>
+                <button type="button" class="registration-lookup__pack-reset ui-button ui-button--text color-text-001 shape-capsule" aria-label="발매 지역 선택 초기화" hidden>
+                    <i class="material-icons" aria-hidden="true">chevron_left</i>
+                </button>
+                <dl class="registration-lookup__pack-detail" hidden>
+                    <dt class="visually-hidden">발매 지역</dt><dd></dd>
+                    <dt class="visually-hidden">수록 매수</dt><dd><span class="color-text-003" aria-hidden="true">•</span><span></span></dd>
+                </dl>
+            </div>
+            <button type="button" class="ui-button color-theme shape-capsule color-disabled ui-control--disabled" data-lookup-add disabled>추가</button>
+        </footer>
+    </template>
+
     <!-- [모바일 개편] 바텀 시트 -->
-    <div class="ui-overlay__backdrop color-surface-black" id="bottom-sheet-overlay" onclick="closeEntryBottomSheet()"></div>
-    <div id="mobile-entry-bottom-sheet" class="ui-overlay ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet" role="dialog" aria-labelledby="entry-sheet-title" tabindex="-1" inert style="display: none;">
+    <div class="ui-overlay__backdrop color-surface-black" id="bottom-sheet-overlay" hidden onclick="closeEntryBottomSheet()"></div>
+    <div id="mobile-entry-bottom-sheet" class="ui-overlay ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet" role="dialog" aria-labelledby="entry-sheet-title" tabindex="-1" inert data-sheet-display="css" hidden>
         <header class="ui-overlay__header">
             <h2 id="entry-sheet-title" class="color-text-000">카드 정보</h2>
             <button type="button" class="ui-button ui-button--text color-text-001" aria-label="카드 정보 닫기" onclick="closeEntryBottomSheet()"><i class="material-icons" aria-hidden="true">close</i></button>
@@ -2637,52 +2577,53 @@
     </div>
 
     <!-- [모바일 개편] 카드 이름 / 번호 / 보관 위치 입력 오버레이 -->
-    <div id="mobile-sheet-input-overlay" class="mobile-sheet-input-overlay" role="dialog" aria-label="카드 정보 입력" tabindex="-1" inert style="display: none;">
-        <div class="overlay-header">
-            <button class="btn-flat back-btn waves-effect" aria-label="입력 닫기" onclick="closeSheetOverlay()"><i
-                    class="material-icons">arrow_back</i></button>
-            <div class="overlay-input-wrapper">
-                <input type="text" id="overlay-search-input" placeholder="입력하세요" autocomplete="off">
-                <i id="overlay-clear-btn" class="material-icons clear-btn" role="button" tabindex="0" aria-label="입력 내용 지우기" onclick="clearOverlayInput()">cancel</i>
+    <div id="mobile-sheet-input-overlay" class="mobile-search color-surface-000" role="dialog" aria-label="카드 정보 입력" tabindex="-1" inert data-sheet-display="css" hidden>
+        <div class="mobile-search__panel">
+            <div class="mobile-search__toolbar color-surface-000 border-section-000">
+                <div class="mobile-search__input-wrap">
+                    <div class="mobile-search__surface ui-search-surface color-surface-001 shadow-small shape-capsule border-basic" aria-hidden="true"></div>
+                    <input type="text" id="overlay-search-input" class="search-input search-input--mobile color-text-000" placeholder="입력하세요" autocomplete="off">
+                    <button type="button" id="overlay-clear-btn" class="ui-button ui-button--text color-text-003 mobile-search__clear"
+                            aria-label="입력 내용 지우기" onclick="clearOverlayInput()" hidden><i class="material-icons" aria-hidden="true">cancel</i></button>
+                </div>
+                <button type="button" class="ui-button ui-button--text color-text-000 mobile-search__back" aria-label="입력 닫기" onclick="closeSheetOverlay()"><i
+                        class="material-icons" aria-hidden="true">arrow_back</i></button>
             </div>
-        </div>
-        <div class="overlay-content">
-            <ul id="overlay-suggestions-list" class="overlay-suggestions"></ul>
+            <div class="mobile-search__content color-surface-001">
+                <ul id="overlay-suggestions-list" class="custom-dropdown mobile-dropdown active"></ul>
+            </div>
         </div>
     </div>
 
     <!-- [모바일 개편] 수량 입력 오버레이 -->
-    <div id="mobile-sheet-qty-overlay" class="mobile-sheet-qty-overlay ui-overlay" role="dialog" aria-labelledby="qty-sheet-title" tabindex="-1" inert style="display: none;">
-        <div class="ui-overlay__backdrop color-surface-black" onclick="closeQtyOverlay()"></div>
+    <div id="mobile-sheet-qty-overlay" class="mobile-sheet-qty-overlay ui-overlay" role="dialog" aria-labelledby="qty-sheet-title" tabindex="-1" inert data-sheet-display="css" hidden>
+        <div class="ui-overlay__backdrop color-surface-black" hidden onclick="closeQtyOverlay()"></div>
         <div class="qty-overlay-content ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet">
             <header class="ui-overlay__header">
                 <h2 id="qty-sheet-title" class="color-text-000">수량 조절</h2>
                 <button type="button" class="ui-button ui-button--text color-text-001" aria-label="수량 조절 닫기" onclick="closeQtyOverlay()"><i class="material-icons" aria-hidden="true">close</i></button>
             </header>
-            <div class="qty-overlay-body ui-overlay__body" style="justify-content: center; position: relative;">
+            <div class="qty-overlay-body ui-overlay__body">
                 <div class="qty-scroll-picker">
                     <div class="qty-picker-scroll-area" id="qty-picker-scroll-area"
                         onscroll="handleQtyPickerScroll(this)">
-                        <!-- JS로 1~99 생성 -->
+                        <!-- 현재 작업의 최대 수량까지 생성 -->
                     </div>
                 </div>
 
-                <!-- 수량 액션 버튼 컨테이너 (absolute 정밀 좌표 배치용) -->
                 <div class="qty-action-btn-container">
-                    <button id="qty-reset-btn" class="qty-round-btn reset-btn" onclick="resetQtyPickerVal()"
-                        title="초기화">
-                        <i class="material-icons">refresh</i>
+                    <button type="button" id="qty-reset-btn" class="qty-round-btn ui-button color-type001 shape-capsule shadow-medium"
+                        onclick="resetQtyPickerVal()" aria-label="초기화" title="초기화">
+                        <i class="material-icons" aria-hidden="true">refresh</i>
                     </button>
-                    <button id="qty-check-btn" class="qty-round-btn check-btn"
-                        onclick="finishQtyInlineInput(document.getElementById('qty-inline-input'))" title="확인"
-                        style="display: none;">
-                        <i class="material-icons">check</i>
+                    <button type="button" id="qty-check-btn" class="qty-round-btn ui-button color-theme shape-capsule shadow-medium"
+                        onclick="finishQtyInlineInput(document.getElementById('qty-inline-input'))" aria-label="직접 입력 확정" title="직접 입력 확정" hidden>
+                        <i class="material-icons" aria-hidden="true">check</i>
                     </button>
                 </div>
 
-                <!-- 인라인 인풋 absolute 좌표 보정 -->
-                <input type="number" id="qty-inline-input" min="1" max="99" aria-label="수량"
-                    style="display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 140px; height: 90px; text-align: center; font-size: 3.5rem; font-weight: 700; border: 1px solid var(--border-color) !important; background: var(--bg-surface) !important; border-radius: 8px; z-index: 10;"
+                <input type="number" id="qty-inline-input" class="qty-inline-input ui-input--filled color-surface-001 color-text-000 border-basic shape-rounded002"
+                    min="1" max="99" aria-label="수량" hidden
                     oninput="handleQtyInlineInput(this)" onblur="finishQtyInlineInput(this)"
                     onkeydown="if(event.key==='Enter') this.blur();">
             </div>
@@ -2694,23 +2635,22 @@
     </div>
 
     <!-- [모바일 개편] 바텀시트 형식 드롭다운 선택기 -->
-    <div class="ui-overlay__backdrop color-surface-black" id="sheet-dropdown-overlay" onclick="closeSheetDropdownSelect()"></div>
-    <div id="mobile-sheet-dropdown-select" class="ui-overlay ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet" role="dialog" aria-labelledby="dropdown-select-title" tabindex="-1" inert style="display: none;">
+    <div class="ui-overlay__backdrop color-surface-black" id="sheet-dropdown-overlay" hidden onclick="closeSheetDropdownSelect()"></div>
+    <div id="mobile-sheet-dropdown-select" class="ui-overlay ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet" role="dialog" aria-labelledby="dropdown-select-title" tabindex="-1" inert data-sheet-display="css" hidden>
         <header class="ui-overlay__header">
             <h2 id="dropdown-select-title" class="color-text-000">선택</h2>
             <button type="button" class="ui-button ui-button--text color-text-001" aria-label="선택 창 닫기" onclick="closeSheetDropdownSelect()"><i class="material-icons" aria-hidden="true">close</i></button>
         </header>
         <div class="ui-overlay__body">
-            <ul id="dropdown-select-options-list" class="overlay-suggestions"
-                style="border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color);"></ul>
+            <ul id="dropdown-select-options-list" class="rarity-sheet-options color-surface-001 shape-rounded003"></ul>
         </div>
     </div>
 
     <div id="grid-filter-sheet-overlay" class="ui-overlay__backdrop color-surface-black" hidden onclick="closeGridFilterSheet()"></div>
-    <section id="mobile-grid-filter-sheet" class="catalog-filter-editor ui-overlay ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet" role="dialog" tabindex="-1" hidden></section>
+    <section id="mobile-grid-filter-sheet" class="catalog-filter-editor ui-overlay ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet" role="dialog" tabindex="-1" data-sheet-display="css" hidden></section>
 
     <!-- 구버전 유입 안내 모달 -->
-    <div id="legacy-migration-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-labelledby="legacy-migration-title">
+    <div id="legacy-migration-modal" class="modal ui-overlay ui-overlay__panel ui-overlay--modal color-surface-001 color-text-001 shape-rounded-lg shadow-modal" role="dialog" aria-labelledby="legacy-migration-title" hidden>
         <header class="ui-overlay__header"><h2 id="legacy-migration-title" class="color-text-000">구버전 데이터 이식</h2><button type="button" class="ui-button ui-button--text color-text-001 modal-close" aria-label="이전 버전 안내 닫기"><i class="material-icons" aria-hidden="true">close</i></button></header>
         <div class="ui-overlay__body">
             <p>카드 데이터를 스프레드시트 파일에 기록하던 버전을 사용하셨나요?<br>스프레드시트 파일을 업로드하여 데이터를 이식할 수 있습니다.</p>

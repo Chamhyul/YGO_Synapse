@@ -1,9 +1,23 @@
 // Shared matching for the dropdown and the complete catalog results.
 const catalogNumberIndexes = new WeakMap();
 
-function collectCatalogMatches(value) {
-    const query = normalizeStr(value);
+function catalogueContinuationPattern(query) {
+    const matching = globalThis.YgoCardNameAutocomplete;
+    const variants = matching?.variants(query);
+    return variants?.length > 1 ? new RegExp(matching.pattern(query, variants), 'u') : null;
+}
+
+function matchesCatalogName(item, query, consonantsOnly, continuation) {
+    if (continuation) return continuation.test(item.normalized.normalize('NFC'));
+    return item.normalized.includes(query) || (consonantsOnly
+        ? item.chosung.includes(query)
+        : typeof Hangul !== 'undefined' && typeof Hangul.search === 'function' && Hangul.search(item.normalized, query) !== -1);
+}
+
+function collectCatalogMatches(value, { autocomplete = false } = {}) {
+    const query = normalizeStr(autocomplete ? value.normalize('NFC') : value);
     if (!query) return [];
+    const continuation = autocomplete ? catalogueContinuationPattern(query) : null;
     const consonantsOnly = /^[ㄱ-ㅎ]+$/.test(query);
     const ownedNames = cardCacheInstance.getOwnedNamesSet();
     const ownedNumbers = cardCacheInstance.getOwnedNumbersSet();
@@ -11,11 +25,8 @@ function collectCatalogMatches(value) {
         ? CardDataStore.allCardNamesNormalized : cardCacheInstance.getAllNamesNormalized();
     const matches = [];
     for (const item of names) {
-        const matched = item.normalized.includes(query) || (consonantsOnly
-            ? item.chosung.includes(query)
-            : typeof Hangul !== 'undefined' && typeof Hangul.search === 'function' && Hangul.search(item.normalized, query) !== -1);
-        if (matched) matches.push({ type: 'name', val: item.original,
-            normalized: item.normalized, isOwned: ownedNames.has(item.original) });
+        if (matchesCatalogName(item, query, consonantsOnly, continuation)) matches.push({ type: 'name', val: item.original,
+            normalized: item.normalized, chosung: item.chosung, isOwned: ownedNames.has(item.original) });
     }
     if (query.length >= 6) {
         const source = CardDataStore.allCardNumbers.length
@@ -206,6 +217,7 @@ function ensureCatalogFilterState(state) {
 }
 
 async function loadCatalogSearchState(state, sequence) {
+    if (globalThis.AppBackend) return globalThis.AppBackend.loadCatalog(state, sequence);
     const isCurrent = () => sequence === searchSequence && lastSearchState === state && UIStore.mode === 'search';
     state.pending = true;
     state.error = '';
@@ -597,6 +609,7 @@ function ensureCatalogEditor() {
     const root = document.createElement('section');
     root.id = 'catalog-filter-editor';
     root.className = 'catalog-filter-editor ui-overlay ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium';
+    root.dataset.sheetDisplay = 'css';
     root.hidden = true;
     root.tabIndex = -1;
     root.setAttribute('role', 'dialog');
@@ -672,9 +685,6 @@ function openCatalogFilterEditor(state, key, trigger) {
     if (!editor.drafts.target.length) editor.drafts.target = ['name', 'number'];
     editor.editKey = key;
     editor.open = true;
-    editor.root.hidden = false;
-    editor.root.inert = false;
-    editor.root.style.removeProperty('display');
     editor.root.classList.toggle('ui-overlay--sheet', editor.mobile);
     editor.root.classList.toggle('ui-overlay--popup', !editor.mobile);
     editor.root.classList.toggle('shape-rounded-lg', editor.mobile);
@@ -686,9 +696,10 @@ function openCatalogFilterEditor(state, key, trigger) {
     trigger?.setAttribute('aria-expanded', 'true');
     renderCatalogEditorForm();
     if (editor.mobile) {
-        editor.backdrop.hidden = false;
         openManagedSheet(editor.root, { backdrop: editor.backdrop, trigger, initialFocus: editor.root });
     } else {
+        editor.root.hidden = false;
+        editor.root.inert = false;
         editor.root.removeAttribute('aria-modal');
         if (globalThis.AppOverlays) globalThis.AppOverlays.openPopup(editor.root, trigger);
         editor.root.focus({ preventScroll: true });

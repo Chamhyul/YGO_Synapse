@@ -43,3 +43,64 @@ html.is-mobile-device .document-view__content {padding-inline:20px;overflow:visi
 [data-notice-page] .document-view__content {overflow:visible;}
 
 .document-view__content[hidden] {display:none;}
+
+/* 독립 문서는 문서 본문과 같은 행간을 사용하고 바깥 여백만 별도로 잡는다. */
+.document-page {
+  display: block;
+  box-sizing: border-box;
+  padding: clamp(16px, 4vw, 48px) clamp(12px, 4vw, 24px);
+}
+
+.document-page > .document-view__content {
+  box-sizing: border-box;
+  max-width: 850px;
+  margin-inline: auto;
+  padding: clamp(20px, 4vw, 48px);
+  overflow: visible;
+}
+
+.document-page__back {
+  display: inline-flex;
+  margin-block-end: 20px;
+  padding-block: 4px;
+  font-size: .9rem;
+}
+
+.document-page__brand {
+  margin-block-end: 8px;
+  font-weight: 700;
+}
+
+.document-page h1 {
+  margin: 0 0 24px;
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  line-height: 1.3;
+}
+
+.document-page h2 {
+  margin: 32px 0 12px;
+  font-size: 1.25rem;
+  line-height: 1.4;
+}
+
+.document-page :is(ul, ol) {
+  margin: 0 0 16px;
+  padding-inline-start: 1.35em;
+}
+
+.document-page li + li {
+  margin-block-start: 8px;
+}
+
+.document-page a { overflow-wrap: anywhere; }
+
+.document-page__section { padding: 20px; }
+
+.document-page__section > :first-child { margin-block-start: 0; }
+.document-page :is(.document-view__content, .document-page__section) > :last-child { margin-block-end: 0; }
+
+.document-page__footer {
+  margin-block-start: 32px;
+  font-size: .875rem;
+  text-align: center;
+}

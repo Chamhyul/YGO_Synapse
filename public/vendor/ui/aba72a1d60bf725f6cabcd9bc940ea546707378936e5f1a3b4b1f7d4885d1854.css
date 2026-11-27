@@ -1,0 +1,71 @@
+/*
+Copyright (c) 2021 Kil Hyung-jin, with Reserved Font Name Pretendard.
+https://github.com/orioncactus/pretendard
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+*/
+
+@font-face {
+	font-family: 'Pretendard';
+	font-weight: 900;
+	font-display: swap;
+	src: local('Pretendard Black'), url('/vendor/ui/78a0822dbd91f83b7d684e56f1b0af181f253366881c5139c6987b70ee777489.woff2') format('woff2'), url('/vendor/ui/a824b6149af5f8432c1e612f34b62a46f11b5ccc9fdd09c86e2e3a8c5630119c.woff') format('woff');
+}
+
+@font-face {
+	font-family: 'Pretendard';
+	font-weight: 800;
+	font-display: swap;
+	src: local('Pretendard ExtraBold'), url('/vendor/ui/343c49b2128e68aeec71aaaa620c764606c741403784f59eebba6ee52448d420.woff2') format('woff2'), url('/vendor/ui/9f81d6d3e94fa7465160fef951cb76fbe9aead15ebac6c926a9cd04fe9306991.woff') format('woff');
+}
+
+@font-face {
+	font-family: 'Pretendard';
+	font-weight: 700;
+	font-display: swap;
+	src: local('Pretendard Bold'), url('/vendor/ui/1b2b45531b160d8f9176e04b67441985a80e2bb2589047689640b7885364e684.woff2') format('woff2'), url('/vendor/ui/43922d8191fcbb43f4bdca16898d7a1c2cfdd461ac4d2c313e68018bdf69d1b0.woff') format('woff');
+}
+
+@font-face {
+	font-family: 'Pretendard';
+	font-weight: 600;
+	font-display: swap;
+	src: local('Pretendard SemiBold'), url('/vendor/ui/567197b5cfb5c9986606c86105c02ec6b8e17f3d7bb1d31ea37981f84ff583b5.woff2') format('woff2'), url('/vendor/ui/e8491b7ceb2f931aaf57b47973495d0642678124cab0a770cf1c27611fe38c57.woff') format('woff');
+}
+
+@font-face {
+	font-family: 'Pretendard';
+	font-weight: 500;
+	font-display: swap;
+	src: local('Pretendard Medium'), url('/vendor/ui/b84d36447adeba65cef61e9e118570702f531da235be21b9d9dc555dfe409c44.woff2') format('woff2'), url('/vendor/ui/cdd1d31a3f6573a1801f1c0c240b6815e235e0ee13d8cee6e6e7daaaba78bb54.woff') format('woff');
+}
+
+@font-face {
+	font-family: 'Pretendard';
+	font-weight: 400;
+	font-display: swap;
+	src: local('Pretendard Regular'), url('/vendor/ui/cb21aee2ef0b042cd019c4286e9b2b434916c71a731f323abcdb07871388fac9.woff2') format('woff2'), url('/vendor/ui/75bee32725d82578fd69d74495c3c42e228548232e018d46edf09a87236c4868.woff') format('woff');
+}
+
+@font-face {
+	font-family: 'Pretendard';
+	font-weight: 300;
+	font-display: swap;
+	src: local('Pretendard Light'), url('/vendor/ui/f3852e1c7e192b30f0346f46f49f858812d6b87143e291c9bebc1205316fd2de.woff2') format('woff2'), url('/vendor/ui/c02101de9c7a35ea24746584b08c93206f0c7aae3de64769b5954b55eed75386.woff') format('woff');
+}
+
+@font-face {
+	font-family: 'Pretendard';
+	font-weight: 200;
+	font-display: swap;
+	src: local('Pretendard ExtraLight'), url('/vendor/ui/ca524835e01a9b01ad5a75ae32bcb1a944f1995be1ad89bbd4d8a324ecb8246b.woff2') format('woff2'), url('/vendor/ui/b1c8b30e948d99a7ac8980845463bbf6d71a6d018b0b1398fcd109076d2bffca.woff') format('woff');
+}
+
+@font-face {
+	font-family: 'Pretendard';
+	font-weight: 100;
+	font-display: swap;
+	src: local('Pretendard Thin'), url('/vendor/ui/cac26bb0ce5ac32e066ff58ab8bc6fda57d07f6b7343f68b37677c24ea8ee518.woff2') format('woff2'), url('/vendor/ui/fb55c793452fea4181922f03e4c1bc40b4e1f24c42b15cea424f9ca442d962e0.woff') format('woff');
+}

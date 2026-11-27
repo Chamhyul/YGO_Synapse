@@ -141,7 +141,7 @@ function fixture({ reduced = false, initialHash = '#home', initialState = {}, an
     return { navigation, env, calls, document, page, area, window, history, location, stack, animations, observers, catalog, openFirst, finish };
 }
 
-test('목록→단일은 별도 기록을 만들고 뒤로가기로 조건·페이지·스크롤·선택 행 초점을 복원한다', async () => {
+test('목록→단일은 별도 기록을 만들고 뒤로가기로 조건·페이지·스크롤을 복원하되 초점을 강제하지 않는다', async () => {
     const f = fixture();
     const state = f.catalog();
     const listHistory = structuredClone(f.history.state);
@@ -166,8 +166,7 @@ test('목록→단일은 별도 기록을 만들고 뒤로가기로 조건·페�
     assert.deepEqual(f.env.state.filters, { attribute: [0], monsterTraits: { values: [0, 1], operator: 'and' } });
     assert.equal(f.page.scrollTop, 845); assert.equal(f.page.scrollLeft, 12);
     assert.equal(f.window.scrollX, 4); assert.equal(f.window.scrollY, 75);
-    assert.equal(f.document.activeElement, f.navigation.currentPane().querySelector('.catalog-search-row'));
-    assert.equal(f.document.activeElement.focusOptions.preventScroll, true);
+    assert.equal(f.document.activeElement, null);
     assert.equal(f.calls.renderCatalog.length, 2);
     assert.equal(f.calls.resume.length, 1);
     f.history.forward();
@@ -320,7 +319,7 @@ test('감소된 모션에서는 이동·높이 애니메이션 없이 교체하�
     assert.equal(previous.parentNode, null);
     assert.equal(f.area.children.length, 1);
     assert.equal(f.area.classList.contains('is-transitioning'), false);
-    assert.equal(f.document.activeElement, f.navigation.currentPane().querySelector('h2'));
+    assert.equal(f.document.activeElement, null);
 });
 
 test('전환 중 연속 검색은 이전 애니메이션·관찰자를 정리하고 최신 pane만 남긴다', async () => {
@@ -337,7 +336,7 @@ test('전환 중 연속 검색은 이전 애니메이션·관찰자를 정리하
     assert.equal(f.env.state, latest);
     assert.equal(f.area.children.length, 1);
     assert.equal(f.area.classList.contains('is-transitioning'), false);
-    assert.equal(f.document.activeElement, f.navigation.currentPane().querySelector('h2'));
+    assert.equal(f.document.activeElement, null);
 });
 
 test('다른 앱 페이지로 떠날 때 진행 중 전환과 편집기를 정리하고 늦은 완료는 초점을 바꾸지 않는다', async () => {

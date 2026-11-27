@@ -36,6 +36,11 @@
             try {
                 const result = await check();
                 if (!current()) return;
+                if (result?.success === true && result.membershipClaims?.status === 'not_required') {
+                    active = undefined;
+                    onStatus('not_required');
+                    return;
+                }
                 if (result?.success === true && result.membershipClaims?.status === 'synced'
                     && await refresh(result) && current()) {
                     active = undefined;

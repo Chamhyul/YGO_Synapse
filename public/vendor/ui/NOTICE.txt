@@ -1,0 +1,3 @@
+앱에서 사용하는 기존 UI 라이브러리·글꼴의 로컬 제공본입니다.
+Materialize 1.0.0, Hangul.js 0.2.6, Pretendard 1.3.9, Font Awesome Free 7.2.0, Material Icons.
+원본의 라이선스 표기와 앱의 라이선스 고지를 함께 유지합니다. 파일명은 기존 제공 자산의 식별자를 보존합니다.

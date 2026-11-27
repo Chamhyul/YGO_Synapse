@@ -22,7 +22,10 @@
         Object.keys(index?.files || {}).forEach(key => { if (key.startsWith(prefix)) add(key.slice(prefix.length)); });
         return [...result].sort((a, b) => a[0] - b[0]);
     }
+    const stripCleanups = new WeakMap();
     function mount(box, cid, info) {
+        stripCleanups.get(box)?.();
+        stripCleanups.delete(box);
         if (!cid || !root.IllustrationImages) return;
         const header = box.querySelector('.search-card__name');
         if (!header) return;
@@ -43,27 +46,123 @@
         gallery.className = 'search-art-gallery';
         gallery.hidden = true;
         box.append(gallery);
-        let opened = false, switching = 0, heightAnimation = null;
+        let opened = false, switching = 0, heightAnimation = null, stripObserver = null;
+        let syncStripEdges = () => {}, revealSelected = () => {}, stopStripScroll = () => {}, stopStripDrag = () => {};
         async function initialize() {
             gallery.textContent = '일러스트를 불러오는 중…';
-            const index = await root.IllustrationImages.loadIndex(fetch, cid).catch(() => null);
+            const items = typeof root.IllustrationImages.galleryEntries === 'function'
+                ? await root.IllustrationImages.galleryEntries(cid)
+                : entries(info, await root.IllustrationImages.loadIndex(fetch, cid).catch(() => null), cid);
             if (!gallery.isConnected) return;
-            const items = entries(info, index, cid);
+            const labelArtwork = id => root.IllustrationImages.galleryLabel?.(cid, id) ?? root.IllustrationImages.label(id);
+            const preloadArtwork = id => root.IllustrationImages.preload(cid, id, { gallery: true });
             gallery.replaceChildren();
-            if (!items.length) { gallery.textContent = '등록된 일러스트가 없습니다.'; return; }
-            gallery.innerHTML = '<div class="search-art-picture"></div><div class="search-art-caption"><button type="button" class="search-art-prev" aria-label="이전 일러스트">❮</button><div class="search-art-caption-meta"><span class="search-art-caption-label"></span><div class="search-art-region"><button type="button" aria-label="발매 지역" aria-expanded="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></button><div class="search-art-popup ui-overlay__panel ui-overlay--popup color-surface-001 color-text-001 shape-rounded003 shadow-medium" hidden></div></div></div><button type="button" class="search-art-next" aria-label="다음 일러스트">❯</button></div><div class="search-art-strip-row"><button type="button" class="search-art-strip-prev" aria-label="이전 일러스트 선택">❮</button><div class="search-art-thumbs" role="group" aria-label="일러스트 목록"></div><button type="button" class="search-art-strip-next" aria-label="다음 일러스트 선택">❯</button></div>';
-            for (const selector of ['.search-art-prev', '.search-art-next', '.search-art-strip-prev', '.search-art-strip-next']) {
+            if (!items.length) { gallery.textContent = '표시할 수 있는 일러스트가 없습니다.'; return; }
+            gallery.innerHTML = '<div class="search-art-picture"></div><div class="search-art-caption"><button type="button" class="search-art-prev" aria-label="이전 일러스트">❮</button><div class="search-art-caption-meta"><span class="search-art-caption-label"></span><div class="search-art-region"><button type="button" class="ui-button ui-button--text color-text-000" aria-label="발매 지역" aria-expanded="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></button><div class="search-art-popup ui-overlay__panel ui-overlay--popup color-surface-002 color-text-001 shape-rounded003" hidden></div></div></div><button type="button" class="search-art-next" aria-label="다음 일러스트">❯</button></div><div class="search-art-strip-row"><div class="search-art-thumbs" role="group" aria-label="일러스트 목록"></div></div>';
+            for (const selector of ['.search-art-prev', '.search-art-next']) {
                 gallery.querySelector(selector).className += ' ui-button color-type001 color-disabled ui-control--disabled shape-capsule';
             }
             const picture = gallery.querySelector('.search-art-picture');
             const strip = gallery.querySelector('.search-art-thumbs');
+            const stripRow = gallery.querySelector('.search-art-strip-row');
+            let wheelFrame = null, wheelTarget = null, wheelPosition = 0, lastWheelTime = 0;
+            const clampScroll = value => Math.max(0, Math.min(value, strip.scrollWidth - strip.clientWidth));
+            stopStripScroll = () => {
+                if (wheelFrame !== null) root.cancelAnimationFrame(wheelFrame);
+                wheelFrame = null; wheelTarget = null; lastWheelTime = 0;
+            };
+            syncStripEdges = () => {
+                stripRow.setAttribute('data-scroll-before', String(strip.scrollLeft > 1));
+                stripRow.setAttribute('data-scroll-after', String(strip.scrollWidth - strip.clientWidth - strip.scrollLeft > 1));
+            };
+            const animateWheel = time => {
+                if (!gallery.isConnected || gallery.hidden) { stopStripScroll(); return; }
+                wheelTarget = clampScroll(wheelTarget);
+                const remaining = wheelTarget - wheelPosition;
+                if (Math.abs(remaining) <= 0.5) {
+                    strip.scrollLeft = wheelTarget; stopStripScroll(); syncStripEdges(); return;
+                }
+                const elapsed = Math.min(40, time - (lastWheelTime || time - 16.7));
+                wheelPosition += remaining * (1 - Math.exp(-elapsed / 65));
+                strip.scrollLeft = wheelPosition;
+                lastWheelTime = time;
+                syncStripEdges();
+                wheelFrame = root.requestAnimationFrame(animateWheel);
+            };
+            const revealThumb = thumb => {
+                if (!thumb) return;
+                stopStripScroll();
+                const inset = 32;
+                if (thumb.offsetLeft < strip.scrollLeft + inset) strip.scrollLeft = Math.max(0, thumb.offsetLeft - inset);
+                else if (thumb.offsetLeft + thumb.offsetWidth > strip.scrollLeft + strip.clientWidth - inset)
+                    strip.scrollLeft = thumb.offsetLeft + thumb.offsetWidth - strip.clientWidth + inset;
+                syncStripEdges();
+            };
+            strip.addEventListener('scroll', syncStripEdges, { passive: true });
+            strip.addEventListener('wheel', event => {
+                if (event.ctrlKey || event.metaKey || strip.scrollWidth <= strip.clientWidth) return;
+                // 정밀한 가로 트랙패드 입력은 브라우저의 기본 관성을 사용한다.
+                if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) { stopStripScroll(); return; }
+                event.preventDefault();
+                const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? strip.clientWidth : 1;
+                const next = clampScroll((wheelTarget ?? strip.scrollLeft) + event.deltaY * unit);
+                if (root.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                    stopStripScroll(); strip.scrollLeft = next; syncStripEdges(); return;
+                }
+                wheelTarget = next;
+                if (wheelFrame === null) { wheelPosition = strip.scrollLeft; wheelFrame = root.requestAnimationFrame(animateWheel); }
+            }, { passive: false });
+            let drag = null, suppressClick = false;
+            stopStripDrag = event => {
+                if (!drag || (event && event.pointerId !== drag.id)) return;
+                const finished = drag;
+                drag = null; suppressClick = finished.moved;
+                strip.setAttribute('data-dragging', 'false');
+                if (finished.capture.hasPointerCapture?.(finished.id)) finished.capture.releasePointerCapture(finished.id);
+            };
+            strip.addEventListener('pointerdown', event => {
+                stopStripScroll();
+                if (event.pointerType !== 'mouse' || event.button !== 0 || event.isPrimary === false) return;
+                stopStripDrag(); suppressClick = false;
+                if (strip.scrollWidth <= strip.clientWidth) return;
+                const capture = event.target.closest('.search-art-thumb') || strip;
+                drag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: strip.scrollLeft, moved: false, capture };
+                // 짧게 클릭했을 때 기존 썸네일 선택 대상이 유지되도록 누른 요소가 포인터를 잡는다.
+                capture.setPointerCapture(event.pointerId);
+            });
+            strip.addEventListener('pointermove', event => {
+                if (!drag || drag.id !== event.pointerId) return;
+                if (!(event.buttons & 1)) { stopStripDrag(event); return; }
+                const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+                if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+                drag.moved = true; strip.setAttribute('data-dragging', 'true');
+                event.preventDefault();
+                strip.scrollLeft = clampScroll(drag.left - dx);
+                syncStripEdges();
+            });
+            for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) strip.addEventListener(type, stopStripDrag);
+            strip.addEventListener('click', event => {
+                if (!suppressClick || event.detail === 0) return;
+                suppressClick = false; event.preventDefault(); event.stopImmediatePropagation();
+            }, true);
+            strip.addEventListener('dragstart', event => event.preventDefault());
+            strip.addEventListener('keydown', event => { stopStripScroll(); if (event.key === 'Escape') stopStripDrag(); });
+            strip.addEventListener('focusin', event => { if (!drag && event.target.parentNode === strip) revealThumb(event.target); });
+            stripCleanups.set(box, () => { stripObserver?.disconnect(); stopStripScroll(); stopStripDrag(); });
+            if (typeof root.ResizeObserver === 'function') {
+                stripObserver = new root.ResizeObserver(() => {
+                    if (!gallery.isConnected) { stripObserver.disconnect(); stopStripScroll(); stopStripDrag(); return; }
+                    stopStripScroll(); syncStripEdges();
+                });
+                if (opened) stripObserver.observe(strip);
+            }
             const region = gallery.querySelector('.search-art-region');
             const globe = region.querySelector('button');
             const popup = region.querySelector('.search-art-popup');
             const showPopup = value => {
                 globe.setAttribute('aria-expanded', String(value));
                 if (window.AppOverlays) {
-                    if (value) window.AppOverlays.openPopup(popup, globe);
+                    if (value) window.AppOverlays.openPopup(popup, globe, { centerElement: picture });
                     else window.AppOverlays.closePopup(popup);
                 } else popup.hidden = !value;
             };
@@ -78,39 +177,46 @@
                 thumb.type = 'button';
                 thumb.className = 'search-art-thumb shape-rounded002 color-text-001';
                 thumb.dataset.artworkId = String(id);
-                thumb.setAttribute('aria-label', root.IllustrationImages.label(id));
-                thumb.textContent = root.IllustrationImages.label(id);
+                thumb.setAttribute('aria-label', labelArtwork(id));
+                thumb.textContent = labelArtwork(id);
                 thumb.onclick = () => select(i);
                 strip.append(thumb);
-                root.IllustrationImages.preload(cid, id).then(result => {
-                    if (result.url) { const img = document.createElement('img'); img.src = result.url; img.alt = root.IllustrationImages.label(id); thumb.replaceChildren(img); }
+                preloadArtwork(id).then(result => {
+                    if (result.url) { const img = document.createElement('img'); img.src = result.url; img.alt = labelArtwork(id); img.draggable = false; thumb.replaceChildren(img); }
                 });
                 return thumb;
             });
+            revealSelected = () => revealThumb(thumbs[selected]);
             async function select(i) {
                 selected = (i + items.length) % items.length;
                 const token = ++request;
                 const [id, released] = items[selected];
                 box.dataset.selectedArtwork = String(id);
-                gallery.querySelector('.search-art-caption-label').textContent = root.IllustrationImages.label(id);
-                popup.textContent = released.size ? [...released].join(', ') : '발매 지역 정보 없음';
+                gallery.querySelector('.search-art-caption-label').textContent = labelArtwork(id);
+                const regionLines = [regions.slice(0, 4), regions.slice(4)]
+                    .map(group => group.filter(name => released.has(name)))
+                    .filter(group => group.length);
+                popup.replaceChildren();
+                for (const names of regionLines) {
+                    const line = document.createElement('div');
+                    line.className = 'search-art-region-line';
+                    line.textContent = names.join(', ');
+                    popup.append(line);
+                }
+                if (!regionLines.length) popup.textContent = '발매 지역 정보 없음';
                 showPopup(false);
                 thumbs.forEach((thumb, n) => thumb.setAttribute('aria-pressed', String(n === selected)));
-                const activeThumb = thumbs[selected];
-                if (activeThumb.offsetLeft < strip.scrollLeft) strip.scrollLeft = activeThumb.offsetLeft;
-                else if (activeThumb.offsetLeft + activeThumb.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = activeThumb.offsetLeft + activeThumb.offsetWidth - strip.clientWidth;
+                revealSelected();
                 picture.textContent = '이미지를 불러오는 중…';
-                const result = await root.IllustrationImages.preload(cid, id);
+                const result = await preloadArtwork(id);
                 if (token !== request) return;
                 if (!result.url) { picture.textContent = '이미지를 불러올 수 없습니다.'; return; }
-                const img = document.createElement('img'); img.src = result.url; img.alt = `${root.IllustrationImages.label(id)} 일러스트`;
+                const img = document.createElement('img'); img.src = result.url; img.alt = `${labelArtwork(id)} 일러스트`;
                 img.className = 'shape-rounded002';
                 picture.replaceChildren(img);
             }
             gallery.querySelector('.search-art-prev').onclick = () => select(selected - 1);
             gallery.querySelector('.search-art-next').onclick = () => select(selected + 1);
-            gallery.querySelector('.search-art-strip-prev').onclick = () => select(selected - 1);
-            gallery.querySelector('.search-art-strip-next').onclick = () => select(selected + 1);
             if (items.length === 1) {
                 gallery.querySelector('.search-art-strip-row').hidden = true;
                 gallery.querySelector('.search-art-prev').hidden = true;
@@ -143,6 +249,11 @@
             if (token !== switching || !gallery.isConnected) return;
             outgoing.hidden = true;
             incoming.hidden = false;
+            if (opened) {
+                stripObserver?.observe(gallery.querySelector('.search-art-thumbs'));
+                revealSelected();
+                syncStripEdges();
+            } else { stripObserver?.disconnect(); stopStripScroll(); stopStripDrag(); }
             box.style.height = 'auto';
             const targetHeight = box.getBoundingClientRect().height;
             box.style.height = `${startHeight}px`;

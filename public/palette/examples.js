@@ -89,7 +89,7 @@ export function renderExamples(container) {
         features.appendChild(item);
     }
     description.appendChild(features);
-    signin.append(description, button('로그인하기', 'ui-button home-signin__action color-theme shape-capsule', '[홈]-[로그인하기] 예제입니다.'));
+    signin.append(description, button('로그인하기', 'ui-button ui-button--sign-in color-theme shape-capsule', '[홈]-[로그인하기] 예제입니다.'));
     homeContext.appendChild(signin);
     home.appendChild(homeContext);
 
@@ -167,7 +167,7 @@ export function renderExamples(container) {
     }
     const recentHeader = element('li', 'recent-header-item');
     recentHeader.append(element('span', 'color-text-001', '최근 검색'), button('전체 제거', 'ui-button ui-button--text color-text-002 clear-all-btn', '[검색]-[최근 기록 전체 제거] 예제입니다.'));
-    searchList.appendChild(recentHeader);
+    if (!mobileMode) searchList.appendChild(recentHeader);
     if (mobileMode) {
         const recent = element('li', 'mobile-recent-container');
         const actions = element('div', 'recent-search-actions');
@@ -209,7 +209,13 @@ export function renderExamples(container) {
         photo.setAttribute('aria-label', '사진 검색 진입 예제'); photo.appendChild(icon('photo_camera'));
         const back = button('', 'ui-button ui-button--text color-text-000 mobile-search__back', '[모바일 검색]-[검색 닫기] 예제입니다.');
         back.setAttribute('aria-label', '검색 닫기 예제'); back.appendChild(icon('arrow_back'));
-        toolbar.append(inputWrap, photo, back); searchStage.append(toolbar, searchList);
+        const mobileSearch = element('div', 'mobile-search active color-surface-000');
+        mobileSearch.dataset.paletteMobileSearch = '';
+        const panel = element('div', 'mobile-search__panel');
+        const content = element('div', 'mobile-search__content color-surface-001');
+        content.appendChild(searchList);
+        toolbar.append(inputWrap, photo, back); panel.append(toolbar, content);
+        mobileSearch.appendChild(panel); searchStage.appendChild(mobileSearch);
     } else {
         const expanded = element('div');
         expanded.dataset.paletteSearchExpanded = '';
@@ -250,7 +256,7 @@ export function renderExamples(container) {
 
     const catalog = section('catalog', '[일반 검색 결과]-[결과 카드·필터 칩·페이지 이동]',
         '합성 검색 결과입니다. 카드 이동과 필터 편집기는 연결하지 않으며 내부 아이콘 대신 칩 전체의 강조를 확인할 수 있습니다.');
-    const filters = element('div', 'catalog-search-filters');
+    const filters = element('div', `catalog-search-filters${mobileMode ? ' catalog-search-filters--mobile' : ''}`);
     for (const text of ['검색 대상 : 전체', '종류 : 몬스터', '속성 : 빛, 어둠']) {
         const chip = element('div', 'catalog-search-chip ui-chip ui-chip--interactive color-tint-theme color-disabled shape-capsule');
         const edit = button('', 'catalog-search-chip__edit ui-control--disabled color-disabled', '[일반 검색 결과]-[필터 편집] 예제입니다.');
@@ -266,7 +272,19 @@ export function renderExamples(container) {
         }
         filters.appendChild(chip);
     }
-    catalog.appendChild(filters);
+    const toolbar = element('div', 'catalog-search-toolbar');
+    toolbar.appendChild(element('p', 'catalog-search-total color-text-001', '합성 결과 2건'));
+    const divider = element('span', 'catalog-search-divider');
+    divider.setAttribute('aria-hidden', 'true');
+    const filterArea = element('div', 'catalog-search-filter-area');
+    if (!mobileMode) filterArea.appendChild(filters);
+    const size = element('div', 'region-container dropdown-capsule catalog-search-size');
+    const sizeButton = button('', 'ui-button region-capsule color-type004 shape-capsule', '[일반 검색 결과]-[표시 수량] 예제입니다.');
+    sizeButton.append(element('span', 'region-text', '20개씩 보기'), icon('expand_more', 'region-icon color-text-002'));
+    size.appendChild(sizeButton);
+    toolbar.append(divider, filterArea, size);
+    if (mobileMode) filterArea.appendChild(filters);
+    catalog.appendChild(toolbar);
     const results = element('ul', 'catalog-search-list');
     for (const [name, number, kind, count] of [['예시 드래곤', 'DEMO-KR001', '몬스터', '4장'], ['긴 카드 이름이 표시되는 검색 결과 예제', 'DEMO-KR002', '마법', '0장']]) {
         const item = element('li');
@@ -339,12 +357,9 @@ export function renderExamples(container) {
     const artLabel = element('span', 'search-art-caption-label');
     artMeta.appendChild(artLabel); artCaption.append(previousArt, artMeta, nextArt);
     const stripRow = element('div', 'search-art-strip-row');
-    const previousThumb = button('❮', `search-art-strip-prev ${movementClasses}`);
-    const nextThumb = button('❯', `search-art-strip-next ${movementClasses}`);
-    previousThumb.setAttribute('aria-label', '이전 도형 썸네일'); nextThumb.setAttribute('aria-label', '다음 도형 썸네일');
     const thumbs = element('div', 'search-art-thumbs');
     thumbs.setAttribute('role', 'group'); thumbs.setAttribute('aria-label', '도형 일러스트 선택');
-    stripRow.append(previousThumb, thumbs, nextThumb); gallery.append(picture, artCaption, stripRow); artworkStage.appendChild(gallery);
+    stripRow.append(thumbs); gallery.append(picture, artCaption, stripRow); artworkStage.appendChild(gallery);
     const tokenStyle = document.defaultView.getComputedStyle(document.documentElement);
     const token = name => tokenStyle.getPropertyValue(name).trim();
     const artUrls = [
@@ -369,8 +384,18 @@ export function renderExamples(container) {
         const image = element('img'); image.src = url; image.alt = `도형 ${index + 1}`;
         thumb.appendChild(image); listen(thumb, 'click', () => selectArt(index)); artThumbs.push(thumb); thumbs.appendChild(thumb);
     });
-    listen(previousArt, 'click', () => selectArt(selectedArt - 1)); listen(previousThumb, 'click', () => selectArt(selectedArt - 1));
-    listen(nextArt, 'click', () => selectArt(selectedArt + 1)); listen(nextThumb, 'click', () => selectArt(selectedArt + 1));
+    const syncArtStrip = () => {
+        stripRow.setAttribute('data-scroll-before', String(thumbs.scrollLeft > 1));
+        stripRow.setAttribute('data-scroll-after', String(thumbs.scrollWidth - thumbs.clientWidth - thumbs.scrollLeft > 1));
+    };
+    listen(thumbs, 'scroll', syncArtStrip);
+    const StripResizeObserver = document.defaultView.ResizeObserver;
+    if (StripResizeObserver) {
+        const observer = new StripResizeObserver(syncArtStrip);
+        observer.observe(thumbs); removers.push(() => observer.disconnect());
+    }
+    listen(previousArt, 'click', () => selectArt(selectedArt - 1));
+    listen(nextArt, 'click', () => selectArt(selectedArt + 1));
     selectArt(0);
 
     const ownedStage = section('owned', '[단일 카드 정보]-[보유 요약·상세]',
@@ -430,7 +455,7 @@ export function renderExamples(container) {
     accountStage.append(account('일반', false), account('프리미엄', true));
 
     const stats = section('statistics', '[홈·보유 현황]-[수량·종류 요약]',
-        'ui-stat의 실제21px 패딩과 글꼴 선언을 사용합니다. Outfit의 별도 로딩은 확인 과제이며 수치는 합성 데이터입니다. 로딩 링은 대시보드 전용 색상 조합입니다.');
+        'ui-stat의 현재 패딩과 글꼴 선언을 사용합니다. 수치는 합성 데이터이며 실제 글꼴 로드 상태는 브라우저에서 확인합니다. 로딩 링은 현재 공통 조합을 사용합니다.');
     const grid = element('dl', 'ui-stat-grid');
     for (const [label, value] of [['보유 카드', '128'], ['카드 종류', '42']]) {
         const stat = element('div', 'ui-stat color-surface-001 shape-rounded-lg');
@@ -444,8 +469,43 @@ export function renderExamples(container) {
     more.append(element('span', '', '더보기'), icon('expand_more'));
     stats.appendChild(more);
 
-    const header = section('header', '[전역 헤더]-[로그인·공지·멤버십·지역 선택·테마 스위치]',
-        '고정 헤더를 만들지 않고 실제 버튼만 비교합니다. 스위치는 이 예제의 체크 상태만 바꾸며 문서 테마·저장 설정은 변경하지 않습니다.');
+    const resultStage = section('management-results', '[카드 관리·가져오기]-[작업 결과 요약·상세 표]',
+        '현재 AppManagementResults의 표시 함수를 합성 성공·실패 자료에 적용합니다. 전체 모달 배치·실제 등록·저장·가져오기는 실행하지 않습니다.');
+    const presenter = document.defaultView.AppManagementResults;
+    if (presenter) {
+        const result = presenter.present([
+            { no: 1, name: '예시 드래곤', cardNo: 'DEMO-KR001', rarity: 'SE', illustration: '기본', loc: '바인더 A', qty: 2, processedQty: 2, status: 'success' },
+            { no: 2, name: '긴 카드 이름의 실패 예제', cardNo: 'DEMO-KR002', rarity: 'UR', loc: '', qty: 1, status: 'failed', failReason: 'no_loc' }
+        ], 'add', { formatIllustration: value => value });
+        const resultControls = row();
+        const summary = element('div');
+        const summaryList = element('ul', 'ui-result-list'); summaryList.innerHTML = result.summaryHTML; summary.appendChild(summaryList);
+        const detail = element('div'); detail.hidden = true;
+        const table = element('table', 'ui-table ui-table--detail color-surface-002 color-text-001');
+        table.setAttribute('aria-label', '합성 카드 작업 결과 상세');
+        const head = element('thead');
+        const headings = element('tr');
+        for (const [column, label] of [['sequence', 'No'], ['name', '이름'], ['number', '번호'], ['illustration', '일러스트'], ['rarity', '레어도'], ['location', '위치'], ['quantity', '수량']]) {
+            const th = element('th', 'color-tint-theme', label); th.scope = 'col'; th.dataset.column = column; headings.appendChild(th);
+        }
+        head.appendChild(headings);
+        const body = element('tbody'); body.innerHTML = result.detailHTML;
+        table.append(head, body); detail.appendChild(table);
+        const views = [];
+        for (const [label, isDetail] of [['요약', false], ['상세', true]]) {
+            const control = button(label, 'ui-button color-type001 shape-capsule');
+            control.setAttribute('aria-pressed', String(!isDetail));
+            listen(control, 'click', () => {
+                summary.hidden = isDetail; detail.hidden = !isDetail;
+                views.forEach((item, index) => item.setAttribute('aria-pressed', String(index === Number(isDetail))));
+            });
+            views.push(control); resultControls.appendChild(control);
+        }
+        resultStage.append(resultControls, caption('합성 카드 작업 결과'), summary, detail);
+    }
+
+    const header = section('header', '[전역 헤더]-[로그인·공지·멤버십·지역 선택·테마 아이콘 버튼]',
+        '고정 헤더를 만들지 않고 실제 버튼만 비교합니다. 테마 버튼은 이 예제의 아이콘 상태만 바꾸며 문서 테마·저장 설정은 변경하지 않습니다.');
     const headerRow = row();
     for (const [label, glyph, color, border] of [['로그인', 'account_circle', 'color-type000', ''], ['공지사항', 'notifications_none', 'color-type000', ''], ['멤버십 인증', 'workspace_premium', 'color-type002', 'border-theme']]) {
         const notice = label === '공지사항';
@@ -462,11 +522,22 @@ export function renderExamples(container) {
     region.append(icon('public', 'region-icon color-text-002'), element('span', 'region-text', '한국'));
     headerRow.appendChild(region);
     const switchWrapper = element('div', 'theme-switch-wrapper color-text-002');
-    const switchLabel = element('label', 'theme-switch');
-    const switchInput = element('input'); switchInput.type = 'checkbox'; switchInput.id = `${prefix}-switch`;
-    switchInput.setAttribute('aria-label', '로컬 테마 스위치 상태 예제'); switchLabel.htmlFor = switchInput.id;
-    switchLabel.append(switchInput, element('div', 'theme-switch__track color-switch-theme'));
-    switchWrapper.appendChild(switchLabel); headerRow.appendChild(switchWrapper); header.appendChild(headerRow);
+    const themeButton = element('button', 'ui-button ui-button--text color-text-002 color-highlight-theme shape-capsule theme-toggle');
+    themeButton.type = 'button';
+    themeButton.setAttribute('aria-label', '다크 모드로 전환 예제');
+    themeButton.setAttribute('aria-pressed', 'false');
+    const initialDark = document.documentElement.classList.contains('dark-mode');
+    themeButton.setAttribute('aria-pressed', String(initialDark));
+    themeButton.setAttribute('aria-label', initialDark ? '라이트 모드로 전환 예제' : '다크 모드로 전환 예제');
+    const themeIcon = icon(initialDark ? 'light_mode' : 'dark_mode');
+    themeButton.appendChild(themeIcon);
+    listen(themeButton, 'click', () => {
+        const dark = themeButton.getAttribute('aria-pressed') !== 'true';
+        themeButton.setAttribute('aria-pressed', String(dark));
+        themeButton.setAttribute('aria-label', dark ? '라이트 모드로 전환 예제' : '다크 모드로 전환 예제');
+        themeIcon.textContent = dark ? 'light_mode' : 'dark_mode';
+    });
+    switchWrapper.appendChild(themeButton); headerRow.appendChild(switchWrapper); header.appendChild(headerRow);
 
     const navigation = section('navigation', '[데스크톱 사이드바]-[메뉴 버튼]',
         '고정 사이드바 없이 실제 메뉴 버튼의 기본·선택·호버·키보드 상태를 비교합니다. 선택은 이 예제 안에서만 바뀝니다.');

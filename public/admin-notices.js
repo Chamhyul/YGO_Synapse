@@ -107,5 +107,17 @@
     get('preview-dialog').addEventListener('close',()=>{if(!content.hidden)get('preview-button').focus();});
     new MutationObserver(()=>{if(content.hidden){editor.setEditable(false);if(get('preview-dialog').open)get('preview-dialog').close();}}).observe(content,{attributes:true,attributeFilter:['hidden']});
     window.addEventListener('beforeunload',event=>{if((dirty()||busy) && !content.hidden){event.preventDefault();event.returnValue='';}});
-    select(null);reload();
+    const initial = document.getElementById('notice-bootstrap');
+    if (!initial) { select(null);reload(); }
+    else {
+        try {
+            const state = JSON.parse(initial.textContent);
+            if (state.version !== 1 || state.unavailable) throw Error('최초 목록을 읽을 수 없습니다.');
+            apply(state.data);select(null);get('status').textContent='공지 목록을 불러왔습니다.';
+        } catch {
+            notices=[];revision=null;ready=false;
+            select(null);get('status').textContent='공지 목록을 불러오지 못했습니다. 새로고침으로 다시 조회해 주세요.';
+            get('empty').hidden=true;controls();
+        } finally { initial.remove(); }
+    }
 })();

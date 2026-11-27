@@ -1,0 +1,10 @@
+{
+  "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css": "aba72a1d60bf725f6cabcd9bc940ea546707378936e5f1a3b4b1f7d4885d1854.css",
+  "https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css": "c8dc98a6aff552aa5348aade3e19a65c50d59873fb304b06aafb5fa64a825908.css",
+  "https://fonts.googleapis.com/icon?family=Material+Icons": "65db03ecf48e2c4b24c7020615d9d3c96dd1540536df57301ac7ea84eaed8b74.css",
+  "https://fonts.gstatic.com/l/font?kit=kJF1BvYX7BgnkSrUwT8OhrdQw4oELdPIeeII9v6oDMzByHX9rA6RzazHD_dY43zj-jCxv3fzvRNU22ZXGJpEpjC_1v-p_4MrImHCIJIZrDCvHOejbd5zrDAt690qwNWe-sm6EuZdQfmoGTM&skey=b8dc2088854b122f&v=v385": "5b329228b164193e1fb230bbfb83d7c29d9ca2ca6798f81cd3d155b274f11923.woff2",
+  "https://fonts.gstatic.com/l/font?kit=kJF1BvYX7BgnkSrUwT8OhrdQw4oELdPIeeII9v6oDMzByHX9rA6RzazHD_dY43zj-jCxv3fzvRNU22ZXGJpEpjC_1v-p_4MrImHCIJIZrDBxG-ejbd5zrDAt69YprYeXmu67xNrC&skey=b8dc2088854b122f&v=v385": "02a41375ecb695c6e64d65fc0c21329137b6d7ace481ce70ec8a8f43e5430cda.woff2",
+  "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.2.0/css/all.min.css": "452b88e08deeba5cb9bb31c2cee114561c7120f4a9ccc2eb65c8b602cd4b63eb.css",
+  "https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js": "11d9ccbb8da3c7bb4052a9dd9a60bd1109345bc760994ffe66ad6ce192cf658c.js",
+  "https://unpkg.com/hangul-js": "1c892e8a26f8b37e51cd118e4cc61d864de6e4fc1f1df5d3386bdfe5277a0b7f.js"
+}

@@ -1,0 +1,149 @@
+.desktop-info-card--editable .card-actions .btn-card-action.ui-button {
+    flex: 1;
+    height: 30px;
+    border-radius: 16px;
+    transition: var(--transition-colors);
+}
+
+#desktop-cards-list-general .btn-card-action.ui-button.copy:has(+ .btn-card-action.delete) {
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+}
+
+#desktop-cards-list-general .btn-card-action.copy + .btn-card-action.ui-button.delete {
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+}
+
+#desktop-cards-list-general .btn-card-action.copy:has(+ .btn-card-action.delete) > .material-icons {
+    translate: 2px;
+}
+
+#desktop-cards-list-general .btn-card-action.copy + .btn-card-action.delete > .material-icons {
+    translate: -2px;
+}
+
+#desktop-cards-list-general :is(
+    .btn-card-action.ui-button.copy:has(+ .btn-card-action.delete),
+    .btn-card-action.copy + .btn-card-action.ui-button.delete
+) {
+    position: relative;
+}
+
+#desktop-cards-list-general :is(
+    .btn-card-action.ui-button.copy:has(+ .btn-card-action.delete),
+    .btn-card-action.copy + .btn-card-action.ui-button.delete
+)::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inline-size: 2px;
+    background-color: inherit;
+    pointer-events: none;
+}
+
+#desktop-cards-list-general .btn-card-action.ui-button.copy::after { inset-inline-start: 100%; }
+#desktop-cards-list-general .btn-card-action.ui-button.delete::after { inset-inline-end: 100%; }
+
+.desktop-info-card--editable .btn-card-action.ui-button:where(:not(:disabled)) {
+    background-color: transparent;
+    color: var(--text-table);
+}
+
+.desktop-info-card--editable .btn-card-action.ui-button.copy:where(:not(:disabled)):is(:hover, :focus-visible) {
+    background-color: var(--color-highlight-bg);
+    color: var(--color-highlight-text);
+}
+
+.desktop-info-card--editable .btn-card-action.ui-button.delete:where(:not(:disabled)):is(:hover, :focus-visible) {
+    background-color: var(--color-bg);
+}
+
+.desktop-info-card--editable .btn-card-action.ui-button.delete:where(:not(:disabled)):focus-visible {
+    color: var(--color-highlight-text);
+}
+
+.desktop-info-card--editable .btn-card-action.ui-button.delete {
+    --color-disabled-bg: transparent;
+    --color-disabled-text: var(--text-table);
+}
+
+.desktop-info-card--editable .btn-card-action.ui-button.delete:disabled:hover {
+    --color-disabled-bg: var(--theme-004);
+}
+
+.mobile-info-card {
+    cursor: pointer;
+    display: grid;
+    grid-template-columns: max-content 16px [card-content] minmax(0, 1fr) max-content max-content;
+    gap: 10px 0;
+}
+
+.mobile-info-card > .card-row-top {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    align-items: center;
+    gap: 10px 0;
+    width: 100%;
+}
+
+.mobile-info-card > .card-row-bottom {
+    grid-column: card-content / -1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.mobile-info-card > .card-row-bottom > .card-info-badge:is(.illust, .rarity) {
+    position: relative;
+    inset-inline-start: -2px;
+}
+
+.mobile-info-card .card-num-badge {
+    min-inline-size: 14px;
+    justify-content: flex-start;
+}
+
+.mobile-info-card .card-num-divider {
+    margin: 0;
+    justify-self: start;
+}
+
+.mobile-info-card .card-title-text.ui-button {
+    display: block;
+    position: relative;
+    inset-inline-start: -3px;
+    min-width: 0;
+    max-width: 100%;
+    padding-inline: 0;
+    justify-self: start;
+    line-height: inherit;
+}
+
+.mobile-info-card .card-code-text {
+    margin-inline-start: 10px;
+}
+
+.mobile-info-card .card-actions {
+    gap: 12px;
+    margin-inline-start: 14px;
+}
+
+.mobile-info-card .card-title-text.ui-button:focus-visible {
+    outline: 2px solid var(--text-table);
+    outline-offset: 2px;
+}
+
+.mobile-info-card .btn-card-action.ui-button {
+    padding: 4px;
+    border-radius: 0;
+}
+
+.mobile-info-card .btn-card-action.ui-button.delete {
+    --color-disabled-text: var(--text-002);
+}
+
+.mobile-info-card .btn-card-action.ui-button .material-icons { font-size: 20px; }

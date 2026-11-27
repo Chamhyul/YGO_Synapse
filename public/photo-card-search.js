@@ -11,11 +11,12 @@
         return {
             file: null, image: null, objectUrl: '', regions: [], selectedId: null,
             purpose, root: null, busy: false, phase: 'upload', nextId: 1, revision: 0, pixels: null,
-            viewMode: 'all', editDraft: null, editDirty: false, searchUiSuspended: false,
+            viewMode: 'all', editDraft: null, editDirty: false, searchUiSuspended: false, analysisFailed: false,
         };
     }
     const states = { search: createState('search'), register: createState('register') };
     let state = states.search;
+    let registrationInlineClose = null;
     let cvRuntime = null;
     let detectorRequestId = 0;
     let detectorWorker = null;
@@ -320,8 +321,8 @@
         }
     }
 
-    function makeRegion(box, source = 'auto') {
-        return { id: `photo-region-${state.nextId++}`, source, ...box, status: 'unresolved', candidates: [], searchCrops: [], selected: null, manualName: '', reviewed: false };
+    function makeRegion(box, source = 'auto', owner = state) {
+        return { id: `photo-region-${owner.nextId++}`, source, ...box, status: 'unresolved', candidates: [], searchCrops: [], selected: null, manualName: '', reviewed: false };
     }
 
     function regionPolygon(region) {
@@ -530,31 +531,41 @@
     async function readFile(file) {
         if (!file || !file.type.startsWith('image/')) throw new Error('이미지 파일을 선택해주세요.');
         if (file.size > 12 * 1024 * 1024) throw new Error('사진은 12MB 이하여야 합니다.');
-        const revision = ++state.revision;
-        state.busy = false; state.phase = 'detecting'; state.image = null; state.pixels = null;
+        const owner = state;
+        const revision = ++owner.revision;
+        const isCurrent = () => revision === owner.revision;
+        owner.busy = false; owner.phase = 'detecting'; owner.image = null; owner.pixels = null;
+        owner.analysisFailed = false;
         syncSearchControls(); keepDesktopPhotoPanelOpen(); render();
-        if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
-        state.objectUrl = URL.createObjectURL(file);
+        if (owner.objectUrl) URL.revokeObjectURL(owner.objectUrl);
+        owner.objectUrl = URL.createObjectURL(file);
         const image = new Image();
         try {
-            await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('사진을 열 수 없습니다.')); image.src = state.objectUrl; });
-        } catch (error) { if (revision === state.revision) { state.phase = 'upload'; syncSearchControls(); render(); } throw error; }
-        if (revision !== state.revision) return;
-        state.file = file; state.image = image; state.regions = []; state.selectedId = null;
-        state.phase = 'detecting';
-        keepDesktopPhotoPanelOpen(); render();
+            await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('사진을 열 수 없습니다.')); image.src = owner.objectUrl; });
+        } catch (error) {
+            if (!isCurrent()) return;
+            owner.phase = 'upload';
+            syncSearchControls();
+            if (state !== owner) return;
+            render();
+            throw error;
+        }
+        if (!isCurrent()) return;
+        owner.file = file; owner.image = image; owner.regions = []; owner.selectedId = null;
+        owner.phase = 'detecting';
+        if (state === owner) { keepDesktopPhotoPanelOpen(); render(); }
         try {
             const detected = await detectRegions(image);
-            if (revision !== state.revision) return;
-            state.regions = sortRegionsReadingOrder((detected.length ? detected : [{ x: 0, y: 0, width: 1, height: 1, score: 0 }]).map(box => makeRegion(box)));
-            state.selectedId = null;
-            state.viewMode = 'all'; state.editDraft = null; state.editDirty = false;
-            state.phase = 'selecting';
+            if (!isCurrent()) return;
+            owner.regions = sortRegionsReadingOrder((detected.length ? detected : [{ x: 0, y: 0, width: 1, height: 1, score: 0 }]).map(box => makeRegion(box, 'auto', owner)));
+            owner.selectedId = null;
+            owner.viewMode = 'all'; owner.editDraft = null; owner.editDirty = false;
+            owner.phase = 'selecting';
         } catch (error) {
-            if (revision !== state.revision) return;
-            state.phase = 'upload'; state.image = null; state.file = null; syncSearchControls();
-            throw error;
-        } finally { if (revision === state.revision) render(); }
+            if (!isCurrent()) return;
+            owner.phase = 'upload'; owner.image = null; owner.file = null; syncSearchControls();
+            if (state === owner) throw error;
+        } finally { if (isCurrent() && state === owner) render(); }
     }
 
     async function candidateName(cid) {
@@ -571,58 +582,82 @@
             if (typeof showToast === 'function') showToast('분석할 영역을 하나 이상 추가해주세요.', 'toast-warn');
             return;
         }
-        const revision = state.revision;
-        state.busy = true; render();
+        const owner = state;
+        const revision = owner.revision;
+        const isCurrent = () => revision === owner.revision;
+        owner.analysisFailed = false;
+        owner.busy = true; render();
         try {
-            state.regions = sortRegionsReadingOrder(state.regions);
-            const images = [];
-            state.regions.forEach(region => {
-                region.searchCrops = CARD_ART_CROPS.map(pattern => cropArtwork(state.image, region, pattern));
-                images.push(...region.searchCrops);
-            });
+            const regions = sortRegionsReadingOrder(owner.regions);
+            const searchCrops = regions.map(region => CARD_ART_CROPS.map(pattern => cropArtwork(owner.image, region, pattern)));
+            const images = searchCrops.flat();
             const analyzedRegions = [];
             for (let offset = 0; offset < images.length; offset += ANALYSIS_BATCH_SIZE) {
                 const response = await callApi('searchCardByImage', {}, {
                     images: images.slice(offset, offset + ANALYSIS_BATCH_SIZE),
                     maxResults: 5,
                 });
-                if (revision !== state.revision) return;
+                if (!isCurrent()) return;
                 if (!response?.success) throw new Error(response?.message || '사진 분석에 실패했습니다.');
                 if (!Array.isArray(response.regions)) throw new Error('사진 검색 서버 응답을 확인해주세요.');
                 analyzedRegions.push(...response.regions);
             }
-            for (let regionIndex = 0; regionIndex < state.regions.length; regionIndex++) {
+            const names = owner.purpose === 'register'
+                ? await root.AppBackend?.lookupPhotoCardNames?.(
+                    analyzedRegions.flatMap(region => (region?.matches || []).slice(0, 5).map(candidate => candidate.cid).filter(Boolean))
+                ).catch(() => undefined)
+                : undefined;
+            if (!isCurrent()) return;
+            const candidatesByRegion = [];
+            for (let regionIndex = 0; regionIndex < regions.length; regionIndex++) {
                 const candidates = (analyzedRegions[regionIndex]?.matches || []).slice(0, 5);
                 await Promise.all(candidates.map(async candidate => {
-                    if (candidate.cid) candidate.cardName = await candidateName(candidate.cid);
+                    if (!candidate.cid) return;
+                    candidate.cardName = names ? names.get(String(candidate.cid)) || `CID ${candidate.cid}`
+                        : await candidateName(candidate.cid);
                 }));
-                if (revision !== state.revision) return;
-                state.regions[regionIndex].candidates = candidates;
-                state.regions[regionIndex].reviewed = false;
+                if (!isCurrent()) return;
+                candidatesByRegion.push(candidates);
+            }
+            owner.regions = regions;
+            regions.forEach((region, index) => {
+                const candidates = candidatesByRegion[index];
+                region.searchCrops = searchCrops[index];
+                region.candidates = candidates;
+                region.reviewed = false;
                 if (candidates.length) {
                     const candidate = candidates[0];
-                    state.regions[regionIndex].selected = {
+                    region.selected = {
                         cid: candidate.cid ? String(candidate.cid) : null,
                         passcode: candidate.passcode,
                         ciid: Number(candidate.ciid),
                         cardName: candidate.cardName,
                     };
-                    state.regions[regionIndex].manualName = '';
-                    state.regions[regionIndex].status = 'matched';
+                    region.manualName = '';
+                    region.status = 'matched';
                 } else {
-                    state.regions[regionIndex].selected = null;
-                    state.regions[regionIndex].status = 'manual';
+                    region.selected = null;
+                    region.status = 'manual';
                 }
-            }
-            if (!state.selectedId) state.selectedId = state.regions[0]?.id || null;
+            });
+            if (!owner.selectedId) owner.selectedId = owner.regions[0]?.id || null;
         } catch (error) {
-            if (typeof showToast === 'function') showToast(error.message, 'toast-error');
-        } finally { if (revision === state.revision) { state.busy = false; render(); } }
+            if (isCurrent()) {
+                owner.analysisFailed = true;
+                if (state === owner && typeof showToast === 'function') showToast(error.message, 'toast-error');
+            }
+        } finally {
+            if (isCurrent()) {
+                owner.busy = false;
+                if (state === owner) render();
+            }
+        }
     }
 
     function selectCandidate(region, candidate) {
         const scrollTop = state.root?.querySelector('.photo-editor-content')?.scrollTop || 0;
         region.selected = { cid: candidate.cid ? String(candidate.cid) : null, passcode: candidate.passcode, ciid: Number(candidate.ciid), cardName: candidate.cardName };
+        region.manualSelectionRequest = null;
         region.manualName = ''; region.status = 'matched'; render();
         requestAnimationFrame(() => {
             const content = state.root?.querySelector('.photo-editor-content');
@@ -659,16 +694,48 @@
         window.closeManagedSheet(sheet, { backdrop: sheet.querySelector('.photo-manual-backdrop') });
     }
 
+    async function confirmManualSelection(region, candidate) {
+        const name = candidate?.value?.trim();
+        if (!name) return;
+        const owner = state;
+        const revision = owner.revision;
+        const selection = {};
+        region.manualSelectionRequest = selection;
+        let metadata;
+        if (candidate.cid) {
+            try { metadata = await callApi('getCardMetadata', { cid: candidate.cid }); } catch (_) {}
+        }
+        if (state !== owner || revision !== owner.revision || region.manualSelectionRequest !== selection
+            || !owner.regions.includes(region) || owner.selectedId !== region.id) return;
+        const language = typeof extractLangData === 'function' ? extractLangData(metadata) : null;
+        region.selected = candidate.cid ? { cid: String(candidate.cid), cardName: name, artworkSlot: language?.[1]?.[0] } : null;
+        region.manualName = name;
+        region.status = 'manual';
+        region.reviewed = true;
+        render();
+    }
+
+    function resetManualSelection(region, mobile) {
+        region.manualSelectionRequest = null;
+        region.selected = null;
+        region.manualName = '';
+        render();
+        if (mobile) state.root?.querySelector('[data-mobile-manual-option]')?.focus({ preventScroll: true });
+        else state.root?.querySelector('[data-manual-name]')?.focus({ preventScroll: true });
+    }
+
     function openManualNameSheet(region) {
         let sheet = document.getElementById('photo-manual-sheet');
         if (!sheet) {
             sheet = document.createElement('div');
             sheet.id = 'photo-manual-sheet';
             sheet.className = 'photo-manual-sheet ui-overlay';
+            sheet.dataset.sheetDisplay = 'css';
+            sheet.hidden = true;
             sheet.setAttribute('role', 'dialog');
             sheet.setAttribute('aria-label', '카드 이름 직접 입력');
             sheet.tabIndex = -1;
-            sheet.innerHTML = '<div class="photo-manual-backdrop ui-overlay__backdrop color-surface-black" aria-hidden="true"></div><section class="photo-manual-panel ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet"><header class="ui-overlay__header"><h2 class="color-text-000">카드 이름 직접 입력</h2><button type="button" class="ui-button ui-button--text color-text-001" data-manual-close aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header><div class="ui-overlay__body"><div class="photo-manual-illustration"><i class="material-icons" aria-hidden="true">edit</i></div><input class="photo-manual-input" type="text" aria-label="카드 이름" placeholder="카드 이름 직접 입력"></div><footer class="ui-overlay__footer"><button type="button" class="ui-button ui-button--text color-text-001" data-manual-cancel>취소</button><button type="button" class="ui-button color-theme shape-capsule" data-manual-confirm>확인</button></footer></section>';
+            sheet.innerHTML = '<div class="photo-manual-backdrop ui-overlay__backdrop color-surface-black" aria-hidden="true" hidden></div><section class="photo-manual-panel ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet"><header class="ui-overlay__header"><h2 class="color-text-000">카드 이름 직접 입력</h2><button type="button" class="ui-button ui-button--text color-text-001" data-manual-close aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></header><div class="ui-overlay__body"><div class="photo-manual-illustration"><i class="material-icons" aria-hidden="true">edit</i></div><input class="photo-manual-input" type="text" aria-label="카드 이름" placeholder="카드 이름 직접 입력"></div><footer class="ui-overlay__footer"><button type="button" class="ui-button ui-button--text color-text-001" data-manual-cancel>취소</button><button type="button" class="ui-button color-theme shape-capsule" data-manual-confirm>확인</button></footer></section>';
             document.body.append(sheet);
             sheet.querySelector('.photo-manual-backdrop').onclick = closeManualNameSheet;
             sheet.querySelector('[data-manual-cancel]').onclick = closeManualNameSheet;
@@ -693,7 +760,7 @@
 
     function returnToRegionSetup() {
         state.regions.forEach(region => Object.assign(region, {
-            candidates: [], searchCrops: [], selected: null, manualName: '', status: 'unresolved', reviewed: false,
+            candidates: [], searchCrops: [], selected: null, manualName: '', manualSelectionRequest: null, status: 'unresolved', reviewed: false,
         }));
         state.selectedId = null; state.viewMode = 'all'; state.editDraft = null;
         state.editDirty = false;
@@ -703,7 +770,7 @@
     function searchSelectedCandidate() {
         const region = state.regions.find(item => item.id === state.selectedId) || state.regions[0];
         const manualQuery = region?.status === 'manual' ? region.manualName.trim() : '';
-        if (manualQuery) {
+        if (manualQuery && !region.selected?.cid) {
             dismissPhotoSearch();
             const input = document.getElementById('card-search');
             if (input) input.value = manualQuery;
@@ -789,11 +856,10 @@
         const resolved = state.regions.map(region => region.selected || (region.manualName.trim() ? { cardName: region.manualName.trim(), ciid: 1 } : null));
         if (resolved.some(item => !item)) { showToast('모든 영역의 카드 이름을 확정해주세요.', 'toast-warn'); return; }
         const mobile = document.documentElement.classList.contains('is-mobile-device');
-        const subMode = ['general', 'pack', 'deck'].includes(state.targetSubMode) ? state.targetSubMode : 'general';
-        const list = document.getElementById(`${mobile ? 'mobile' : 'desktop'}-cards-list-${subMode}`);
+        const list = document.getElementById(`${mobile ? 'mobile' : 'desktop'}-cards-list-general`);
         if (!list) return;
-        const cardClass = mobile ? '.mobile-info-card' : '.desktop-info-card';
-        const lastRow = list.querySelector(`${cardClass}:last-child`);
+        const cardClass = mobile ? '.mobile-info-card[data-index]' : '.desktop-info-card[data-index]';
+        const lastRow = [...list.querySelectorAll(cardClass)].at(-1);
         const lastRowIsEmpty = lastRow && Array.from(lastRow.querySelectorAll('[data-field]')).every(input => {
             const value = input.dataset.raw || input.value;
             return !String(value || '').trim();
@@ -801,7 +867,7 @@
         const prepared = resolved.map((item, index) => {
             const row = index === 0 && lastRowIsEmpty
                 ? lastRow
-                : (mobile ? mobileAddEntry('add', subMode) : desktopAddEntry('add', subMode));
+                : (mobile ? mobileAddEntry('add') : desktopAddEntry('add'));
             const nameInput = row?.querySelector('[data-field="name"]');
             if (nameInput) nameInput.value = item.cardName;
             return { item, row, nameInput };
@@ -809,11 +875,20 @@
         closeRegistrationSheet();
         await Promise.allSettled(prepared.map(async ({ item, row, nameInput }) => {
             if (!row || !nameInput) return;
-            await fetchCardByName(nameInput, true);
+            await fetchCardByName(nameInput, true, item.cid);
             const illustration = row.querySelector('[data-field="illust"]');
-            if (illustration && item.ciid) {
-                setIllustrationValue(illustration, String(item.ciid));
-                illustration.dataset.raw = String(item.ciid);
+            if (illustration && item.artworkSlot) {
+                const options = JSON.parse(illustration.closest('.custom-select-wrapper')?.dataset.options || '[]');
+                if (options.some(option => String(option.val) === String(item.artworkSlot))) {
+                    setIllustrationValue(illustration, String(item.artworkSlot));
+                    root.AppBackend?.onSelectionChange?.(illustration);
+                }
+            } else if (illustration && item.ciid) {
+                if (root.AppBackend?.applyPhotoIllustration) root.AppBackend.applyPhotoIllustration(illustration,item);
+                else {
+                    setIllustrationValue(illustration, String(item.ciid));
+                    illustration.dataset.raw = String(item.ciid);
+                }
             }
         }));
         if (mobile && typeof root.renderMobileCards === 'function') root.renderMobileCards();
@@ -822,17 +897,41 @@
     function render() {
         const host = state.root;
         if (!host) return;
+        const ui = root.PhotoCardUI;
+        const mobileLayout = document.documentElement.classList.contains('is-mobile-device');
+        const previous = ui?.beforeRender(host);
+        const onFile = file => void readFile(file).catch(error => showToast(error.message, 'toast-error'));
+        const applyPresentation = () => {
+            if (ui) ui.afterRender(host, previous, { mobile: mobileLayout, failed: state.analysisFailed, busy: state.busy, onFile });
+            else syncDesktopPanelHeight();
+        };
+        host.classList.toggle('photo-card-ui', Boolean(ui));
         if (state.phase === 'detecting' || state.busy) {
             host.innerHTML = `<div class="photo-detection-loading" role="status" aria-live="polite"><div class="photo-detection-spinner"></div><strong>${state.busy ? '일러스트를 비교하고 있습니다' : '사진에서 카드 영역을 찾고 있습니다'}</strong><span>분석이 완료되면 카드 후보를 표시합니다.</span></div>`;
+            if (ui) ui.arrangeRegionEditor(host, mobileLayout);
+            applyPresentation();
             return;
         }
         if (!state.image) {
-            host.innerHTML = `<div class="photo-upload-panel"><i class="material-icons">add_photo_alternate</i><strong>카드가 보이는 사진을 추가하세요</strong><span>한 장에서 여러 카드를 인식할 수 있습니다.</span><div class="photo-upload-actions"><label class="btn cyan-theme">이미지 업로드<input type="file" accept="image/*" data-photo-file hidden></label><label class="btn-flat">사진 촬영<input type="file" accept="image/*" capture="environment" data-photo-file hidden></label></div></div>`;
-            host.querySelectorAll('[data-photo-file]').forEach(input => input.onchange = event => readFile(event.target.files[0]).catch(error => showToast(error.message, 'toast-error')));
+            host.innerHTML = `
+                <div class="photo-upload-panel">
+                    <i class="material-icons" aria-hidden="true">add_photo_alternate</i>
+                    <strong>카드가 보이는 사진을 추가하세요</strong>
+                    <span>한 장에서 여러 카드를 인식할 수 있습니다.</span>
+                    <button type="button" class="ui-button color-theme shape-capsule">이미지 업로드</button>
+                    <input type="file" accept="image/*" data-photo-file hidden>
+                </div>`;
+            const input = host.querySelector('[data-photo-file]');
+            host.querySelector('button').onclick = () => input.click();
+            input.onchange = () => {
+                const file = input.files[0];
+                if (file) onFile(file);
+            };
+            if (ui) ui.arrangeRegionEditor(host, mobileLayout);
+            applyPresentation();
             return;
         }
         const selected = state.regions.find(region => region.id === state.selectedId) || state.regions[0];
-        const mobileLayout = document.documentElement.classList.contains('is-mobile-device');
         const regionSetupPhase = !state.regions.some(region => region.searchCrops?.length);
         if (regionSetupPhase) {
             const editing = state.viewMode === 'edit' && Boolean(state.regions.find(region => region.id === state.selectedId));
@@ -841,10 +940,11 @@
             const editOverlayActions = editing ? `<div class="photo-region-edit-overlay-actions"><button type="button" data-show-all aria-label="전체 보기"><i class="material-icons">fullscreen</i></button><button type="button" data-cancel-edit aria-label="되돌리기" ${state.editDirty ? '' : 'disabled'}><i class="material-icons">undo</i></button><button type="button" data-confirm-edit aria-label="저장" ${state.editDirty ? '' : 'disabled'}><i class="material-icons">check</i></button></div>` : '';
             const addRegionButton = `<button type="button" class="photo-region-add" data-add-region ${state.regions.length >= MAX_REGIONS ? 'disabled' : ''}><i class="material-icons">add</i><span>추가하기</span></button>`;
             const regionSetup = `<div class="photo-region-setup"><div class="photo-region-grid-scroll"><div class="photo-region-grid">${addRegionButton}${thumbnails}</div></div></div>`;
-            const setupActions = `<div class="photo-analysis-actions"><button type="button" class="btn-flat photo-image-select" data-replace>이미지 변경</button><button type="button" class="btn cyan-theme" data-analyze ${state.regions.length && !state.editDirty ? '' : 'disabled'}>분석 시작</button></div>`;
+            const setupActions = `<div class="photo-analysis-actions"><button type="button" class="btn-flat photo-image-select" data-replace>이미지 변경</button><button type="button" class="photo-analysis-action-button" data-analyze ${state.regions.length && !state.editDirty ? '' : 'disabled'}>분석 시작</button></div>`;
             const desktopSetupMarkup = `<div class="photo-analysis-layout photo-region-setup-layout desktop-photo-full-footer"><div class="photo-analysis-left">${preview}${editOverlayActions}</div><section class="photo-candidate-panel">${regionSetup}</section>${setupActions}</div>`;
             const mobileSetupMarkup = `<div class="photo-analysis-layout photo-region-setup-layout mobile-photo-region-setup"><div class="photo-analysis-left">${preview}${editOverlayActions}</div><section class="photo-candidate-panel">${regionSetup}${setupActions}</section></div>`;
             host.innerHTML = mobileLayout ? mobileSetupMarkup : desktopSetupMarkup;
+            ui?.arrangeRegionEditor(host, mobileLayout);
             host.querySelector('[data-show-all]')?.addEventListener('click', showAllRegions);
             host.querySelectorAll('[data-region-id]').forEach(button => button.onclick = () => {
                 const region = state.regions.find(item => item.id === button.dataset.regionId);
@@ -866,25 +966,21 @@
             host.querySelector('[data-confirm-edit]')?.addEventListener('click', confirmRegionEdit);
             if (mobileLayout) bindMobileScrollIndicator(host.querySelector('.photo-region-grid-scroll'));
             bindRegionEditor(host);
-            syncDesktopPanelHeight();
+            applyPresentation();
             return;
         }
         selected.reviewed = true;
-        const boxes = state.regions.map((region, index) => {
-            const clip = region.polygon ? `clip-path:polygon(${region.polygon.map(point => `${((point.x - region.x) / region.width) * 100}% ${((point.y - region.y) / region.height) * 100}%`).join(',')});` : '';
-            const resolved = Boolean(region.reviewed && (region.selected || (region.status === 'manual' && region.manualName.trim())));
-            return `<button type="button" class="photo-region-box${region.id === state.selectedId ? ' selected' : ''}${resolved ? ' resolved' : ''}" data-region-id="${region.id}" style="left:${region.x * 100}%;top:${region.y * 100}%;width:${region.width * 100}%;height:${region.height * 100}%;${clip}"><span>${index + 1}</span></button>`;
-        }).join('');
-        const desktopCandidates = selected.candidates.length ? selected.candidates.map((candidate, index) => {
+        const visibleCandidates = ui ? selected.candidates.slice(0, 3) : selected.candidates;
+        const desktopCandidates = visibleCandidates.map((candidate, index) => {
             const candidateSelected = selected.selected?.passcode === candidate.passcode;
             return `<div class="photo-candidate-row"><button type="button" class="photo-candidate${candidateSelected ? ' selected' : ''}" data-candidate="${index}"><span class="photo-candidate-image" ${candidate.cid ? `data-cid="${candidate.cid}" data-ciid="${candidate.ciid}"` : ''}></span><span><strong>${escapeHTML(candidate.cardName)}</strong><small>${(Number(candidate.score || 0) * 100).toFixed(2)}%</small></span></button>${candidateSelected ? regionNavigation('photo-candidate-navigation') : ''}</div>`;
-        }).join('') : '';
-        const mobileCandidates = selected.candidates.length ? selected.candidates.map((candidate, index) => {
+        }).join('');
+        const mobileCandidates = visibleCandidates.map((candidate, index) => {
             const candidateSelected = selected.selected?.passcode === candidate.passcode;
             return `<div class="photo-candidate-row"><button type="button" class="photo-candidate${candidateSelected ? ' selected' : ''}" data-candidate="${index}" aria-label="${escapeHTML(candidate.cardName)}, ${(Number(candidate.score || 0) * 100).toFixed(2)}%"><span class="photo-candidate-image" ${candidate.cid ? `data-cid="${candidate.cid}" data-ciid="${candidate.ciid}"` : ''}></span><span class="photo-candidate-score">${(Number(candidate.score || 0) * 100).toFixed(2)}%</span></button></div>`;
-        }).join('') : '';
+        }).join('');
         const manualSelected = selected.status === 'manual';
-        const manualCandidate = `<div class="photo-candidate-row"><div class="photo-candidate photo-manual-candidate${manualSelected ? ' selected' : ''}" data-manual-option role="button" tabindex="0"><span class="photo-candidate-image"><i class="material-icons">edit</i></span><span><input type="text" class="photo-manual-name" data-manual-name placeholder="직접 입력" value="${escapeHTML(selected.manualName)}" ${manualSelected ? '' : 'readonly aria-disabled="true"'}><small>선택지에 없는 경우 사용하세요.</small></span></div>${manualSelected ? regionNavigation('photo-candidate-navigation') : ''}</div>`;
+        const manualCandidate = `<div class="photo-candidate-row"><div class="photo-candidate photo-manual-candidate${manualSelected ? ' selected' : ''}" data-manual-option role="button" tabindex="0"><span class="photo-candidate-image"><i class="material-icons">edit</i></span><span><input type="text" class="photo-manual-name browser-default" data-manual-name placeholder="직접 입력" value="${escapeHTML(selected.manualName)}" ${manualSelected ? '' : 'readonly aria-disabled="true"'}><small>선택지에 없는 경우 사용하세요.</small></span></div>${manualSelected ? regionNavigation('photo-candidate-navigation') : ''}</div>`;
         const candidateTitle = `${state.regions.indexOf(selected) + 1}번 카드`;
         const headingNavigation = state.regions.length > 1
             ? `<button type="button" class="photo-region-heading-nav" data-region-previous aria-label="이전 카드"><i class="material-icons">chevron_left</i></button><h6>${candidateTitle}</h6><button type="button" class="photo-region-heading-nav" data-region-next aria-label="다음 카드"><i class="material-icons">chevron_right</i></button>`
@@ -901,8 +997,8 @@
         const allRegionsResolved = state.regions.every(region => region.selected || region.manualName.trim());
         const selectedSearchReady = Boolean(selected.selected || (manualSelected && selected.manualName.trim()));
         const selectionPrimary = state.purpose === 'search'
-            ? `<button type="button" class="btn cyan-theme" data-search-selected ${selectedSearchReady ? '' : 'disabled'}>검색</button>`
-            : `<button type="button" class="btn cyan-theme" data-finish ${allRegionsResolved ? '' : 'disabled'}>등록 정보 작성</button>`;
+            ? `<button type="button" class="photo-analysis-action-button" data-search-selected ${selectedSearchReady ? '' : 'disabled'}>검색</button>`
+            : `<button type="button" class="photo-analysis-action-button" data-finish ${allRegionsResolved ? '' : 'disabled'}>등록 정보 작성</button>`;
         const desktopSelectionActions = `<button type="button" class="btn-flat" data-previous>이전</button>${selectionPrimary}`;
         const selectedRegionNumber = state.regions.indexOf(selected) + 1;
         const mobileRegionNavigation = `<div class="mobile-photo-footer-navigation"><button type="button" data-region-previous aria-label="이전 카드" ${state.regions.length > 1 ? '' : 'disabled'}><i class="material-icons">chevron_left</i></button><span>${selectedRegionNumber} / ${state.regions.length}</span><button type="button" data-region-next aria-label="다음 카드" ${state.regions.length > 1 ? '' : 'disabled'}><i class="material-icons">chevron_right</i></button></div>`;
@@ -911,6 +1007,10 @@
         const desktopSelectionMarkup = `<div class="photo-analysis-layout desktop-photo-full-footer"><div class="photo-analysis-left">${leftContent}</div><section class="photo-candidate-panel">${editor}</section><div class="photo-analysis-actions">${selectionActions}</div></div>`;
         const mobileSelectionMarkup = `<div class="photo-analysis-layout mobile-photo-candidate-layout"><div class="photo-analysis-left">${leftContent}</div><section class="photo-candidate-panel">${editor}<div class="photo-analysis-actions">${selectionActions}</div></section></div>`;
         host.innerHTML = mobileLayout ? mobileSelectionMarkup : desktopSelectionMarkup;
+        if (ui) {
+            ui.arrangeRegionEditor(host, mobileLayout);
+            ui.prepareCandidates(host, selected, state.regions, mobileLayout);
+        }
         host.querySelectorAll('[data-region-id]').forEach(button => button.onclick = () => { state.selectedId = button.dataset.regionId; render(); });
         host.querySelector('[data-add-region]')?.addEventListener('click', addRegion);
         host.querySelector('[data-remove-region]')?.addEventListener('click', removeSelected);
@@ -929,20 +1029,31 @@
             };
             manualOption.addEventListener('click', activateManual);
             manualOption.addEventListener('keydown', event => {
+                if (manualSelected && event.target.closest('[data-manual-name]')) return;
                 if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activateManual(event); }
             });
         }
-        host.querySelector('[data-mobile-manual-option]')?.addEventListener('click', () => openManualNameSheet(selected));
+        host.querySelector('[data-mobile-manual-option]')?.addEventListener('click', event => {
+            if (ui && typeof openSheetInputOverlay === 'function') {
+                openSheetInputOverlay('photo-name', event.currentTarget, '카드 이름 직접 입력', selected.manualName,
+                    (value, candidate) => void confirmManualSelection(selected, candidate ?? { value }));
+            } else {
+                openManualNameSheet(selected);
+            }
+        });
+        host.querySelector('[data-photo-reset-manual]')?.addEventListener('click', () => resetManualSelection(selected, mobileLayout));
         const manual = host.querySelector('[data-manual-name]');
         if (manual) {
             manual.oninput = () => {
+                selected.manualSelectionRequest = null;
                 selected.manualName = manual.value; selected.status = 'manual';
                 const primary = host.querySelector(state.purpose === 'search' ? '[data-search-selected]' : '[data-finish]');
                 if (primary) primary.disabled = state.purpose === 'search'
                     ? !manual.value.trim()
                     : !state.regions.every(region => region.selected || region.manualName.trim());
             };
-            manual.onkeydown = event => {
+            if (ui) ui.bindManualName(manual, candidate => void confirmManualSelection(selected, candidate));
+            else manual.onkeydown = event => {
                 if (event.key === 'Enter' && state.purpose === 'search' && manual.value.trim()) searchSelectedCandidate();
             };
         }
@@ -956,10 +1067,9 @@
         host.querySelectorAll('[data-region-next]').forEach(button => button.onclick = event => {
             event.preventDefault(); event.stopPropagation(); moveSelectedRegion(1);
         });
-        bindMobileScrollIndicator(host.querySelector('.mobile-photo-candidate-content .photo-editor-content'));
-        host.querySelectorAll('.photo-candidate-image').forEach(holder => root.IllustrationImages?.preload(holder.dataset.cid, holder.dataset.ciid).then(result => { if (result.url && holder.isConnected) { const img = new Image(); img.src = result.url; img.alt = ''; holder.append(img); } }));
+        host.querySelectorAll('.photo-candidate-image[data-cid]').forEach(holder => root.IllustrationImages?.preload(holder.dataset.cid, holder.dataset.ciid || 1).then(result => { if (result.url && holder.isConnected) { const img = new Image(); img.src = result.url; img.alt = ''; holder.append(img); } }));
         host.querySelector('[data-finish]')?.addEventListener('click', finishRegistration);
-        syncDesktopPanelHeight();
+        applyPresentation();
     }
 
     function openPicker(purpose, host) {
@@ -971,8 +1081,9 @@
     }
 
     function resetPhoto() {
+        root.closePhotoNameInput?.();
         state.revision++; state.image = null; state.pixels = null; state.file = null;
-        state.regions = []; state.busy = false; state.phase = 'upload';
+        state.regions = []; state.busy = false; state.phase = 'upload'; state.analysisFailed = false;
         state.viewMode = 'all'; state.editDraft = null; state.editDirty = false; state.searchUiSuspended = false;
         if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
         state.objectUrl = ''; syncSearchControls(); render();
@@ -1018,7 +1129,7 @@
         closeDesktopInline();
         wrapper?.classList.remove('active', 'photo-search-open');
         wrapper?.style.setProperty('--dropdown-height', '0px');
-        if (dropdown) { dropdown.classList.remove('active'); dropdown.style.display = ''; }
+        dropdown?.classList.remove('active');
         syncSearchControls();
     }
 
@@ -1041,7 +1152,7 @@
         const dropdown = document.getElementById('custom-dropdown');
         wrapper?.classList.remove('active', 'photo-search-open');
         wrapper?.style.setProperty('--dropdown-height', '0px');
-        if (dropdown) { dropdown.classList.remove('active'); dropdown.style.display = ''; }
+        dropdown?.classList.remove('active');
     }
 
     function syncDesktopPanelHeight() {
@@ -1054,10 +1165,6 @@
             const layout = host.querySelector('.photo-analysis-layout');
             const preview = left.querySelector('.photo-preview');
             if (layout && preview) layout.style.setProperty('--photo-content-height', `${Math.ceil(preview.getBoundingClientRect().height)}px`);
-            if (host.id !== 'desktop-photo-search-panel') return;
-            const height = '344px';
-            host.style.height = height;
-            document.getElementById('search-wrapper')?.style.setProperty('--dropdown-height', height);
         });
     }
 
@@ -1067,9 +1174,8 @@
         const dropdown = document.getElementById('custom-dropdown');
         state.root.removeAttribute('hidden');
         wrapper?.classList.add('active', 'photo-search-open');
-        if (!state.root.style.height) state.root.style.height = '344px';
-        wrapper?.style.setProperty('--dropdown-height', state.root.style.height);
-        if (dropdown) { dropdown.classList.remove('active'); dropdown.style.display = 'none'; }
+        wrapper?.style.removeProperty('--dropdown-height');
+        dropdown?.classList.remove('active');
     }
 
     function openSearchSheet() {
@@ -1079,7 +1185,9 @@
             sheet.setAttribute('role', 'dialog');
             sheet.setAttribute('aria-label', '사진 검색');
             sheet.tabIndex = -1;
-            sheet.innerHTML = '<div class="photo-search-sheet-backdrop ui-overlay__backdrop color-surface-black" aria-hidden="true"></div><div class="photo-search-sheet-panel ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet"><div class="ui-overlay__header"><h2 class="color-text-000">사진 검색</h2><button type="button" class="photo-sheet-close ui-button ui-button--text color-text-001" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></div><div class="photo-search-sheet-content ui-overlay__body"></div></div>';
+            sheet.dataset.sheetDisplay = 'css';
+            sheet.hidden = true;
+            sheet.innerHTML = '<div class="photo-search-sheet-backdrop ui-overlay__backdrop color-surface-black" aria-hidden="true" hidden></div><div class="photo-search-sheet-panel ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet"><div class="ui-overlay__header"><h2 class="color-text-000">사진 검색</h2><button type="button" class="photo-sheet-close ui-button ui-button--text color-text-001" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></div><div class="photo-search-sheet-content ui-overlay__body"></div></div>';
             document.body.append(sheet);
             sheet.querySelector('.photo-search-sheet-backdrop').onclick = closePhotoSearch;
             sheet.querySelector('.photo-sheet-close').onclick = closePhotoSearch;
@@ -1088,16 +1196,34 @@
         window.openManagedSheet(sheet, { backdrop: sheet.querySelector('.photo-search-sheet-backdrop'), onDismiss: closePhotoSearch });
     }
 
-    function closeRegistrationSheet() {
+    function closeRegistrationSheet(restoreFocus = true) {
         state = states.register;
+        if (registrationInlineClose) {
+            const onClose = registrationInlineClose;
+            registrationInlineClose = null;
+            root.PhotoCardUI?.dispose(state.root);
+            state.root = null;
+            resetPhoto();
+            onClose(restoreFocus);
+            return;
+        }
         resetPhoto();
         closeManualNameSheet();
         const sheet = document.getElementById('photo-registration-sheet');
         if (sheet) window.closeManagedSheet(sheet, { backdrop: sheet.querySelector('.photo-search-sheet-backdrop') });
     }
 
-    function openRegistrationSheet(targetSubMode = 'general') {
-        states.register.targetSubMode = targetSubMode;
+    function openInlineRegistration(host, onClose) {
+        if (isDesktopPanelOpen()) hidePhotoSearchPreservingState();
+        registrationInlineClose = onClose;
+        openPicker('register', host);
+    }
+
+    function closeInlineRegistration(restoreFocus = true) {
+        if (registrationInlineClose) closeRegistrationSheet(restoreFocus);
+    }
+
+    function openRegistrationSheet() {
         let sheet = document.getElementById('photo-registration-sheet');
         if (!sheet) {
             sheet = document.createElement('div');
@@ -1106,7 +1232,9 @@
             sheet.setAttribute('role', 'dialog');
             sheet.setAttribute('aria-label', '사진 등록');
             sheet.tabIndex = -1;
-            sheet.innerHTML = '<div class="photo-search-sheet-backdrop ui-overlay__backdrop color-surface-black" aria-hidden="true"></div><div class="photo-search-sheet-panel ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet"><div class="ui-overlay__header"><h2 class="color-text-000">사진 등록</h2><button type="button" class="photo-sheet-close ui-button ui-button--text color-text-001" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></div><div class="photo-search-sheet-content ui-overlay__body"></div></div>';
+            sheet.dataset.sheetDisplay = 'css';
+            sheet.hidden = true;
+            sheet.innerHTML = '<div class="photo-search-sheet-backdrop ui-overlay__backdrop color-surface-black" aria-hidden="true" hidden></div><div class="photo-search-sheet-panel ui-overlay__panel ui-overlay--sheet color-surface-001 color-text-001 shape-rounded-lg shadow-mobile-sheet"><div class="ui-overlay__header"><h2 class="color-text-000">사진 등록</h2><button type="button" class="photo-sheet-close ui-button ui-button--text color-text-001" aria-label="닫기"><i class="material-icons" aria-hidden="true">close</i></button></div><div class="photo-search-sheet-content ui-overlay__body"></div></div>';
             document.body.append(sheet);
             sheet.querySelector('.photo-search-sheet-backdrop').onclick = () => closeRegistrationSheet();
             sheet.querySelector('.photo-sheet-close').onclick = () => closeRegistrationSheet();
@@ -1120,20 +1248,23 @@
         const background = wrapper?.querySelector('.search-expansion-bg');
         const dropdown = document.getElementById('custom-dropdown');
         if (!wrapper || !background) return;
+        closeInlineRegistration(false);
+        state = states.search;
         state.searchUiSuspended = false;
         let panel = document.getElementById('desktop-photo-search-panel');
         if (!panel) {
             panel = document.createElement('div');
             panel.id = 'desktop-photo-search-panel';
             panel.className = 'desktop-photo-search-panel';
-            panel.addEventListener('mousedown', event => event.preventDefault());
+            panel.addEventListener('mousedown', event => {
+                if (!event.target.closest('input')) event.preventDefault();
+            });
             background.append(panel);
         }
         panel.removeAttribute('hidden');
-        panel.style.height = '344px';
-        if (dropdown) { dropdown.classList.remove('active'); dropdown.style.display = 'none'; }
+        dropdown?.classList.remove('active');
         wrapper.classList.add('active', 'photo-search-open');
-        wrapper.style.setProperty('--dropdown-height', '344px');
+        wrapper.style.removeProperty('--dropdown-height');
         openPicker('search', panel);
     }
 
@@ -1142,7 +1273,6 @@
         wrapper?.classList.remove('photo-search-open');
         const panel = document.getElementById('desktop-photo-search-panel');
         panel?.setAttribute('hidden', '');
-        if (panel) panel.style.height = '';
     }
 
     function init() {
@@ -1166,12 +1296,13 @@
         }, 100));
         document.addEventListener('pointerdown', event => {
             const wrapper = document.getElementById('search-wrapper');
-            if (isDesktopPanelOpen() && wrapper && !wrapper.contains(event.target)) hidePhotoSearchPreservingState();
+            if (isDesktopPanelOpen() && wrapper && !wrapper.contains(event.target)
+                && !event.target.closest('.photo-ui-manual-name-dropdown')) hidePhotoSearchPreservingState();
         });
         syncCamera();
     }
 
-    root.PhotoCardSearch = { init, refreshSearchControls: syncSearchControls, openPicker, openRegistrationSheet, detectRegionsFromImageData, normalizeRegions, sortRegionsReadingOrder, orderQuad, regionFromQuad, getDetectorStatus: () => detectorStatus, isDesktopBusy: () => (states.search.phase === 'detecting' || states.search.busy) && states.search.root?.id === 'desktop-photo-search-panel', hasDesktopPhoto: () => hasSearchPhoto() && states.search.root?.id === 'desktop-photo-search-panel', CARD_ART_CROPS, MAX_REGIONS, ANALYSIS_BATCH_SIZE };
+    root.PhotoCardSearch = { init, refreshSearchControls: syncSearchControls, openPicker, openRegistrationSheet, openInlineRegistration, closeInlineRegistration, detectRegionsFromImageData, normalizeRegions, sortRegionsReadingOrder, orderQuad, regionFromQuad, getDetectorStatus: () => detectorStatus, isDesktopBusy: () => (states.search.phase === 'detecting' || states.search.busy) && states.search.root?.id === 'desktop-photo-search-panel', hasDesktopPhoto: () => hasSearchPhoto() && states.search.root?.id === 'desktop-photo-search-panel', CARD_ART_CROPS, MAX_REGIONS, ANALYSIS_BATCH_SIZE };
     if (typeof module === 'object' && module.exports) module.exports = { detectRegionsFromImageData, normalizeRegions, sortRegionsReadingOrder, orderQuad, regionFromQuad, iou, CARD_ART_CROPS, MAX_REGIONS, ANALYSIS_BATCH_SIZE };
     else document.addEventListener('DOMContentLoaded', init);
 })(typeof window !== 'undefined' ? window : globalThis);

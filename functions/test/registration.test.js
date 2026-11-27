@@ -57,7 +57,11 @@ test('동의 두 개와 최신 문서 버전이 없으면 계정을 생성하지
   for (const agreements of [{ terms: true }, { privacy: true }, { terms: 'true', privacy: true }]) {
     assert.equal((await complete(f, { agreements, consentVersions: versions })).code, 400);
   }
-  assert.equal((await complete(f, { agreements: { terms: true, privacy: true }, consentVersions: { terms: 'old', privacy: 'old' } })).code, 409);
+  for (const key of ['terms', 'privacy']) {
+    const response = await complete(f, { agreements: { terms: true, privacy: true }, consentVersions: { ...versions, [key]: 'old' } });
+    assert.equal(response.code, 409);
+    assert.equal(response.body.code, 'CONSENT_VERSION_CHANGED');
+  }
   assert.equal(f.stats().writes, 0);
 });
 test('가입 완료는 서버 시각·문서 버전을 저장하며 반복 요청은 기존 데이터를 보존한다', async () => {
@@ -68,6 +72,7 @@ test('가입 완료는 서버 시각·문서 버전을 저장하며 반복 요�
   assert.equal(f.stats().writes, 1); assert.equal(f.stats().data.createdAt, 'server-time');
   assert.equal(f.stats().data.registration.consent.acceptedAt, 'server-time');
   assert.equal(f.stats().data.registration.consent.terms, versions.terms);
+  assert.equal(f.stats().data.registration.consent.privacy, versions.privacy);
   assert.equal(f.stats().data.uid, undefined);
 });
 test('기존 회원 가입 완료 재요청은 과거 동의 이력을 꾸며내지 않는다', async () => {

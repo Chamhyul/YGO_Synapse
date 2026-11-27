@@ -88,9 +88,11 @@
         finally { busy = false; controls(); }
     });
     function completed(data) {
-        showCurrent(data); remember(''); csvText = ''; file.value = ''; clearPreview();
+        showCurrent(data); if (!data.claimsPending) remember('');
+        csvText = ''; file.value = ''; clearPreview();
         element('filename').textContent = '선택한 파일 없음';
-        status.textContent = `운영 회원 목록을 ${data.count}명으로 교체했습니다.`;
+        status.textContent = `운영 회원 목록을 ${data.count}명으로 교체했습니다.`
+            + (data.claimsPending ? ' 계정 권한 갱신이 남아 있습니다. 적용 결과 확인을 눌러 다시 확인해 주세요.' : '');
     }
     element('apply').addEventListener('click', async () => {
         if (busy || !preview || operationId || content.hidden) return;

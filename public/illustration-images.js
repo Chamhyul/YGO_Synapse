@@ -83,6 +83,7 @@
     // Keep the Image alive as well as its promise so opening a picker reuses a
     // completed/in-flight request. Failures expire so a later opening can retry.
     function preload(cid, ciid, options = {}) {
+        if (globalThis.AppBackend) return globalThis.AppBackend.preloadArtwork(cid, ciid, options);
         const key = normalizeKey(cid, ciidValue(ciid));
         if (!key) return Promise.resolve({ status: 'error', url: null });
         const cached = preloads.get(key);
@@ -116,6 +117,7 @@
     }
 
     async function preloadCard(cid, ids = []) {
+        if (globalThis.AppBackend) return globalThis.AppBackend.preloadCard(cid, ids);
         if (!normalizeKey(cid, 1)) return [];
         // Start known IDs immediately; the index also covers name-only selection
         // where the card number and its options have not been selected yet.
@@ -166,6 +168,8 @@
     }
 
     return {
+        get galleryEntries() { return globalThis.AppBackend ? cid => globalThis.AppBackend.galleryEntries(cid) : undefined; },
+        get galleryLabel() { return globalThis.AppBackend ? (cid, id) => globalThis.AppBackend.galleryLabel(cid, id) : undefined; },
         INDEX_URL, normalizeKey, storageUrl, momobakoUrl, loadIndex, resolveFromIndex, resolve,
         displayResolvedImage, display, resetIndexCache, ciidValue, label, preload, preloadCard,
     };

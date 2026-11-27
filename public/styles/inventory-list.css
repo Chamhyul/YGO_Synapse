@@ -1,0 +1,337 @@
+/* 보유 현황 목록의 배치, 필터 표시와 로딩 */
+
+.input-control-row {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  width: 100%;
+  margin: 20px auto 12px;
+  gap: 10px;
+  position: relative;
+  z-index: 30;
+  /* 테이블(z-index: 20)보다 높게 설정하여 드롭다운 가려짐 해결 */
+}
+
+/* 보유 현황 목록 (Inventory Grid) 전용 스타일 */
+#inventory-grid-container {
+  width: 100%;
+  margin-top: 0;
+  overflow: hidden;
+}
+
+.inventory-grid-wrapper {
+  width: 100%;
+  max-height: 800px;
+  overflow-y: auto;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: var(--theme-000) transparent;
+}
+
+.inventory-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: 0.85rem;
+}
+
+.inventory-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: var(--color-bg);
+}
+
+.inventory-table :is(tr, th, td) {
+  border: 0;
+}
+
+.inventory-table :is(th, td) {
+  border-radius: 0;
+  text-align: left;
+  word-break: break-all;
+}
+
+.inventory-table th {
+  padding: 12px 8px;
+  background-color: transparent;
+  font-size: 0.8rem;
+  font-weight: 800;
+  border-bottom: 1px solid var(--border-000);
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.inventory-table th.col-card-name {
+  width: 30%;
+}
+
+.inventory-table th.col-card-no {
+  width: 110px;
+}
+
+.inventory-table th.col-rarity {
+  width: 120px;
+}
+
+.inventory-table th.col-qty {
+  width: 65px;
+}
+
+.inventory-table th.col-loc {
+  width: 18%;
+}
+
+.inventory-table th.col-illust {
+  width: 80px;
+  cursor: default;
+}
+
+.inventory-table th .header-content {
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.inventory-table th:where(:not(.col-qty)) .header-content {
+  display: flex;
+  gap: 4px;
+}
+
+.inventory-table th.col-qty .header-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0;
+}
+
+.inventory-table th .header-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.inventory-table tbody tr:hover td {
+  background-color: var(--color-highlight-bg);
+}
+
+.sort-icons-wrapper {
+  flex: none;
+  position: relative;
+  display: none; /* 기본 보이지도 않고 자리 차지하지 않음 */
+  width: 10px;
+  height: 10px;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+.sort-icons-wrapper i {
+  position: absolute;
+  font-size: 0.75rem;
+  transition: all 0.2s, var(--transition-colors);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.sort-icons-wrapper .background-icon {
+  display: inline-block;
+  opacity: 0.15;
+  color: var(--text-000);
+  z-index: 1;
+}
+
+.sort-icons-wrapper .active-icon {
+  opacity: 0;
+  color: var(--theme-000);
+  z-index: 2;
+}
+
+.active-sort .sort-icons-wrapper {
+  display: inline-flex; /* 정렬 기준으로 작동하는 열에서만 노출 */
+}
+
+.active-sort .active-icon {
+  opacity: 1;
+}
+
+.filter-trigger-btn {
+  position: relative;
+  flex-shrink: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-colors);
+}
+
+/* 데스크톱 환경 헤더 호버 시 필터 아이콘 노출 */
+html:not(.is-mobile-device) .inventory-table th:hover .filter-trigger-btn {
+  display: inline-flex;
+}
+
+.filter-trigger-btn:hover {
+  color: var(--color-highlight-text);
+}
+
+.filter-trigger-btn.active-filter {
+  color: var(--color-selected-text);
+}
+
+.filter-trigger-btn.active-filter:hover {
+  color: var(--color-selected-highlight-text);
+}
+
+.filter-trigger-btn i {
+  font-size: 1.1rem;
+  display: block;
+}
+
+.inventory-table td {
+  position: relative;
+  padding: 10px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inventory-table tbody tr:not(:last-child) td {
+  border-bottom: 1px solid var(--border-000);
+}
+
+.inventory-table :is(.col-qty, td:nth-child(4)) {
+  text-align: center;
+}
+
+.inventory-table .col-qty .sort-icons-wrapper {
+  grid-column: 1;
+  justify-self: end;
+  margin-inline-end: 2px;
+}
+
+.inventory-table .col-qty .header-text {
+  grid-column: 2;
+}
+
+/* 카드 이름 및 레어도 열 줄바꿈 허용 */
+.inventory-table td:is(:nth-child(1), :nth-child(3)) {
+  white-space: normal;
+  word-break: keep-all;
+}
+
+/* [모바일] 보유 현황 목록 테이블 최적화 */
+html.is-mobile-device .inventory-grid-wrapper {
+  overflow-x: auto;
+  /* 가로 스크롤 허용 */
+  -webkit-overflow-scrolling: touch;
+}
+
+html.is-mobile-device .inventory-table {
+  table-layout: fixed;
+  /* 고정 너비 레이아웃 사용 */
+  min-width: 100%;
+  width: 100%;
+}
+
+html.is-mobile-device .inventory-table th,
+html.is-mobile-device .inventory-table td {
+  padding: 8px 8px;
+  font-size: 0.82rem;
+}
+
+html.is-mobile-device .inventory-table th.col-card-name,
+html.is-mobile-device .inventory-table td:nth-child(1) {
+  width: 32%;
+  white-space: normal;
+  word-break: keep-all;
+}
+
+html.is-mobile-device .inventory-table th.col-card-no,
+html.is-mobile-device .inventory-table td:nth-child(2) {
+  width: 28%;
+}
+
+html.is-mobile-device .inventory-table th.col-rarity,
+html.is-mobile-device .inventory-table td:nth-child(3) {
+  display: none;
+}
+
+html.is-mobile-device .inventory-table th.col-qty,
+html.is-mobile-device .inventory-table td:nth-child(4) {
+  width: 15%;
+}
+
+html.is-mobile-device .inventory-table th.col-loc,
+html.is-mobile-device .inventory-table td:nth-child(5) {
+  width: 25%;
+}
+
+html.is-mobile-device .inventory-table th.col-illust,
+html.is-mobile-device .inventory-table td:nth-child(6) {
+  display: none;
+}
+
+html.is-mobile-device .inventory-table th .header-text {
+  font-size: 0.8rem;
+}
+
+/* 로딩 및 준비 상태 */
+:is(#grid-status-area, #grid-bottom-loader):not([hidden]) {
+  display: flex;
+}
+
+#grid-append-sensor {
+  block-size: 10px;
+}
+
+#grid-bottom-loader .loading-spinner-small {
+  inline-size: 24px;
+  block-size: 24px;
+  margin: 0;
+}
+
+.grid-loader-overlay,
+.grid-ready-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  min-height: 200px;
+  width: 100%;
+}
+
+.grid-loader-text,
+.grid-ready-text {
+  font-weight: 500;
+  font-size: 1.1rem;
+}
+
+.grid-loader-overlay .loading-spinner-small {
+  margin: 0;
+}
+
+.grid-loader-text {
+  margin-top: 15px;
+}
+
+.grid-ready-text {
+  margin-bottom: 20px;
+}
+
+.grid-ready-action {
+  min-block-size: 36px;
+  padding-inline: 16px;
+}

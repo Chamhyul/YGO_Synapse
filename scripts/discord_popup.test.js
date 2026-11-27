@@ -68,10 +68,22 @@ test('동의 취소는 취소 결과로 정리하고 메시지의 code/error 혼
     f.send({ data: { type: 'ygo.discord.oauth.result', version: 1, state, error: 'cancelled' } });
     await assert.rejects(p.result, e => e.code === 'DISCORD_POPUP_CANCELLED');
 });
-test('root의 표식이 일치하는 복귀만 코드 주소를 지우고 작은 전달 문서로 보낸다', () => {
+test('root의 표식이 일치하는 복귀는 주소를 지우고 같은 origin의 원래 창에 직접 전달한다', () => {
     const marker = { version: 1, state, expiresAt: 10000 };
     const f = fixture({ marker, search: '?code=synthetic-code&state=' + state + '&iss=ignored' });
-    assert.equal(f.root.YgoDiscordPopup.isCallback, true); assert.deepEqual(f.cleaned, ['/']); assert(f.navigations[0].startsWith('/discord-popup.html#')); assert(!f.navigations[0].includes('iss='));
+    assert.equal(f.root.YgoDiscordPopup.isCallback, true);
+    assert.deepEqual(f.cleaned, ['/']);
+    assert.equal(f.navigations.length, 0);
+    assert.equal(f.messages.length, 1);
+    assert.deepEqual({ ...f.messages[0][0] }, { type: 'ygo.discord.oauth.result', version: 1, state, code: 'synthetic-code' });
+    assert.equal(f.messages[0][1], origin);
+    assert.equal(f.storage.size, 0);
+    for (const extra of [{ opener: false }, { marker: { ...marker, expiresAt: 500 } }, { search: '?code=x&code=y&state=' + state + '&iss=ignored' }]) {
+        const rejected = fixture({ marker, search: '?code=synthetic-code&state=' + state + '&iss=ignored', ...extra });
+        assert.equal(rejected.messages.length, 0);
+        assert.match(rejected.navigations[0], /^\/discord-popup\.html#/);
+        assert.doesNotMatch(rejected.navigations[0], /iss=/);
+    }
     for (const opts of [{ search: '?code=synthetic-code&state=' + state }, { marker, search: '?code=synthetic-code&state=bad' }, { marker, search: '?code=x&state=' + state + '&state=bad' }]) {
         const f = fixture(opts); assert.equal(f.root.YgoDiscordPopup.isCallback, false); assert.equal(f.navigations.length, 0);
     }
@@ -90,7 +102,9 @@ test('팝업 root 복귀에서는 Auth/App Check와 일반 앱 초기화가 실�
     let calls = 0; const root = { YgoDiscordPopup: { isCallback: true } };
     vm.runInNewContext(fs.readFileSync('public/auth-bootstrap.js', 'utf8'), { window: root, firebase: { auth() { calls++; }, appCheck() { calls++; } } });
     const a = main.indexOf('async function initApp()'), b = main.indexOf('// 애플리케이션 단일 초기화', a);
-    const ctx = { window: root, initFirebaseAuth: () => calls++ }; vm.createContext(ctx); vm.runInContext(main.slice(a, b), ctx); await ctx.initApp(); assert.equal(calls, 0);
+    const ctx = { window: root, document: { documentElement: { dataset: { backend: 'supabase' } } },
+        AppBackend: { initAuth: () => calls++ }, initFirebaseAuth: () => calls++ };
+    vm.createContext(ctx); vm.runInContext(main.slice(a, b), ctx); await ctx.initApp(); assert.equal(calls, 0);
     const html = fs.readFileSync('public/index.html', 'utf8'); assert(html.indexOf('ygo_discord_popup_callback') < html.indexOf('googletagmanager')); assert(html.indexOf('ygo_discord_popup_callback') < html.indexOf('firebase-app-compat'));
     assert.match(html, /src="discord-popup\.js\?v=4" defer/);
 });

@@ -19,10 +19,18 @@ const initialCode = initialThemeScripts[0];
 function fixture({ stored = {}, dark = false, blocked = false } = {}) {
     const records = new Map(Object.entries(stored));
     const classes = new Set();
-    const checkbox = { checked: false };
+    const attributes = new Map();
+    const icon = { textContent: '' };
+    const button = {
+        get pressed() { return attributes.get('aria-pressed') === 'true'; },
+        getAttribute: name => attributes.get(name),
+        setAttribute: (name, value) => attributes.set(name, value),
+        querySelector: () => icon,
+    };
     const apiCalls = [];
     let metaColor;
     const context = vm.createContext({
+        refreshNoticeReadState() {},
         authStateRevision: 1,
         localStorage: {
             getItem(key) { if (blocked) throw new Error('blocked'); return records.get(key) ?? null; },
@@ -32,9 +40,10 @@ function fixture({ stored = {}, dark = false, blocked = false } = {}) {
         document: {
             documentElement: { classList: {
                 add: value => classes.add(value),
+                contains: value => classes.has(value),
                 toggle(value, enabled) { if (enabled) classes.add(value); else classes.delete(value); },
             } },
-            getElementById: id => id === 'checkbox-theme' ? checkbox : null,
+            getElementById: id => id === 'theme-toggle-btn' ? button : null,
             querySelectorAll: () => [],
             write(markup) { metaColor = markup.match(/content="([^"]+)"/)[1]; },
         },
@@ -48,7 +57,7 @@ function fixture({ stored = {}, dark = false, blocked = false } = {}) {
         console,
     });
     vm.runInContext(keys + themeCode, context);
-    return { context, records, checkbox, apiCalls, classes, meta: () => metaColor };
+    return { context, records, button, icon, apiCalls, classes, meta: () => metaColor };
 }
 
 test('첫 HTML과 앱 초기화는 기기보다 마지막 테마를 우선하며 비로그인 기록을 건드리지 않는다', () => {
@@ -61,7 +70,7 @@ test('첫 HTML과 앱 초기화는 기기보다 마지막 테마를 우선하며
         assert.equal(f.classes.has('dark-mode'), mode === 'dark');
         const before = [...f.records];
         f.context.loadTheme();
-        assert.equal(f.checkbox.checked, mode === 'dark');
+        assert.equal(f.button.pressed, mode === 'dark');
         assert.equal(f.meta(), mode === 'dark' ? '#1e1e1e' : '#f0f0f0');
         assert.deepEqual([...f.records], before);
     }
@@ -74,9 +83,9 @@ test('마지막 기록 누락·잘못된 값·저장소 차단에서도 기기 �
             vm.runInContext(initialCode, f.context);
             f.context.loadTheme();
             assert.equal(f.classes.has('dark-mode'), dark);
-            assert.equal(f.checkbox.checked, dark);
+            assert.equal(f.button.pressed, dark);
             f.context.loadUserTheme();
-            assert.equal(f.checkbox.checked, dark);
+            assert.equal(f.button.pressed, dark);
         }
     }
 });
@@ -89,12 +98,12 @@ test('계정 로컬 기록은 서버보다 우선하고 비로그인 기록과 �
     f.context.UserStore.user = { uid: 'account-a' };
     f.context.loadUserTheme(undefined, true);
     f.context.loadUserSettings({ theme: 'light' });
-    assert.equal(f.checkbox.checked, true);
+    assert.equal(f.button.pressed, true);
     assert.equal(f.records.get('yugioh_theme_mode'), 'dark');
     assert.equal(f.records.get('yugioh_theme_mode_guest'), 'light');
     f.context.UserStore.user = null;
     f.context.loadUserTheme(undefined, true);
-    assert.equal(f.checkbox.checked, false);
+    assert.equal(f.button.pressed, false);
     assert.equal(f.records.get('yugioh_theme_mode_user:account-a'), 'dark');
 });
 
@@ -103,13 +112,13 @@ test('새 계정은 초기 표시를 유지하다 서버 테마를 저장하고 
     f.context.loadTheme();
     f.context.UserStore.user = { uid: 'new-account' };
     f.context.loadUserTheme(undefined, true);
-    assert.equal(f.checkbox.checked, false);
+    assert.equal(f.button.pressed, false);
     assert.equal(f.records.has('yugioh_theme_mode_user:new-account'), false);
     f.context.loadUserSettings({ theme: 'dark' });
-    assert.equal(f.checkbox.checked, true);
+    assert.equal(f.button.pressed, true);
     assert.equal(f.records.get('yugioh_theme_mode_user:new-account'), 'dark');
     f.context.loadUserSettings({ theme: 'light' });
-    assert.equal(f.checkbox.checked, true);
+    assert.equal(f.button.pressed, true);
 });
 
 test('서버 기록 누락·유효하지 않은 값은 기기 설정으로 확정한다', () => {
@@ -117,19 +126,19 @@ test('서버 기록 누락·유효하지 않은 값은 기기 설정으로 확�
         const f = fixture({ dark: true, stored: { yugioh_theme_mode: 'light' } });
         f.context.UserStore.user = { uid: 'new-account' };
         f.context.loadUserTheme(settings);
-        assert.equal(f.checkbox.checked, true);
+        assert.equal(f.button.pressed, true);
         assert.equal(f.records.get('yugioh_theme_mode_user:new-account'), 'dark');
     }
 });
 
-test('스위치 변경은 현재 사용자 기록만 갱신하며 로그인 때만 서버에 저장한다', async () => {
+test('아이콘 버튼 전환은 현재 사용자 기록만 갱신하며 로그인 때만 서버에 저장한다', async () => {
     const f = fixture();
-    f.checkbox.checked = true;
+    f.context.applyTheme('light');
     f.context.toggleTheme();
     assert.equal(f.records.get('yugioh_theme_mode_guest'), 'dark');
     assert.equal(f.apiCalls.length, 0);
     f.context.UserStore.user = { uid: 'account-a' };
-    f.checkbox.checked = false;
+    f.context.applyTheme('dark');
     f.context.toggleTheme();
     await Promise.resolve();
     assert.equal(f.records.get('yugioh_theme_mode_user:account-a'), 'light');
@@ -139,7 +148,7 @@ test('스위치 변경은 현재 사용자 기록만 갱신하며 로그인 때�
     assert.equal(f.apiCalls[0][2].settings.theme, 'light');
     // 저장보다 늦게 도착한 초기 서버 응답이 수동 선택을 덮어쓰지 않는다.
     f.context.loadUserSettings({ theme: 'dark' });
-    assert.equal(f.checkbox.checked, false);
+    assert.equal(f.button.pressed, false);
 });
 
 test('계정 변경 뒤 도착한 이전 사용자 응답은 테마와 화면을 갱신하지 않는다', async () => {
@@ -156,7 +165,7 @@ test('계정 변경 뒤 도착한 이전 사용자 응답은 테마와 화면을
     f.context.loadUserSettings({ theme: 'light' });
     resolveResponse({ success: true, settings: { theme: 'dark' } });
     await pending;
-    assert.equal(f.checkbox.checked, false);
+    assert.equal(f.button.pressed, false);
     assert.equal(f.records.has('yugioh_theme_mode_user:account-a'), false);
     assert.equal(f.records.get('yugioh_theme_mode_user:account-b'), 'light');
 });
@@ -176,9 +185,24 @@ test('서버 조회 실패는 초기 표시를 유지하고 계정 기록을 만
     f.context.UserStore.user = { uid: 'new-account' };
     vm.runInContext(source.slice(source.indexOf('let userDataSyncTask = null;'), source.indexOf('/**\n * 유튜브 멤버십 상태 적용')), f.context);
     await f.context.loadUserData();
-    assert.equal(f.checkbox.checked, true);
+    assert.equal(f.button.pressed, true);
     assert.equal(f.records.has('yugioh_theme_mode_user:new-account'), false);
     f.context.loadUserSettings({ theme: 'light' });
-    assert.equal(f.checkbox.checked, false);
+    assert.equal(f.button.pressed, false);
     assert.equal(f.records.get('yugioh_theme_mode_user:new-account'), 'light');
+});
+
+
+test('아이콘 버튼은 표시된 테마와 다음 동작 이름을 맞추고 전환을 반복할 수 있다', () => {
+    const f = fixture();
+    f.context.applyTheme('light');
+    assert.equal(f.icon.textContent, 'dark_mode');
+    assert.equal(f.button.getAttribute('aria-label'), '다크 모드로 전환');
+    f.context.toggleTheme();
+    assert.equal(f.icon.textContent, 'light_mode');
+    assert.equal(f.button.getAttribute('aria-label'), '라이트 모드로 전환');
+    assert.equal(f.button.pressed, true);
+    f.context.toggleTheme();
+    assert.equal(f.icon.textContent, 'dark_mode');
+    assert.equal(f.button.pressed, false);
 });

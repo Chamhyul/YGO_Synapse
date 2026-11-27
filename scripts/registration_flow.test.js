@@ -12,7 +12,7 @@ function fixture(api) {
   }
   const auth = { currentUser: { uid: 'new' }, async signInWithPopup() { calls.push('popup'); }, async signOut() { calls.push('sign-out'); auth.currentUser = null; } };
   const c = vm.createContext({
-    document: { getElementById: id => nodes.get(id), body: { classList: { add() {}, remove() {} } } },
+    document: { getElementById: id => nodes.get(id), body: { classList: { toggle() {} } } },
     window: { isAuthInitialized: true }, firebase: { auth: () => auth }, AbortSignal,
     UserStore: { user: null, isInitialSyncDone: true },
     applyServiceAuthState(user) { c.UserStore.user = user; calls.push(['service-user', user?.uid || null]); if (!user) c.showLoading(false); },
@@ -28,7 +28,7 @@ function fixture(api) {
     setTimeout: callback => { calls.push('retry-delay'); callback(); },
   });
   vm.runInContext('const serviceUiReady = Promise.resolve(); let serviceAuthStarted = false; let authStateRevision = 0, pendingRegistrationUser = null, pendingConsentVersions = null, registrationSaving = false, loginInProgress = false, registrationCheckPending = false, pendingServiceAuthUser = null, serviceLoginPending = false, serviceLoginFailureCode = null;', c);
-  for (const name of ['showLoading', 'setServiceLoginPending', 'reportAuthFailure', 'checkAndHideInitialLoading', 'awaitApiPreparation', 'getServiceRegistrationStatus', 'handleFirebaseAuthState', 'toggleAuthModal', 'toggleLoginBtn', 'retryServiceLoginConfirmation', 'getServiceSignInMode', 'signInWithProvider', 'toggleRegistrationButton', 'setRegistrationSaving', 'completeServiceRegistration', 'cancelServiceRegistration']) {
+  for (const name of ['showLoading', 'setServiceLoginPending', 'reportAuthFailure', 'checkAndHideInitialLoading', 'awaitApiPreparation', 'getServiceRegistrationStatus', 'handleFirebaseAuthState', 'openServiceRegistration', 'toggleAuthModal', 'toggleLoginBtn', 'retryServiceLoginConfirmation', 'getServiceSignInMode', 'signInWithProvider', 'toggleRegistrationButton', 'setRegistrationSaving', 'completeServiceRegistration', 'cancelServiceRegistration']) {
     const start = source.search(new RegExp(`^(?:async )?function ${name}\\(`, 'm'));
     const rest = source.slice(start), end = rest.slice(1).search(/\n(?:async )?function /);
     vm.runInContext(rest.slice(0, end + 1), c);
@@ -243,7 +243,7 @@ test('서비스 확인 실패는 계정 인증을 유지하고 전용 재확인 
   assert.equal(f.nodes.get('twitter-login-btn').hidden,true);
   assert.equal(f.nodes.get('login-guide-msg').textContent,'로그인을 완료하지 못했습니다. 다시 시도해 주세요.');
   ready=true;const retry=f.c.retryServiceLoginConfirmation();
-  assert.equal(f.nodes.get('loading-overlay').style.display,'flex');
+  assert.equal(f.nodes.get('loading-overlay').hidden, false);
   await f.c.retryServiceLoginConfirmation();
   finish({success:true,registered:true});await retry;
   assert.equal(f.calls.filter(c=>c[0]==='api').length,4);
@@ -262,31 +262,31 @@ test('서비스 확인 실패 뒤 실제 로그아웃되면 Google·X 로그인 
 });
 
 
-test('팝업 결과 반환 후 가입 확인이 끝나기 전에는 공통 로딩 종료 요청도 로그인 로딩을 닫지 않는다', async () => {
+test('Firebase 인증 후 통합 보유 조회 중에는 공통 종료 요청도 인벤토리 로딩을 닫지 않는다', async () => {
   let finish;
   const f = fixture(() => new Promise(resolve => { finish = resolve; }));
   f.nodes.get('google-login-btn').disabled = false;
   await f.c.signInWithProvider('google');
-  assert.equal(f.nodes.get('loading-overlay').style.display, 'flex');
+  assert.equal(f.nodes.get('loading-overlay').hidden, false);
   assert.equal(f.c.UserStore.user, null);
   const checking = f.c.handleFirebaseAuthState(f.auth.currentUser);
   f.c.showLoading(false);
   f.c.checkAndHideInitialLoading();
-  assert.equal(f.nodes.get('loading-overlay').style.display, 'flex');
-  assert.equal(f.nodes.get('loading-text').innerHTML, '로그인 중...');
+  assert.equal(f.nodes.get('loading-overlay').hidden, false);
+  assert.equal(f.nodes.get('loading-text').innerHTML, '내 인벤토리 로딩 중...');
   finish({success:true,registered:true});await checking;
   assert.equal(f.c.UserStore.user.uid, 'new');
-  assert.equal(f.nodes.get('loading-overlay').style.display, 'none');
+  assert.equal(f.nodes.get('loading-overlay').hidden, true);
 });
 test('가입 조회 재시도 중에는 로딩을 유지하고 최종 실패 때만 해제한다',async()=>{
   let attempt=0;let f;
   f=fixture(async()=>{
     attempt++;
-    assert.equal(f.nodes.get('loading-overlay').style.display,'flex');
+    assert.equal(f.nodes.get('loading-overlay').hidden, false);
     throw Object.assign(Error('조회 장애'),{status:503});
   });
   await f.c.handleFirebaseAuthState(f.auth.currentUser);
-  assert.equal(attempt,3);assert.equal(f.nodes.get('loading-overlay').style.display,'none');
+  assert.equal(attempt,3);assert.equal(f.nodes.get('loading-overlay').hidden, true);
   assert.equal(f.c.UserStore.user,null);assert.equal(f.calls.some(call=>call[0]==='toast'),false);
   assert.match(f.nodes.get('login-guide-msg').textContent,/다시 시도/);
 });
@@ -297,13 +297,13 @@ test('인증 팝업 취소는 최종 실패로 로딩을 해제하고 초기 비
   f.auth.signInWithPopup=()=>new Promise((_,reject)=>{cancel=reject;});
   const popup=f.c.signInWithProvider('google');
   await f.c.handleFirebaseAuthState(null);
-  assert.equal(f.nodes.get('loading-overlay').style.display,'flex');
+  assert.equal(f.nodes.get('loading-overlay').hidden, false);
   cancel(Error('팝업 취소'));await popup;
-  assert.equal(f.nodes.get('loading-overlay').style.display,'none');
+  assert.equal(f.nodes.get('loading-overlay').hidden, true);
 });
 test('신규 가입 화면 전환이 확정되면 로그인 로딩을 해제하여 동의 화면을 조작할 수 있다',async()=>{
   const f=fixture(async()=>newStatus);await f.c.handleFirebaseAuthState(f.auth.currentUser);
-  assert.equal(f.nodes.get('loading-overlay').style.display,'none');
+  assert.equal(f.nodes.get('loading-overlay').hidden, true);
   assert.ok(f.calls.some(call=>call[0]==='open'&&call[1]==='signup-modal'));
 });
 test('계정 변경 뒤 도착한 이전 가입 확인은 새 계정의 로그인 로딩을 닫지 않는다',async()=>{
@@ -313,19 +313,19 @@ test('계정 변경 뒤 도착한 이전 가입 확인은 새 계정의 로그�
   f.auth.currentUser={uid:'other'};
   const second=f.c.handleFirebaseAuthState(f.auth.currentUser);
   finish[0]({success:true,registered:true});await first;
-  assert.equal(f.nodes.get('loading-overlay').style.display,'flex');
+  assert.equal(f.nodes.get('loading-overlay').hidden, false);
   assert.equal(f.c.UserStore.user,null);
   finish[1]({success:true,registered:true});await second;
-  assert.equal(f.nodes.get('loading-overlay').style.display,'none');assert.equal(f.c.UserStore.user.uid,'other');
+  assert.equal(f.nodes.get('loading-overlay').hidden, true);assert.equal(f.c.UserStore.user.uid,'other');
 });
 
 test('가입 확인 중 로그아웃이 확정되면 로딩을 해제하고 늦은 응답을 적용하지 않는다',async()=>{
   let finish;const f=fixture(()=>new Promise(resolve=>finish=resolve));
   const checking=f.c.handleFirebaseAuthState(f.auth.currentUser);
   f.auth.currentUser=null;await f.c.handleFirebaseAuthState(null);
-  assert.equal(f.nodes.get('loading-overlay').style.display,'none');
+  assert.equal(f.nodes.get('loading-overlay').hidden, true);
   finish({success:true,registered:true});await checking;
-  assert.equal(f.c.UserStore.user,null);assert.equal(f.nodes.get('loading-overlay').style.display,'none');
+  assert.equal(f.c.UserStore.user,null);assert.equal(f.nodes.get('loading-overlay').hidden, true);
 });
 test('로그인 확정 뒤 시작한 인벤토리 로딩을 인증 처리 finally가 닫지 않는다',async()=>{
   const f=fixture(async()=>({success:true,registered:true}));
@@ -333,7 +333,7 @@ test('로그인 확정 뒤 시작한 인벤토리 로딩을 인증 처리 finall
   f.c.applyServiceAuthState=user=>{apply(user);if(user)f.c.showLoading(true,'내 인벤토리 로딩 중...');};
   f.nodes.get('google-login-btn').disabled=false;
   await f.c.signInWithProvider('google');await f.c.handleFirebaseAuthState(f.auth.currentUser);
-  assert.equal(f.nodes.get('loading-overlay').style.display,'flex');
+  assert.equal(f.nodes.get('loading-overlay').hidden, false);
   assert.equal(f.nodes.get('loading-text').innerHTML,'내 인벤토리 로딩 중...');
 });
 
@@ -372,7 +372,7 @@ for (const code of ['auth/operation-not-supported-in-this-environment', 'auth/ne
     assert.equal(f.calls.some(call => call[0] === 'close'), false);
     assert.equal(f.calls.some(call => call[0] === 'toast' && call[1] === '로그인하지 못했습니다. 다시 시도해 주세요.'), true);
     assert.equal(f.nodes.get('google-login-btn').disabled, false);
-    assert.equal(f.nodes.get('loading-overlay').style.display, 'none');
+    assert.equal(f.nodes.get('loading-overlay').hidden, true);
     assert.equal(f.c.UserStore.user, null);
   });
 }
@@ -411,15 +411,13 @@ test('브라우저 저장소·통신 예외의 종류를 구분하고 콘솔 장
   f.c.console.warn = () => { throw Error('console-unavailable'); };
   await f.c.signInWithProvider('google');
   assert.equal(f.nodes.get('google-login-btn').disabled, false);
-  assert.equal(f.nodes.get('loading-overlay').style.display, 'none');
+  assert.equal(f.nodes.get('loading-overlay').hidden, true);
   assert.equal(f.calls.filter(call => call[0] === 'toast').length, 4);
 });
 
 function initializeAuthFixture(f, getRedirectResult) {
   f.c.IS_LOCAL_DEV = false;
   f.c.window.location = { hostname: 'login.example.invalid' };
-  f.c.window.addEventListener = () => {};
-  f.c.handleTooltipDisplay = () => {};
   f.c.firebase.app = () => ({ options: {} });
   f.auth.getRedirectResult = getRedirectResult;
   f.auth.onIdTokenChanged = () => {};
@@ -444,7 +442,7 @@ test('redirect 복귀 실패는 시작 실패와 구분하고 기존 사용자 �
   ]]);
   assert.equal(f.calls.some(call => call[0] === 'toast' && call[1] === '로그인하지 못했습니다. 다시 시도해 주세요.'), true);
   assert.equal(f.calls.some(call => call[1] === 'getRegistrationStatus'), false);
-  assert.equal(f.nodes.get('loading-overlay').style.display, 'none');
+  assert.equal(f.nodes.get('loading-overlay').hidden, true);
   assert.equal(f.c.UserStore.user, null);
 });
 

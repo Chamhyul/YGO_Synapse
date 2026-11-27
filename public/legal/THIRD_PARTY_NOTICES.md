@@ -13,6 +13,7 @@
 | Pretendard | CDN v1.3.9 | SIL OFL-1.1. Kil Hyung-jin 및 기반 폰트 권리자 고지는 [원문](Pretendard-LICENSE.txt) 참조 |
 | Materialize | CDN 1.0.0 | MIT, [원문](Materialize-LICENSE.txt) |
 | Material Icons | Google Fonts, 버전 미고정 | Apache-2.0, [원문](Material-Icons-LICENSE.txt) |
+| Material Symbols Outlined | Google Fonts v385, `package_2`(굵기 400)·`123`(굵기 600)의 채움 서브셋 | Apache-2.0, [원문](Material-Icons-LICENSE.txt), [소스](https://github.com/google/material-design-icons) |
 | Font Awesome Free | CDN 7.2.0 | 폰트 OFL-1.1, 아이콘 CC-BY-4.0, 코드 MIT. Fonticons, Inc. 및 [원문 고지](Font-Awesome-LICENSE.txt). 브랜드 상표는 별도 |
 | Hangul-js | unpkg, 확인일 현재 0.2.6 (URL 미고정) | MIT, Jaemin Jo, [원문](Hangul-js-LICENSE.txt), [버전 근거](https://unpkg.com/hangul-js/package.json) |
 | SheetJS Community Edition | xlsx-latest CDN, 확인일 현재 0.20.3 (URL 미고정) | Apache-2.0, [원문](SheetJS-LICENSE.txt), [버전 근거](https://cdn.sheetjs.com/xlsx-latest/package/package.json) |

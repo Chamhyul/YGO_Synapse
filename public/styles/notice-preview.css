@@ -1,0 +1,66 @@
+/* 공지 미리보기 내부 배치. 색상·곡률·버튼 상태는 공통 조합에서 받는다. */
+.noti-list {
+  max-height: 450px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.noti-item {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 14px 18px;
+  width: 100%;
+  text-align: left;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+
+.noti-item__heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 8px;
+  align-items: start;
+  gap: 8px;
+}
+
+.noti-item-title {
+  min-width: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.noti-item-date { font-size: 0.8rem; }
+.noti-item:is(:hover, :focus-visible) .noti-item-date { color: var(--color-highlight-text); }
+
+.pin-icon {
+  font-size: 1.1rem;
+  vertical-align: middle;
+  margin-right: 4px;
+  transform: translateY(-1px);
+}
+
+.noti-item__unread {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-text);
+  margin-top: 0.25em;
+}
+.noti-item:not(.is-new) .noti-item__unread { visibility: hidden; }
+
+.noti-state {
+  padding: 20px;
+  margin: 0;
+  text-align: center;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}

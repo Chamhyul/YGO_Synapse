@@ -46,6 +46,8 @@ function fixture() {
       set innerHTML(value) { for (const child of this.children) child.parentNode = null; this.children = []; },
       get inert() { return attrs.has('inert'); },
       set inert(value) { if (value) attrs.set('inert', ''); else attrs.delete('inert'); },
+      get hidden() { return attrs.has('hidden'); },
+      set hidden(value) { if (value) attrs.set('hidden', ''); else attrs.delete('hidden'); },
       get isConnected() { return document.documentElement?.contains(this) || false; },
       get parentElement() { return this.parentNode; },
       get tabIndex() { return attrs.has('tabindex') ? Number(attrs.get('tabindex')) : ['button', 'input', 'select', 'textarea'].includes(tagName) ? 0 : -1; },
@@ -92,7 +94,7 @@ function fixture() {
   const main = element('main', 'app-page-content', document.body), footer = element('main-footer', '', document.body);
   const trigger = element('edit-trigger', '', main, 'button');
   const lists = {};
-  for (const mode of ['general', 'pack', 'deck', 'move', 'discard']) lists[mode] = element(`mobile-cards-list-${mode}`, '', main);
+  for (const mode of ['general', 'move', 'discard']) lists[mode] = element(`mobile-cards-list-${mode}`, '', main);
   const entry = element('mobile-entry-bottom-sheet', 'mobile-bottom-sheet', document.body);
   const fieldsContainer = element('sheet-fields-container', '', entry);
   for (const id of ['sheet-prev-btn', 'sheet-next-btn', 'sheet-card-progress', 'sheet-confirm-btn']) element(id, '', entry, id === 'sheet-card-progress' ? 'span' : 'button');
@@ -107,15 +109,18 @@ function fixture() {
   const qtyInline = element('qty-inline-input', '', qtyContent, 'input');
   for (const id of ['qty-reset-btn', 'qty-check-btn']) element(id, '', qtyContent, 'button');
   const dropdown = element('mobile-sheet-dropdown-select', 'mobile-bottom-sheet', document.body);
-  element('sheet-dropdown-overlay', '', document.body);
-  for (const el of [entry, backdrop, inputSheet, qty, dropdown, qtyInline]) el.style.display = 'none';
-  for (const el of [entry, inputSheet, qty, dropdown]) el.tabIndex = -1;
+  const dropdownBackdrop = element('sheet-dropdown-overlay', '', document.body);
+  for (const el of [entry, backdrop, inputSheet, qty, dropdown, dropdownBackdrop, qtyInline]) el.hidden = true;
+  for (const el of [entry, inputSheet, qty, dropdown]) {
+    el.tabIndex = -1;
+    el.dataset.sheetDisplay = 'css';
+  }
 
   let frameId = 0, timerId = 0;
   const frames = new Map(), timers = new Map(), cancelledFrames = new Set(), cancelledTimers = new Set();
   const calls = { displays: [], recalcs: [], renders: 0, illustrationClose: 0 };
   const c = vm.createContext({
-    document, console, UIStore: { mode: 'add' }, addSubMode: 'general',
+    document, console, UIStore: { mode: 'add' },
     IllustrationPicker: { close() { calls.illustrationClose++; } },
     getDesktopCardData: row => ({ name: '카드', qty: '2' }), restoreDesktopDropdownOptions() {},
     updateBottomSheetClearButtons() {}, updateSheetDropdownState() {}, showOverlaySuggestions() {},
@@ -127,7 +132,7 @@ function fixture() {
     clearTimeout: id => cancelledTimers.add(id),
   });
   const variables = ['modalStates', 'modalAfterOpen', 'modalBackgroundSnapshot', 'modalReturnFocus', 'sheetAnimationStates',
-    'currentEditingRowIndex', 'currentEditingRow', 'activeOverlayType', 'qtyPickerSelectedVal'];
+    'currentEditingRowIndex', 'currentEditingRow', 'activeOverlayType', 'packOverlaySelect', 'qtyPickerSelectedVal'];
   const declarations = variables.map(name => {
     const declaration = source.match(new RegExp(`^(?:let|const) ${name} = .*$`, 'm'))?.[0];
     if (!declaration) throw new Error(`상태 선언 추출 실패: ${name}`);
@@ -137,13 +142,16 @@ function fixture() {
     'getModalBackgroundTargets', 'syncModalLayers', 'beginModalLifecycle', 'beginModalClose', 'focusModalReturnTarget', 'finishModalLifecycle',
     'isManagedSheetOpen', 'resetSheetAnimation', 'openManagedSheet', 'closeManagedSheet', 'getActiveMobileListContainer', 'returnEditingFields',
     'closeEntrySheetChildren', 'handleManagedSheetKeydown', 'getQueryTarget',
-    'openEditBottomSheet', 'closeEntryBottomSheet', 'openSheetOverlay', 'closeSheetOverlay', 'closeSheetDropdownSelect',
-    'getCurrentMaxQty', 'openQtyOverlay', 'closeQtyOverlay', 'selectQtyFromPicker', 'startQtyInlineInput', 'finishQtyInlineInput',
+    'openEditBottomSheet', 'closeEntryBottomSheet', 'openSheetOverlay', 'openSheetInputOverlay', 'closeSheetOverlay', 'closeSheetDropdownSelect',
+    'getCurrentMaxQty', 'setQtyPickerItemSelected', 'openQtyOverlay', 'closeQtyOverlay', 'selectQtyFromPicker',
+    'startQtyInlineInput', 'finishQtyInlineInput',
   ].map(functionSource).join('\n'), c);
   const flushFrames = () => { for (const [id, fn] of [...frames]) { frames.delete(id); if (!cancelledFrames.has(id)) fn(); } };
   const flushTimers = () => { for (const [id, timer] of [...timers].sort((a, b) => a[1].delay - b[1].delay)) { timers.delete(id); if (!cancelledTimers.has(id)) timer.fn(); } };
   const makeRow = (mode = 'general', max = '7') => {
+    const index = lists[mode].children.length;
     const row = element('', 'mobile-info-card', lists[mode]);
+    row.dataset.index = String(index);
     row.dataset.cardData = '{"name":"카드"}'; row.dataset.searchMode = 'name';
     const fields = element('', 'mobile-card-fields', row);
     const inputs = {};
@@ -157,7 +165,7 @@ function fixture() {
       if (field === 'qty') input.setAttribute('max', max);
       inputs[field] = input;
     }
-    fields.style.display = 'none';
+    fields.hidden = true;
     return { row, fields, inputs };
   };
   return { c, document, element, main, footer, trigger, lists, entry, backdrop, inputSheet, overlayInput, qty, picker, qtyInline,
@@ -176,7 +184,7 @@ test('닫은 직후 다시 연 시트는 취소된 닫기 타이머가 실행되
   assert.ok(f.cancelledTimers.has(timerId));
   stale.fn();
   assert.equal(f.c.isManagedSheetOpen(f.entry), true);
-  assert.equal(f.entry.style.display, 'flex');
+  assert.equal(f.entry.hidden, false);
   assert.equal(f.entry.classList.contains('active'), true);
   assert.equal(f.main.inert, true);
   assert.equal(f.footer.inert, true);
@@ -192,7 +200,7 @@ test('열림 프레임 전에 닫은 시트는 늦은 프레임이 다시 활성
   assert.ok(f.cancelledFrames.has(frameId));
   stale();
   assert.equal(f.c.isManagedSheetOpen(f.entry), false);
-  assert.equal(f.entry.style.display, 'none');
+  assert.equal(f.entry.hidden, true);
   assert.equal(f.entry.classList.contains('active'), false);
   assert.equal(f.document.activeElement, f.trigger);
   assert.equal(f.main.inert, false);
@@ -275,8 +283,8 @@ test('부모 종료는 입력 중인 자식의 미확정 값을 취소하고 모
   assert.equal(inputs.name.value, '카드');
   assert.equal(f.c.isManagedSheetOpen(f.inputSheet), false);
   f.flushTimers();
-  assert.equal(f.inputSheet.style.display, 'none');
-  assert.equal(f.entry.style.display, 'none');
+  assert.equal(f.inputSheet.hidden, true);
+  assert.equal(f.entry.hidden, true);
   assert.equal(f.main.inert, false);
   assert.equal(f.document.documentElement.classList.contains('modal-open'), false);
 });
